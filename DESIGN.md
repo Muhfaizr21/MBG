@@ -47,18 +47,59 @@
 
 ---
 
-Tinggal masukkan *prompt* ini, AI-nya bakal langsung nangkep *vibe* desainnya, terutama bagian tipografi campuran dan gradasi warna yang jadi ciri khas di gambar. Ada bagian spesifik yang mau ditambahkan (misal efek animasi *scroll* pakai Framer Motion)?
+# MBG (Makan Bergizi Gratis) — Landing Page Design Spec
 
----
+> Product identity: Sistem Informasi Makan Bergizi Gratis — QR Code + AI nutrition & freshness analysis.
+> Landing page purpose: intro/marketing for mobile app. Not a productivity app.
 
-## Keputusan desain (audit antislop-ui, 2026-09-27)
+**Global Styling & Theming:**
+* **Typography:** Clean modern geometric sans-serif (Plus Jakarta Sans) for primary text. Elegant serif (Playfair Display) for italic emphasis only.
+* **Color Palette:** Clean white background (`bg-white`), rich black text (`text-gray-900`), light gray for secondary text (`text-gray-500`). 1 accent: warm gradient used only in hero aura + bottom face panels (R-01, R-29).
+* **Components:** CTA buttons rounded-full, uppercase, thin border or solid dark. Feature items are text-only (no cards).
 
-- Dial: VARIANCE 6 / MOTION 2 / DENSITY 4.
-- Palette: white, gray-900, gray-500 + 1 aksen warm. Sisanya netral. (R-29)
-- Gradien 2 titik fungsi hierarki: aura hero (fokus visual utama) + panel bawah (transisi section). Bukan default tiap section. (R-01)
-- Radius: full = CTA, 2rem = panel/foto, default = lain. (R-11)
-- Panah: hanya komponen CTA "Try it for free" (satu aksi, satu bahasa). (R-08)
-- Fitur: teks tanpa card, marker nomor 01/02/03 sebagai variasi hierarki. (R-14)
-- Nav Blog/Pricing label "Segera" visible, href ke #get-started. Tanpa dead link. (R-24)
-- Form email prototype: placeholder jujur, state idle/error/done, label "tidak dikirim". (R-23/R-26/R-27/R-38)
-- Motion: hover + render sekali, hormat prefers-reduced-motion, tanpa loop. (R-19)
+**Section 1: Navigation Bar**
+* Layout: Flexbox, space-between, padding top and bottom.
+* Left: Text logo "MBG" (bold, sans-serif).
+* Center: Navigation links (Home, Features, Mulai) in small, subtle text.
+* Right: Pill-shaped CTA button "Scan QR →".
+
+**Section 2: Hero Section**
+* Layout: Centered text alignment, lots of whitespace.
+* Subheading: "Makan Bergizi Gratis." (Italic, serif font).
+* Main Heading: "Scan QR. Ketahui Kesegaran." (Large, bold, sans-serif, max-width to break into two lines).
+* Description: Explaining MBG system — QR Code, nutrition analysis, freshness AI. Using gray text.
+* CTA: "Scan QR Sekarang →" pill button below description.
+* Visual: A large image of a hand holding an iPhone showing QR scanner/nutrition dashboard. Place a subtle radial gradient (pink, purple, orange) absolutely positioned behind this image as hero aura.
+
+**Section 3: Feature Introduction**
+* Layout: Two-column grid (60/40 split).
+* Left Column (Heading): "Analisis Kesegaran Makanan" — "Kesegaran" styled with italic serif font, rest bold sans-serif.
+* Right Column (Description): Explain MBG stores data menu, bahan, nutrisi, waktu produksi, and AI analysis results behind each QR Code.
+
+**Section 4: Features Grid**
+* Layout: 3-column grid below the Feature Introduction.
+* Item 1: Title "Scan QR Code", description: Pindai QR pada kemasan makanan, validasi token dan status QR secara instan.
+* Item 2: Title "Nutrition Engine", description: Hitung kalori, protein, karbohidrat, lemak, serat dari data bahan secara deterministik.
+* Item 3: Title "Freshness & AI Analysis", description: Analisis kesegaran berdasarkan waktu produksi, suhu, kelembapan. AI memberikan penjelasan ringkas.
+* Styling: Small bold titles, smaller gray text for descriptions. No borders or cards, just clean text on white background. Numbered markers 01/02/03.
+
+**Section 5: Get Started / Bottom Visual Transition**
+* Full-width section with vibrant gradient background (deep purple transitioning into bright orange/yellow).
+* Headline about knowing what you consume.
+* Email signup form for release notification.
+* Honest label: "Prototype — email tidak dikirim ke mana pun."
+
+**Copy rules (antislop-ui compliant):**
+* No decorative emoji anywhere in copy (R-04).
+* No arrow `→` on non-CTA buttons (R-08).
+* Feature items are text-only (no cards), numbered markers as variation (R-14, R-05).
+* All links point to real destinations or labeled "Coming soon" (R-24, R-26).
+* Form has honest placeholder, validated states idle/error/done, aria attributes (R-23, R-27, R-38).
+* Motion: hover states only, respects prefers-reduced-motion, no loops (R-19).
+
+**Copywriting for landing page (mobile app intro):**
+* Landing page purpose: introduce MBG mobile app. Not a full product demo.
+* Copy must reference: QR Code scan, nutrition analysis, freshness analysis, AI explanation.
+* CTA: "Scan QR Sekarang" (hero), "Daftar Sekarang" (email signup), "Scan QR" (header).
+* Footer: "MBG — Makan Bergizi Gratis" with Syarat & Privasi link.
+* No mention of "Enblox", productivity, task management, calendar, or focus mode.
