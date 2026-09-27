@@ -99,62 +99,42 @@ function isActive(href, hash) {
 function HomePage() {
   return (
     <>
-      <section id="home" className="scroll-mt-24 pt-16 text-center md:pt-24">
+      <section id="home" className="scroll-mt-24 pt-12 text-center md:pt-20">
         <div className="mx-auto max-w-6xl px-6">
-          <p className="font-serif text-xl italic text-gray-900 md:text-2xl">Makan Bergizi Gratis.</p>
-          <h1 className="mx-auto mt-4 max-w-2xl text-5xl font-extrabold leading-[1.05] tracking-tight text-gray-900 md:text-7xl">
+          <p className="font-serif text-lg italic text-gray-900 md:text-2xl">Makan Bergizi Gratis.</p>
+          <h1 className="mx-auto mt-3 max-w-2xl text-4xl font-extrabold leading-[1.08] tracking-tight text-gray-900 md:text-6xl lg:text-7xl">
             Scan QR.
             <br />
             Ketahui Kesegaran.
           </h1>
-          <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-gray-500">
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-gray-500 md:text-base">
             Sistem MBG menghubungkan Admin, SPPG, dan User untuk memproduksi makanan, menghitung nutrisi, analisis kesegaran berbasis AI, lalu menghasilkan QR Code unik per porsi. Users memindai QR untuk melihat menu, bahan, nutrisi, waktu produksi, dan hasil analisis AI.
           </p>
-          <div className="mt-8">
+          <div className="mt-8 mb-6">
             <CtaButton href="#/scan">Scan QR Sekarang</CtaButton>
-          </div>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <div className="relative opacity-50 grayscale transition-opacity hover:opacity-70">
-              <img
-                src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
-                alt="Get it on Google Play — Segera"
-                className="h-12 w-auto object-contain"
-                loading="lazy"
-              />
-              <span className="absolute -right-2 -top-2 rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-white">Segera</span>
-            </div>
-            <div className="relative opacity-50 grayscale transition-opacity hover:opacity-70">
-              <img
-                src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
-                alt="Download on the App Store — Segera"
-                className="h-10 w-auto object-contain"
-                loading="lazy"
-              />
-              <span className="absolute -right-2 -top-2 rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-white">Segera</span>
-            </div>
           </div>
         </div>
 
         {/* Full-width edge-to-edge gradient banner */}
-        <div className="relative mt-12 w-full overflow-hidden">
+        <div className="relative mt-4 w-full overflow-hidden">
           {/* Edge-to-edge gradient backdrop extending across the whole screen */}
           <div
             className="absolute inset-0 -z-10 w-full"
             style={{
               background: 'linear-gradient(90deg, #f43f5e 0%, #ec4899 22%, #c084fc 50%, #fb923c 78%, #facc15 100%)',
-              maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+              maskImage: 'linear-gradient(to bottom, transparent 0%, black 20%, black 82%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 20%, black 82%, transparent 100%)',
             }}
             aria-hidden="true"
           />
-          <div className="relative mx-auto flex w-full max-w-7xl items-center justify-center">
+          <div className="relative mx-auto flex w-full max-w-6xl items-center justify-center px-4">
             <img
               src={heroImg}
               alt="Tangan memegang iPhone menampilkan antarmuka scan QR dan nutrisi makanan MBG"
-              className="w-full object-cover select-none md:max-h-[640px]"
+              className="w-full max-h-[540px] object-contain select-none"
               style={{
-                maskImage: 'linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%)',
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
               }}
               loading="eager"
             />
