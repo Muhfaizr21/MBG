@@ -1,0 +1,24 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Node modules & Dist
+frontend/node_modules/
+frontend/dist/
+
+# Backend binaries & env
+backend/main
+backend/backend
+backend/bin/
+backend/dist/
+backend/*.test
+backend/*.out
+.env
+.env.*
+!.env.example
