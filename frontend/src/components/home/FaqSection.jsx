@@ -25,7 +25,7 @@ export function FaqSection() {
                 <button
                   type="button"
                   onClick={() => setOpenFaq(isOpen ? -1 : index)}
-                  className="flex w-full items-center justify-between text-left text-base sm:text-lg font-bold text-gray-900 focus-visible:outline-none"
+                  className="flex w-full items-center justify-between text-left text-base sm:text-lg font-bold text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
                   aria-expanded={isOpen}
                 >
                   <span>{faq.q}</span>

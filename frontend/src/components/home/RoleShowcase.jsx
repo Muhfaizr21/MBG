@@ -14,7 +14,7 @@ export function RoleShowcase() {
             Solusi Spesifik untuk <em className="font-serif italic font-normal text-gray-700">Setiap Aktor</em>
           </h2>
           <p className="mt-3 text-sm sm:text-base text-gray-500 leading-relaxed">
-            Mulai dari petugas dapur SPPG yang menimbang bahan, siswa yang memindai makanannya, hingga pengawas gizi yang memonitor secara nasional.
+            Mulai dari validator lapangan yang memindai porsi sebelum dibagikan, hingga Satuan Tugas MBG yang memantau dari pusat komando.
           </p>
         </div>
 
@@ -63,13 +63,13 @@ export function RoleShowcase() {
               </ul>
             </div>
             <div className="md:col-span-5 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Ringkasan Dampak</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-500">Ringkasan Dampak</p>
               <p className="mt-3 text-base sm:text-lg font-medium leading-relaxed text-gray-900">
                 &ldquo;{activeRole.highlight}&rdquo;
               </p>
               <div className="mt-6 border-t border-gray-100 pt-4 flex items-center justify-between text-xs text-gray-500">
                 <span>Status Ekosistem MBG</span>
-                <span className="font-bold text-emerald-600">Aktif & Siap Pakai</span>
+                <span className="font-bold text-emerald-700">Purwarupa MVP</span>
               </div>
             </div>
           </div>

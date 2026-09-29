@@ -12,7 +12,7 @@ export function FlowSection() {
               Dari Dapur Masak Hingga <em className="font-serif italic font-normal text-gray-700">Meja Siswa</em>
             </h2>
             <p className="mt-4 text-sm sm:text-base leading-relaxed text-gray-500">
-              Setiap porsi makanan memiliki identitas digital unik. Data nutrisi dan parameter kesegaran dicatat secara berurutan dan tidak dapat dimanipulasi.
+              Validator memindai porsi, model AI menilai, dan hasil keputusannya direkam otomatis ke pusat komando, tanpa rely pada observasi subjektif mata telanjang.
             </p>
             <div className="mt-8 space-y-4">
               {FLOW_STEPS.map((s) => (
@@ -31,7 +31,7 @@ export function FlowSection() {
           <div className="relative overflow-hidden rounded-3xl border border-gray-200 bg-white p-2 shadow-sm">
             <img
               src={overviewImg}
-              alt="Petugas SPPG bekerja di dapur sementara siswa memindai QR Code dengan ponsel"
+              alt="Validator lapangan memindai porsi makanan dengan kamera ponsel sebelum dibagikan ke siswa"
               className="w-full rounded-2xl object-cover"
               loading="lazy"
             />

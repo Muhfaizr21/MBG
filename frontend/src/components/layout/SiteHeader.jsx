@@ -78,7 +78,7 @@ export function SiteHeader({ path }) {
                   href={r.href}
                   onClick={() => setOpen(false)}
                   className={`text-sm hover:text-gray-900 ${
-                    isActive(r.href, hash) ? 'font-semibold text-gray-900' : 'text-gray-500'
+                    isActive(r.href, path) ? 'font-semibold text-gray-900' : 'text-gray-500'
                   }`}
                 >
                   {r.label}

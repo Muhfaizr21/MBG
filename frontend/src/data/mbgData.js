@@ -4,20 +4,13 @@ export const ROUTES = [
   { href: '/tentang-kami', label: 'Tentang Kami' },
 ]
 
-export const STATS = [
-  { value: '500.000+', label: 'Porsi Tervalidasi', desc: 'Distribusi terpantau di 120+ titik sekolah' },
-  { value: '100%', label: 'Kalkulasi Deterministik', desc: 'Standar Tabel Komposisi Pangan Kemenkes RI' },
-  { value: '99.4%', label: 'Skor Kesegaran AI', desc: 'Indeks kepatuhan suhu & jam konsumsi' },
-  { value: '< 1 Detik', label: 'Verifikasi Kamera', desc: 'Pindai instan tanpa unduh aplikasi tambahan' },
-]
-
 export const SAMPLE_MENUS = [
   {
     id: 'menu-1',
     badge: 'Paket A · Pilihan Favorit Siswa',
     name: 'Nasi Ayam Panggang Madu & Capcay Brokoli',
     portion: 'Porsi SD/SMP (1 Porsi Lengkap)',
-    sppg: 'SPPG 01 Menteng — Jakarta Pusat',
+    sppg: 'SPPG 01 Menteng, Jakarta Pusat',
     cookTime: '06:15 WIB',
     calories: 545,
     protein: 34,
@@ -37,7 +30,7 @@ export const SAMPLE_MENUS = [
     badge: 'Paket B · Tinggi Asam Lemak Omega-3',
     name: 'Nasi Kuning Cakalang Asap & Sayur Urap Kelapa',
     portion: 'Porsi SD/SMP (1 Porsi Lengkap)',
-    sppg: 'SPPG 04 Wetan — Kota Bandung',
+    sppg: 'SPPG 04 Wetan, Kota Bandung',
     cookTime: '06:30 WIB',
     calories: 510,
     protein: 31,
@@ -57,7 +50,7 @@ export const SAMPLE_MENUS = [
     badge: 'Paket C · Sumber Zat Besi & Serat',
     name: 'Nasi Merah Daging Sapi Teriyaki & Tumis Buncis Tahu',
     portion: 'Porsi SD/SMP (1 Porsi Lengkap)',
-    sppg: 'SPPG 02 Sleman — D.I. Yogyakarta',
+    sppg: 'SPPG 02 Sleman, D.I. Yogyakarta',
     cookTime: '06:00 WIB',
     calories: 560,
     protein: 36,
@@ -76,78 +69,78 @@ export const SAMPLE_MENUS = [
 
 export const ROLES_DATA = [
   {
-    id: 'sppg',
-    role: 'Petugas Dapur SPPG',
-    tag: 'Dapur & Produksi',
-    title: 'Standarisasi Resep & Pencetakan Label QR Seketika',
-    desc: 'Petugas SPPG mengelola siklus produksi harian mulai dari penimbangan bahan baku higienis, verifikasi suhu masak, hingga cetak label QR per porsi kemasan.',
+    id: 'validator',
+    role: 'Validator Lapangan',
+    tag: 'Guru & Staf Sekolah',
+    title: 'Pemindai Visual Kelayakan Porsi di Titik Terakhir',
+    desc: 'Validator menggunakan kamera ponsel untuk memindai porsi makanan sesaat sebelum dibagikan. YOLOv8 mendeteksi anomali fisik secara instan, memberikan keputusan lolos/tidak lolos tanpa memerlukan keahlian gizi.',
     points: [
-      'Input resep dengan integrasi takaran gram bahan baku baku resmi',
-      'Kalkulasi otomatis nilai gizi sebelum batch porsi mulai dimasak',
-      'Pencetakan token QR unik per porsi kemasan dalam hitungan detik',
-      'Validasi sensor suhu sebelum makanan diberangkatkan ke sekolah'
+      'Akses kamera langsung, tanpa unduh aplikasi tambahan',
+      'Indikator visual: hijau (aman) / merah (tidak layak konsumsi)',
+      'Estimasi makronutrien otomatis ditampilkan berdampingan',
+      'Riwayat pemindaian harian tersinkron ke buku catatan digital'
     ],
-    highlight: 'Kapasitas dapur hingga 2.500 porsi per hari dengan akurasi data 100% tercatat.'
+    highlight: 'Pertama kali validasi kelayakan fisik jadi objektif, terukur, dan tak bergantung pada observasi manual.'
   },
   {
-    id: 'user',
-    role: 'Siswa & Orang Tua',
-    tag: 'Penerima & Keluarga',
-    title: 'Transparansi Penuh Langsung dari Kamera HP',
-    desc: 'Siswa dan orang tua cukup mengarahkan kamera ponsel ke stiker QR porsi untuk melihat rincian gizi, waktu matang, dapur pembuat, dan evaluasi kesegaran AI.',
-    points: [
-      'Pindai instan via kamera smartphone tanpa wajib mengunduh aplikasi',
-      'Transparansi kalori, makronutrisi, serta peringatan alergen jelas',
-      'Indikator warna kesegaran (Hijau = Aman, Kuning = Perhatian)',
-      'Riwayat menu mingguan yang dikonsumsi anak di sekolah secara jujur'
-    ],
-    highlight: 'Akses terbuka 24/7 memberikan ketenangan bagi orang tua terhadap asupan nutrisi anak.'
-  },
-  {
-    id: 'admin',
-    role: 'Admin & Pengawas Gizi',
+    id: 'satgas',
+    role: 'Satuan Tugas MBG',
     tag: 'Dinas & BGN',
-    title: 'Audit Skala Kota dan Peringatan Dini Terpadu',
-    desc: 'Badan Gizi Nasional (BGN) dan Dinas Kesehatan memantau sebaran nutrisi lintas sekolah, kepatuhan SPPG, serta respon instan terhadap anomali kesegaran.',
+    title: 'Pemantauan Nasional & Peringatan Dini Anomali',
+    desc: 'Satgas MBG memantau sebaran distribusi, kepatuhan SPPG, dan anomali kesegaran via dasbor web real-time. Server-side rendering memastikan peta dan grafik muat instan tanpa membebani browser.',
     points: [
-      'Peta geospasial distribusi porsi dan status logistik real-time',
-      'Deteksi dini anomali keterlambatan pengiriman atau kenaikan suhu',
-      'Laporan kepatuhan Angka Kecukupan Gizi (AKG) skala kabupaten/kota',
-      'Pelacakan batch bermasalah secara presisi hingga tingkat nomor wadah'
+      'Peta geospasial sekolah, SPPG, dan status logistik harian',
+      'Notifikasi otomatis saat lonjakan temuan tidak layak di satu titik',
+      'Pelacakan batch bermasalah hingga nomor wadah & dapur asal',
+      'Laporan kepatuhan AKG skala kabupaten/kota untuk evaluasi kebijakan'
     ],
-    highlight: 'Tata kelola modern berbasis data untuk transparansi program dan akuntabilitas publik.'
+    highlight: 'Transformasi pengawasan dari reaktif (pasca keracunan) ke proaktif (pencegahan sebelum distribusi).'
+  },
+  {
+    id: 'sppg',
+    role: 'SPPG / Dapur Umum',
+    tag: 'Produksi & Logistik',
+    title: 'Standarisasi Resep, Sensor Suhu, & Generasi QR',
+    desc: 'Petugas SPPG mengelola produksi harian: input resep + gramatur bahan, kalkulasi gizi deterministik TKPI, pencatatan suhu masak & cold-chain, dan cetak QR unik per porsi.',
+    points: [
+      'Integrasi Tabel Komposisi Pangan Kemenkes RI (basis data resmi)',
+      'Sensor IoT suhu/kelembapan otomatis merekam riwayat cold-chain',
+      'Generate batch QR unik per porsi dalam hitungan detik',
+      'Validasi batas aman 4 jam sejak penyajian sebelum keberangkatan'
+    ],
+    highlight: 'Dapur jadi sumber data terpercaya: setiap porsi punya identitas digital yang tidak bisa dimanipulasi.'
   }
 ]
 
 export const SAFETY_STEPS = [
   {
     no: '01',
-    title: 'Basis Data Pangan Terstandar',
-    desc: 'Katalog bahan baku mengacu pada Tabel Komposisi Pangan Indonesia (TKPI) Kemenkes RI, menjamin nilai gizi berbasis uji laboratorium resmi.'
+    title: 'Computer Vision YOLOv8',
+    desc: 'Model deteksi objek real-time mengidentifikasi indikasi pembusukan dan anomali fisik porsi via kamera ponsel untuk menggantikan observasi manual subjektif.'
   },
   {
     no: '02',
     title: 'Deterministic Nutrition Engine',
-    desc: 'Formula matematika murni menghitung kalori dan makronutrisi secara eksak dari gramatur timbangan, tanpa risiko bias atau halusinasi generatif.'
+    desc: 'Kalkulasi kalori, protein, karbohidrat, lemak, serat berbasis gramatur bahan & Tabel Komposisi Pangan Kemenkes, sebuah formula murni, tanpa bias generatif.'
   },
   {
     no: '03',
     title: 'Cold-Chain & Time Logging',
-    desc: 'Setiap batch produksi mencatat stempel waktu matang dan riwayat pembacaan sensor termal untuk membatasi konsumsi maksimal 4 jam sejak penyajian.'
+    desc: 'Sensor IoT suhu/kelembapan + stempel waktu masak merekam riwayat rantai dingin. Batas aman konsumsi: 4 jam sejak penyajian.'
   },
   {
     no: '04',
-    title: 'AI Freshness Guardrail',
-    desc: 'Model pembelajaran mesin memproses multivariat suhu, kelembapan, dan waktu untuk memberikan skor kelayakan konsumsi serta penjelasan bahasa manusia.'
+    title: 'Decoupled Architecture',
+    desc: 'React Native (mobile validator) + Next.js (dasbor Satgas) + Golang API Gateway (concurrency) + Python AI backend dengan beban kerja terisolasi, tanpa bottleneck.'
   }
 ]
 
 export const FLOW_STEPS = [
-  { no: '01', title: 'Input Produksi', desc: 'Petugas memasukkan menu, tanggal, waktu, jumlah porsi, dan data bahan baku.' },
-  { no: '02', title: 'Nutrition Engine', desc: 'Sistem menghitung kalori, protein, karbohidrat, lemak, dan serat secara deterministik.' },
-  { no: '03', title: 'Freshness & AI', desc: 'Analisis kesegaran berbasis suhu, kelembapan, waktu, serta penjelasan model AI.' },
-  { no: '04', title: 'Generate QR Code', desc: 'Setiap porsi mendapat QR unik yang menyimpan seluruh identitas produksi.' },
-  { no: '05', title: 'Scan & Validasi', desc: 'Siswa atau orang tua memindai QR via kamera untuk melihat informasi nutrisi lengkap.' },
+  { no: '01', title: 'Sorot Kamera', desc: 'Validator memindai porsi makanan di sekolah sebelum distribusi via aplikasi React Native.' },
+  { no: '02', title: 'Deteksi YOLOv8', desc: 'Model AI mendeteksi indikasi pembusukan & anomali fisik dengan latensi rendah.' },
+  { no: '03', title: 'Estimasi Makronutrien', desc: 'Kalkulasi kalori, protein, karbohidrat, lemak, serat dari data resep secara deterministik.' },
+  { no: '04', title: 'Keputusan Instan', desc: 'Indikator visual (Hijau/Aman / Merah/Tidak Layak) + rincian gizi ditampilkan ke validator.' },
+  { no: '05', title: 'Sinkronisasi ke Satgas', desc: 'Hasil keputusan terkirim seketika ke dasbor Next.js, sementara peta anomali & pelacakan dapur diperbarui real-time.' },
 ]
 
 export const FEATURES = [
@@ -175,24 +168,24 @@ export const FEATURES = [
 
 export const FAQS = [
   {
-    q: 'Bagaimana sistem KawanGizi memastikan data nutrisi di QR Code benar-benar akurat?',
-    a: 'Sistem KawanGizi menggunakan Nutrition Engine deterministik berbasis Tabel Komposisi Pangan Indonesia (TKPI) resmi Kementerian Kesehatan. Petugas SPPG memasukkan takaran gram bahan baku secara presisi saat produksi, sehingga kalkulasi kalori dan makronutrisi dihitung secara matematis pasti tanpa spekulasi.'
+    q: 'Bagaimana sistem KawanGizi memastikan deteksi kelayakan porsi akurat tanpa spekulasi?',
+    a: 'Model YOLOv8 dilatih dengan dataset anomali fisik (pembusukan, kontaminasi) dari porsi makanan sebenarnya dan tidak menggunakan fitur generatif. Setiap prediksi berbasis bobot konfidensi yang terukur.'
   },
   {
-    q: 'Apakah orang tua dan siswa perlu memasang aplikasi khusus untuk memindai QR?',
-    a: 'Tidak wajib! Label QR Code pada kemasan porsi dapat dipindai langsung menggunakan kamera bawaan smartphone iOS maupun Android. Halaman web instan akan terbuka dan menampilkan data menu, nutrisi, suhu, serta analisis kesegaran secara real-time.'
+    q: 'Apakah orang tua dan siswa perlu memasang aplikasi khusus untuk memindai porsi?',
+    a: 'Tidak wajib! Cukup buka kamera smartphone dan arahkan ke label porsi. Sistem akan membuka halaman web instan yang menampilkan data menu, nutrisi, suhu, serta hasil deteksi YOLOv8 secara real-time.'
   },
   {
-    q: 'Bagaimana cara AI mendeteksi kesegaran dan tingkat risiko makanan?',
-    a: 'Freshness Engine menganalisis kombinasi waktu matang, riwayat sensor suhu/kelembapan penyimpanan, serta karakteristik bahan baku yang mudah rusak (seperti santan atau telur). Model AI mengevaluasi faktor risiko dan memberikan rekomendasi waktu konsumsi aman sebelum kualitas makanan menurun.'
+    q: 'Bagaimana sistem menghitung kalori dan makronutrien porsi makanan?',
+    a: 'Nutrition Engine KawanGizi menggunakan Tabel Komposisi Pangan Kemenkes RI sebagai dasar perhitungan deterministik. Petugas SPPG memasukkan gramatur bahan baku saat produksi, sehingga kalkulasi kalori dan makronutrisi bersifat matematis pasti tanpa asumsi.'
   },
   {
-    q: 'Apa yang terjadi jika makanan telah melewati batas waktu aman?',
-    a: 'Saat QR Code dipindai setelah batas waktu aman, sistem akan menampilkan peringatan merah "Risiko Kualitas Menurun / Tidak Disarankan Dikonsumsi". Sistem secara otomatis mengirim notifikasi ke pengawas SPPG untuk penarikan porsi.'
+    q: 'Bagaimana sistem memastikan tidak ada makanan yang melewati batas aman 4 jam sejak penyajian?',
+    a: 'Setiap batch produksi mencatat stempel waktu masak dan riwayat sensor suhu IoT. Sistem menolak pemindaian jika selisih waktu saat ini > 4 jam sejak waktu masak terakhir yang tercatat.'
   },
   {
-    q: 'Bagaimana SPPG mengintegrasikan data bahan jika menu berganti setiap hari?',
-    a: 'Petugas dapur SPPG memiliki modul resep pintar di dashboard web. Petugas cukup memilih menu harian yang telah dijadwalkan, mengonfirmasi gramatur bahan yang digunakan hari itu, dan sistem otomatis meregenerasi batch QR Code unik per porsi.'
+    q: 'Apa yang terjadi jika model AI mendeteksi indikasi pembusukan pada suatu porsi?',
+    a: 'Sistem akan menampilkan peringatan merah "Tidak Layak Konsumsi" pada layar validator, mencatat kejadian ke database utama, dan secara otomatis mengirim notifikasi ke Satgas MBG untuk pelacakan dapur penyuplai serta pembekuan sementara distribusi dari batch terkait.'
   }
 ]
 

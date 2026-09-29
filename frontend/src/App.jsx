@@ -8,6 +8,27 @@ import { ScanPage } from './pages/ScanPage'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { AdminPage } from './pages/admin/AdminPage'
+import { ValidatorsPage } from './pages/admin/ValidatorsPage'
+import { SppgPage } from './pages/admin/SppgPage'
+import { DeliveriesPage } from './pages/admin/DeliveriesPage'
+import { AttendancePage } from './pages/admin/AttendancePage'
+import { SchoolsPage } from './pages/admin/SchoolsPage'
+import { SchedulePage } from './pages/admin/SchedulePage'
+import { NoticesPage } from './pages/admin/NoticesPage'
+import { CalendarPage } from './pages/admin/CalendarPage'
+import { ReportsPage } from './pages/admin/ReportsPage'
+import { FeedbackPage } from './pages/admin/FeedbackPage'
+import { SppgDashboardPage } from './pages/sppg/SppgDashboardPage'
+import { SppgRecipesPage } from './pages/sppg/SppgRecipesPage'
+import { SppgBatchesPage } from './pages/sppg/SppgBatchesPage'
+import { SppgQualityPage } from './pages/sppg/SppgQualityPage'
+import { SppgLogisticsPage } from './pages/sppg/SppgLogisticsPage'
+import { SppgSchoolsPage } from './pages/sppg/SppgSchoolsPage'
+import { SppgHandoverPage } from './pages/sppg/SppgHandoverPage'
+import { SppgIncidentsPage } from './pages/sppg/SppgIncidentsPage'
+import { SppgBillingPage } from './pages/sppg/SppgBillingPage'
+import { SppgCompliancePage } from './pages/sppg/SppgCompliancePage'
 
 // Helper for programmatic navigation
 export function navigate(to) {
@@ -91,6 +112,52 @@ function PublicPage({ path }) {
 
 export default function App() {
   const path = usePath()
+
+  // Full-screen isolated admin dashboard (no public header/footer)
+  if (path === '/admin') return <AdminPage route={path} />
+  if (path === '/admin/validators') return <ValidatorsPage />
+  if (path === '/admin/sppg') return <SppgPage />
+  if (path === '/admin/deliveries') return <DeliveriesPage />
+  if (path === '/admin/attendance') return <AttendancePage />
+  if (path === '/admin/schools') return <SchoolsPage />
+  if (path === '/admin/schedule') return <SchedulePage />
+  if (path === '/admin/notices') return <NoticesPage />
+  if (path === '/admin/calendar') return <CalendarPage />
+  if (path === '/admin/reports') return <ReportsPage />
+  if (path === '/admin/feedback') return <FeedbackPage />
+  if (path.startsWith('/admin/')) return <AdminPage route={path} />
+
+  // Full-screen isolated SPPG kitchen cockpit (no public header/footer, completely decoupled from /admin/*)
+  if (path === '/sppg/recipes') {
+    return <SppgRecipesPage />
+  }
+  if (path === '/sppg/batches') {
+    return <SppgBatchesPage />
+  }
+  if (path === '/sppg/quality') {
+    return <SppgQualityPage />
+  }
+  if (path === '/sppg/logistics') {
+    return <SppgLogisticsPage />
+  }
+  if (path === '/sppg/schools') {
+    return <SppgSchoolsPage />
+  }
+  if (path === '/sppg/handover') {
+    return <SppgHandoverPage />
+  }
+  if (path === '/sppg/incidents') {
+    return <SppgIncidentsPage />
+  }
+  if (path === '/sppg/billing') {
+    return <SppgBillingPage />
+  }
+  if (path === '/sppg/compliance') {
+    return <SppgCompliancePage />
+  }
+  if (path === '/sppg' || path === '/sppg/dashboard' || path.startsWith('/sppg/')) {
+    return <SppgDashboardPage />
+  }
 
   // Full-screen isolated auth pages
   if (path === '/login' || path === '/signin' || path === '/auth/signin') {

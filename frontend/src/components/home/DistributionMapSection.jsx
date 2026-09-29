@@ -279,9 +279,9 @@ export function DistributionMapSection() {
       <div className="mx-auto max-w-6xl px-6">
         {/* Section Header */}
         <div className="mx-auto max-w-3xl text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-gray-200/90 bg-white px-3.5 py-1 text-xs font-semibold text-gray-800 shadow-sm">
+          <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/90 bg-amber-50 px-3.5 py-1 text-xs font-semibold text-amber-800 shadow-sm">
             <CompassIcon />
-            Sistem Pemantauan Geospasial Nasional
+            Data Simulasi: Purwarupa MVP
           </div>
           <h2 className="mt-3 text-3xl sm:text-5xl font-black tracking-tight text-gray-900">
             Peta Sebaran & Jangkauan{' '}
@@ -290,9 +290,7 @@ export function DistributionMapSection() {
             </em>
           </h2>
           <p className="mt-3 text-sm sm:text-base text-gray-500 leading-relaxed">
-            Transparansi geospasial real-time: jangkauan ribuan sekolah terlayani,
-            dapur SPPG terverifikasi, jalur rantai dingin (cold-chain), serta
-            kepatuhan suhu pangan dari Sabang hingga Merauke.
+            Visualisasi data simulasi untuk demonstrasi purwarupa: jangkauan sekolah, SPPG, rute cold-chain, dan metrik kepatuhan suhu. Data bukan real-time nasional.
           </p>
         </div>
 

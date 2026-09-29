@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { navigate } from '../App'
 import loginArt from '../assets/login-art.png'
 
 export function LoginPage() {
@@ -6,14 +7,18 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState(null)
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    // Prototype: there is no auth backend yet, so this must not claim success.
+    if (!email.trim() || !password) {
+      setError('Isi email dan kata sandi terlebih dahulu.')
+      return
+    }
+    setError(null)
     setSubmitted(true)
-    setTimeout(() => {
-      alert(`Login berhasil sebagai ${email}`)
-      window.location.href = '/'
-    }, 600)
+    setTimeout(() => navigate('/admin'), 600)
   }
 
   return (
@@ -52,53 +57,12 @@ export function LoginPage() {
 
           {/* Title & Subtitle */}
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">
-            Sign In
+            Masuk
           </h1>
           <p className="text-xs sm:text-sm text-gray-400 font-mono mt-1.5 mb-5">
-            Continue to access your KawanGizi dashboard
+            Masuk untuk membuka dasbor contoh KawanGizi
           </p>
 
-          {/* Social Login Buttons */}
-          <div className="space-y-2.5">
-            {/* Google Button */}
-            <button
-              type="button"
-              onClick={() => alert('Sign in with Google')}
-              className="w-full flex items-center justify-center gap-3 py-2.5 sm:py-3 px-5 rounded-full border border-gray-200 text-xs sm:text-sm font-mono text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition duration-150 shadow-xs"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3h3.88c2.27-2.09 3.66-5.17 3.66-9.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.27v3.09C3.25 21.34 7.31 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.32c-.25-.72-.38-1.49-.38-2.32s.13-1.6.38-2.32V6.59H1.27C.46 8.21 0 10.04 0 12s.46 3.79 1.27 5.41l4.01-3.09z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.66 1.27 6.59l4.01 3.09c.95-2.83 3.6-4.93 6.72-4.93z"
-                />
-              </svg>
-              Sign in with Google
-            </button>
-
-            {/* Apple Button */}
-            <button
-              type="button"
-              onClick={() => alert('Sign in with Apple')}
-              className="w-full flex items-center justify-center gap-3 py-2.5 sm:py-3 px-5 rounded-full border border-gray-200 text-xs sm:text-sm font-mono text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition duration-150 shadow-xs"
-            >
-              <svg className="w-4 h-4 fill-current text-black" viewBox="0 0 24 24">
-                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 1.01-2.85-.9.04-2 .6-2.65 1.35-.58.65-1.09 1.71-1.04 2.74 1.01.08 2.05-.49 2.68-1.24z" />
-              </svg>
-              Sign in with Apple
-            </button>
-          </div>
 
           {/* Divider */}
           <div className="relative my-4 flex items-center justify-center">
@@ -117,7 +81,7 @@ export function LoginPage() {
               <input
                 type="email"
                 required
-                placeholder="Enter your email"
+                placeholder="nama@instansi.go.id"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-sans rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-900 transition shadow-xs"
@@ -127,24 +91,20 @@ export function LoginPage() {
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="text-xs sm:text-sm font-mono font-medium text-gray-800">
-                  Password
+                  Kata sandi
                 </label>
-                <a
-                  href="#/auth/forgot"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    alert('Link reset password akan dikirim ke email Anda.')
-                  }}
-                  className="text-xs font-mono text-gray-600 hover:text-black"
+                <span
+                  className="text-xs font-mono text-gray-500"
+                  title="Belum ada layanan pemulihan sandi"
                 >
-                  Forgot Password?
-                </a>
+                  Lupa sandi? (belum tersedia)
+                </span>
               </div>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="Enter your password"
+                  placeholder="Kata sandi"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-4 pr-11 py-2.5 sm:py-3 text-xs sm:text-sm font-sans rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-900 transition shadow-xs"
@@ -153,7 +113,7 @@ export function LoginPage() {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
                 >
                   {showPassword ? (
                     <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -184,24 +144,34 @@ export function LoginPage() {
               </div>
             </div>
 
+            {error && (
+              <p role="alert" className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
+
             <button
               type="submit"
               disabled={submitted}
-              className="w-full mt-4 py-3 sm:py-3.5 bg-black text-white text-xs sm:text-sm font-mono font-medium rounded-full hover:bg-gray-800 active:scale-[0.99] transition duration-150 shadow-md disabled:opacity-70"
+              className="w-full mt-4 py-3 sm:py-3.5 bg-black text-white text-xs sm:text-sm font-mono font-medium rounded-full hover:bg-gray-800 active:scale-[0.99] transition duration-150 shadow-md disabled:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
             >
-              {submitted ? 'Signing in...' : 'Sign In'}
+              {submitted ? 'Membuka dasbor...' : 'Masuk ke Dasbor'}
             </button>
+
+            <p className="text-[11px] text-gray-500 text-center">
+              Prototipe: tidak ada pemeriksaan sandi. Tombol ini hanya membuka dasbor contoh.
+            </p>
           </form>
         </div>
 
         {/* Bottom Footer */}
-        <p className="text-xs sm:text-sm text-gray-400 font-mono py-1 shrink-0 lg:ml-12 xl:ml-24">
-          Don't have an account?
+        <p className="text-xs sm:text-sm text-gray-600 font-mono py-1 shrink-0 lg:ml-12 xl:ml-24">
+          Belum punya akun?
           <a
             href="/register"
             className="text-gray-900 font-semibold underline underline-offset-2 hover:text-black ml-1.5"
           >
-            Create an Account
+            Buat Akun
           </a>
         </p>
       </div>

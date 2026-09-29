@@ -5,12 +5,12 @@ export function BottomCta() {
     <section aria-label="Mulai Sekarang" className="border-t border-gray-100 bg-white px-6 py-16 md:py-24">
       <div className="mx-auto max-w-6xl overflow-hidden rounded-3xl bottom-face px-8 py-16 text-white sm:px-14 md:py-20 shadow-xl">
         <div className="max-w-2xl">
-          <p className="font-serif text-base italic text-white/80 sm:text-lg">Setiap Makanan Punya Cerita Gizi & Mutu.</p>
+          <p className="font-serif text-base italic text-white/80 sm:text-lg">Setiap Porsi Seharusnya Terverifikasi.</p>
           <h2 className="mt-3 text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-            Siap Menghubungkan Dapur SPPG dengan Seluruh Siswa?
+            Bantu Tutup Celah Validasi Tahap Akhir MBG
           </h2>
           <p className="mt-4 text-sm sm:text-base leading-relaxed text-white/80">
-            Bergabunglah dalam inisiatif transparansi nutrisi dan keamanan pangan nasional. Coba simulator scan QR langsung atau daftar email untuk pembaruan sistem.
+            KawanGizi adalah purwarupa Minimum Viable Product. Integrasi pemindaian visual di lokasi sekolah dengan sinkronisasi data ke pusat komando menjawab tiga celah kritis: tidak adanya validasi tahap akhir, keterbatasan tenaga validator, dan subjektivitas pemeriksaan manual.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <a

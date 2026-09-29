@@ -23,7 +23,7 @@ export function QualityArchitecture() {
           {SAFETY_STEPS.map((step) => (
             <div key={step.no} className="rounded-2xl border border-gray-200/80 bg-gray-50/50 p-6 flex flex-col justify-between">
               <div>
-                <span className="font-mono text-xs font-bold text-gray-400 uppercase tracking-widest">{step.no}</span>
+                <span className="font-mono text-xs font-bold text-gray-500 uppercase tracking-widest">{step.no}</span>
                 <h4 className="mt-3 text-base font-bold text-gray-900">{step.title}</h4>
                 <p className="mt-2 text-xs sm:text-sm leading-relaxed text-gray-500">{step.desc}</p>
               </div>

@@ -3,18 +3,18 @@ import { CtaButton } from '../ui/CtaButton'
 
 export function HeroSection() {
   return (
-    <section id="home" className="relative overflow-hidden bg-white pt-14 pb-4 sm:pt-20 md:pt-24 scroll-mt-24">
+    <section id="home" className="relative overflow-hidden bg-white pt-12 pb-4 sm:pt-16 md:pt-20 scroll-mt-24">
       <div className="mx-auto max-w-5xl px-6 text-center">
         <p className="font-serif text-base italic text-gray-500 sm:text-lg md:text-xl tracking-wide">
-          Your Day, in Perfect Rhythm &middot; KawanGizi.
+          Sistem Skrining Kelayakan Konsumsi &middot; KawanGizi.
         </p>
-        <h1 className="mx-auto mt-4 max-w-4xl text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight text-gray-900 leading-[1.06]">
-          Mulai Sekarang.
+        <h1 className="mx-auto mt-4 max-w-4xl text-5xl sm:text-7xl md:text-8xl font-black tracking-tight text-gray-900 leading-[1.06]">
+          Pangan Aman.
           <br />
-          Ketahui Kesegaran.
+          Gizi Terjamin.
         </h1>
         <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-gray-500 sm:text-base md:text-lg font-normal">
-          KawanGizi hadir mendampingi program Makan Bergizi Gratis (MBG) — menghubungkan Dapur SPPG, Sekolah, dan Orang Tua untuk memvalidasi takaran nutrisi presisi dan batas aman konsumsi pangan dalam sekali pindai.
+          KawanGizi memadukan Computer Vision YOLOv8 dan arsitektur terdesentralisasi untuk menskrining kelayakan fisik makanan serta mengestimasi kandungan makronutrien secara instan untuk mencegah risiko keracunan pada program Makan Bergizi Gratis.
         </p>
         <div className="mt-8 flex items-center justify-center gap-4">
           <CtaButton href="/mulai">Mulai Sekarang</CtaButton>
@@ -25,7 +25,7 @@ export function HeroSection() {
       <div className="relative mx-auto mt-2 sm:mt-4 w-full max-w-5xl px-4 select-none">
         <img
           src={heroAuraImg}
-          alt="Tangan memegang iPhone menampilkan antarmuka scan kesegaran makanan MBG dengan skor 94%"
+          alt="Tangan memegang iPhone menampilkan antarmuka pemindaian visual kelayakan makanan KawanGizi"
           className="w-full object-contain mx-auto"
           loading="eager"
         />
