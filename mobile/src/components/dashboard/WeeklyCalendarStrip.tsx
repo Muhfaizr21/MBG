@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { DayItem } from '../../types/role';
 
 interface WeeklyCalendarStripProps {
@@ -21,41 +21,27 @@ export const WeeklyCalendarStrip: React.FC<WeeklyCalendarStripProps> = ({
           return (
             <TouchableOpacity
               key={day.id}
-              style={[
-                styles.dayColumn,
-                isSelected && styles.dayColumnSelected,
-              ]}
+              style={styles.dayColumn}
               onPress={() => onSelectDay(day)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              accessibilityLabel={`${day.dayName} tanggal ${day.dayNumber}${
+                day.hasDelivery ? ', ada pengantaran' : ', tanpa pengantaran'
+              }`}
             >
-              <Text
-                style={[
-                  styles.dayNameText,
-                  isSelected && styles.dayNameSelected,
-                ]}
-              >
+              <Text style={[styles.dayNameText, isSelected && styles.dayNameSelected]}>
                 {day.dayName}
               </Text>
 
-              <View
-                style={[
-                  styles.dayNumberCircle,
-                  isSelected && styles.dayNumberCircleSelected,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.dayNumberText,
-                    isSelected && styles.dayNumberTextSelected,
-                  ]}
-                >
+              <View style={[styles.dayNumberCircle, isSelected && styles.dayNumberCircleSelected]}>
+                <Text style={[styles.dayNumberText, isSelected && styles.dayNumberTextSelected]}>
                   {day.dayNumber}
                 </Text>
               </View>
 
-              {day.hasDelivery && !isSelected && (
-                <View style={styles.deliveryDot} />
-              )}
+              {/* Titik hanya menandai hari yang memang ada pengantaran (state nyata). */}
+              {day.hasDelivery && !isSelected && <View style={styles.deliveryDot} />}
             </TouchableOpacity>
           );
         })}
@@ -74,29 +60,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    borderRadius: 20,
     paddingVertical: 12,
-    paddingHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    paddingHorizontal: 6,
   },
   dayColumn: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 20,
-    minWidth: 42,
-  },
-  dayColumnSelected: {
-    // optional styling for column
+    paddingHorizontal: 4,
+    borderRadius: 16,
+    minWidth: 44,
+    minHeight: 44,
   },
   dayNameText: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: '#64748B',
     fontWeight: '500',
     marginBottom: 6,
   },
@@ -110,15 +89,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
   },
   dayNumberCircleSelected: {
-    backgroundColor: '#EBA338', // Golden amber matching reference
-    shadowColor: '#EBA338',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: '#EBA338',
   },
   dayNumberText: {
     fontSize: 15,
@@ -126,14 +99,14 @@ const styles = StyleSheet.create({
     color: '#1E293B',
   },
   dayNumberTextSelected: {
-    color: '#FFFFFF',
+    color: '#1E293B',
     fontWeight: '700',
   },
   deliveryDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#EBA338',
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#B45309',
     marginTop: 4,
   },
 });

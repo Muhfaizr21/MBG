@@ -5,38 +5,66 @@ import { useAuthRole } from '../context/RoleContext';
 import { GuruDashboardView } from '../components/dashboard/GuruDashboardView';
 import { SiswaDashboardView } from '../components/dashboard/SiswaDashboardView';
 import { ExploreTabContent } from '../components/dashboard/ExploreTabContent';
-import { JourneyTabContent } from '../components/dashboard/JourneyTabContent';
+import { HistoryScreen } from '../components/dashboard/HistoryScreen';
 import { ProfileTabContent } from '../components/dashboard/ProfileTabContent';
 import { CustomBottomTabBar, TabKey } from '../components/dashboard/CustomBottomTabBar';
-import { ScanModal } from '../components/dashboard/ScanModal';
+import { ScannerScreen } from '../components/dashboard/ScannerScreen';
+import { HandoverScreen } from '../components/dashboard/HandoverScreen';
+import { IncidentScreen } from '../components/dashboard/IncidentScreen';
 
 export default function MobileAppEntry() {
   const { role } = useAuthRole();
   const [activeTab, setActiveTab] = useState<TabKey>('home');
-  const [scanModalVisible, setScanModalVisible] = useState(false);
+  const [flowScreen, setFlowScreen] = useState<'handover' | 'incident' | null>(null);
 
   const handleCenterAction = () => {
-    setScanModalVisible(true);
+    setFlowScreen(null);
+    setActiveTab('action');
+  };
+
+  const handleExitFlow = () => {
+    setFlowScreen(null);
+    setActiveTab('home');
   };
 
   const renderActiveScreen = () => {
     switch (activeTab) {
       case 'home':
         return role === 'guru' ? (
-          <GuruDashboardView onTriggerScan={handleCenterAction} />
+          <GuruDashboardView
+            onTriggerScan={handleCenterAction}
+            onOpenHandover={() => setFlowScreen('handover')}
+            onOpenIncident={() => setFlowScreen('incident')}
+          />
         ) : (
           <SiswaDashboardView />
         );
       case 'explore':
         return <ExploreTabContent />;
       case 'journey':
-        return <JourneyTabContent />;
+        return <HistoryScreen onOpenScanner={handleCenterAction} />;
       case 'profile':
         return <ProfileTabContent />;
+      case 'action':
+        return <ScannerScreen onExit={handleExitFlow} />;
       default:
         return <GuruDashboardView onTriggerScan={handleCenterAction} />;
     }
   };
+
+  // Layar alur (serah terima) menutupi tab bar: ini satu pekerjaan penuh,
+  // bukan perpindahan antar tab.
+  if (flowScreen !== null) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        {flowScreen === 'handover' ? (
+          <HandoverScreen onExit={handleExitFlow} />
+        ) : (
+          <IncidentScreen onExit={handleExitFlow} />
+        )}
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -44,17 +72,13 @@ export default function MobileAppEntry() {
         {renderActiveScreen()}
       </View>
 
-      {/* Floating Bottom Tab Bar matching Reference */}
       <CustomBottomTabBar
         activeTab={activeTab}
-        onTabPress={setActiveTab}
+        onTabPress={(tab) => {
+          setFlowScreen(null);
+          setActiveTab(tab);
+        }}
         onCenterActionPress={handleCenterAction}
-      />
-
-      {/* AI Box Scan Modal */}
-      <ScanModal
-        visible={scanModalVisible}
-        onClose={() => setScanModalVisible(false)}
       />
     </SafeAreaView>
   );

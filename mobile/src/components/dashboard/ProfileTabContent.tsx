@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { UserCheck, Shield, School, ArrowRightLeft, LogOut } from 'lucide-react-native';
 import { useAuthRole } from '../../context/RoleContext';
+import { getInitials } from '../../utils/initials';
 
 export const ProfileTabContent: React.FC = () => {
   const { user, role, toggleRole } = useAuthRole();
@@ -29,7 +30,9 @@ export const ProfileTabContent: React.FC = () => {
       </View>
 
       <View style={styles.profileCard}>
-        <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{getInitials(user.name)}</Text>
+        </View>
         <Text style={styles.name}>{user.name}</Text>
         <Text style={styles.roleTitle}>{user.roleTitle}</Text>
 
@@ -134,6 +137,14 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     marginBottom: 12,
+    backgroundColor: '#EBA338',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1E293B',
   },
   name: {
     fontSize: 18,

@@ -1,11 +1,19 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { DashboardHeader } from './DashboardHeader';
 import { MOCK_SISWA_USER } from '../../data/mockValidatorData';
-import { useAuthRole } from '../../context/RoleContext';
+import { MOCK_MACRO_ESTIMATE, SCAN_GRADE_BAND } from '../../data/mockScannerData';
+import { readMacros } from '../../utils/nutrition';
 
+const HEADLINE_MACROS = ['energi', 'protein', 'serat'] as const;
+
+// Role siswa tidak punya tombol ganti role sendiri: badge role di header sudah
+// cukup untuk itu. Dua kontrol untuk hal yang sama bikin ragu.
 export const SiswaDashboardView: React.FC = () => {
-  const { toggleRole } = useAuthRole();
+  const macros = useMemo(() => readMacros(SCAN_GRADE_BAND, MOCK_MACRO_ESTIMATE), []);
+  const headline = macros.filter((macro) =>
+    (HEADLINE_MACROS as readonly string[]).includes(macro.key),
+  );
 
   return (
     <ScrollView
@@ -16,32 +24,38 @@ export const SiswaDashboardView: React.FC = () => {
       <DashboardHeader user={MOCK_SISWA_USER} />
 
       <View style={styles.card}>
-        <Text style={styles.cardBadge}>🎒 Role Siswa (Penerima Manfaat)</Text>
-        <Text style={styles.cardTitle}>Menu Makan Siangmu Hari Ini</Text>
+        <Text style={styles.cardTitle}>Menu hari ini</Text>
         <Text style={styles.cardSubtitle}>
-          Nasi Ayam Panggang Madu, Capcay Brokoli, Pisang Cavendish, & Susu UHT 125ml
+          Paket A: Nasi Ayam Panggang Madu, Tahu Organik, Capcay Brokoli Wortel, Pisang
+          Cavendish, dan Susu UHT 125ml
         </Text>
 
         <View style={styles.metricRow}>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricVal}>545</Text>
-            <Text style={styles.metricLbl}>Total Kalori</Text>
-          </View>
-          <View style={styles.metricDivider} />
-          <View style={styles.metricItem}>
-            <Text style={styles.metricVal}>34g</Text>
-            <Text style={styles.metricLbl}>Protein</Text>
-          </View>
-          <View style={styles.metricDivider} />
-          <View style={styles.metricItem}>
-            <Text style={styles.metricVal}>100%</Text>
-            <Text style={styles.metricLbl}>Kenyang & Bergizi</Text>
-          </View>
+          {headline.map((macro, index) => (
+            <React.Fragment key={macro.key}>
+              {index > 0 && <View style={styles.metricDivider} />}
+              <View style={styles.metricItem}>
+                <Text style={styles.metricValue}>
+                  {macro.estimated} {macro.unit}
+                </Text>
+                <Text style={styles.metricLabel}>{macro.label}</Text>
+              </View>
+            </React.Fragment>
+          ))}
         </View>
 
-        <TouchableOpacity style={styles.switchBackButton} onPress={toggleRole}>
-          <Text style={styles.switchBackText}>← Kembali ke Dashboard Guru (Validator)</Text>
-        </TouchableOpacity>
+        <Text style={styles.dataNote}>
+          Angka gizi di atas adalah estimasi dari data bahan Dapur SPPG, bukan hasil
+          penimbangan di sekolah.
+        </Text>
+      </View>
+
+      <View style={styles.allergenBox}>
+        <Text style={styles.allergenTitle}>Alergen menu</Text>
+        <Text style={styles.allergenText}>
+          Mengandung susu sapi, kedelai, dan telur. Sampaikan ke wali kelas bila ada
+          riwayat alergi.
+        </Text>
       </View>
     </ScrollView>
   );
@@ -57,74 +71,74 @@ const styles = StyleSheet.create({
   },
   card: {
     margin: 16,
-    padding: 24,
+    marginBottom: 0,
+    padding: 20,
     backgroundColor: '#FFFFFF',
-    borderRadius: 28,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  cardBadge: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#4F46E5',
-    backgroundColor: '#EEF2FF',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E7E9EC',
   },
   cardTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#1E293B',
-    marginBottom: 6,
   },
   cardSubtitle: {
     fontSize: 14,
-    color: '#64748B',
+    color: '#475569',
     lineHeight: 20,
-    marginBottom: 20,
+    marginTop: 6,
   },
   metricRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 18,
+    backgroundColor: '#F9F8F6',
+    borderRadius: 16,
     paddingVertical: 14,
-    marginBottom: 24,
+    marginTop: 20,
   },
   metricItem: {
     alignItems: 'center',
+    flex: 1,
   },
-  metricVal: {
-    fontSize: 18,
+  metricValue: {
+    fontSize: 17,
     fontWeight: '800',
     color: '#1E293B',
   },
-  metricLbl: {
+  metricLabel: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: '#64748B',
     marginTop: 2,
   },
   metricDivider: {
     width: 1,
     height: 24,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#E7E9EC',
   },
-  switchBackButton: {
-    backgroundColor: '#EBA338',
-    borderRadius: 20,
-    paddingVertical: 14,
-    alignItems: 'center',
+  dataNote: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 16,
+    marginTop: 14,
   },
-  switchBackText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
+  allergenBox: {
+    margin: 16,
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#FEF3E2',
+  },
+  allergenTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#7C4A03',
+  },
+  allergenText: {
+    fontSize: 13,
+    color: '#7C4A03',
+    lineHeight: 19,
+    marginTop: 4,
   },
 });

@@ -1,18 +1,12 @@
-import React, { useState } from 'react';
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  Modal,
-  Text,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { DashboardHeader } from './DashboardHeader';
 import { WeeklyCalendarStrip } from './WeeklyCalendarStrip';
+import { HaccpCountdown } from './HaccpCountdown';
 import { HeroMealCard } from './HeroMealCard';
 import { QuickActionSection } from './QuickActionCard';
 import { NutrientCapsuleSection } from './NutrientCapsuleSection';
+import { MenuDetailSheet, ActionDetailSheet } from './DetailSheets';
 import {
   MOCK_GURU_USER,
   MOCK_WEEKLY_DAYS,
@@ -21,34 +15,66 @@ import {
   MOCK_NUTRIENT_CAPSULES_GURU,
   MOCK_DASHBOARD_METRICS,
 } from '../../data/mockValidatorData';
-import { DayItem, QuickActionItem } from '../../types/role';
+import { QuickActionItem } from '../../types/role';
+import { getHaccpView } from '../../utils/haccp';
 
 interface GuruDashboardViewProps {
   onTriggerScan?: () => void;
+  onOpenHandover?: () => void;
+  onOpenIncident?: () => void;
 }
 
-export const GuruDashboardView: React.FC<GuruDashboardViewProps> = ({ onTriggerScan }) => {
-  const [days, setDays] = useState<DayItem[]>(MOCK_WEEKLY_DAYS);
-  const [selectedDayId, setSelectedDayId] = useState<string>('d-4'); // Default Thursday (10)
-  const [activeModal, setActiveModal] = useState<string | null>(null);
+export const GuruDashboardView: React.FC<GuruDashboardViewProps> = ({
+  onTriggerScan,
+  onOpenHandover,
+  onOpenIncident,
+}) => {
+  const [selectedDayId, setSelectedDayId] = useState<string>('d-4');
+  const [activeAction, setActiveAction] = useState<QuickActionItem | null>(null);
+  const [menuDetailVisible, setMenuDetailVisible] = useState(false);
+  const [haccpMinutes, setHaccpMinutes] = useState(MOCK_HERO_MEAL_GURU.haccpRemainingMinutes);
 
-  const handleSelectDay = (day: DayItem) => {
-    setSelectedDayId(day.id);
+  // Hitung mundur yang sama dengan ring: satu sumber angka, supaya kunci scan
+  // tidak bisa berbeda dari angka yang tampil di layar.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHaccpMinutes((current) => (current > 0 ? current - 1 : 0));
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const haccp = getHaccpView(haccpMinutes);
+  const scanLocked = haccp.state === 'critical';
+
+  const closeSheets = () => {
+    setActiveAction(null);
+    setMenuDetailVisible(false);
   };
 
   const handleSelectAction = (action: QuickActionItem) => {
-    setActiveModal(action.title);
+    if (action.targetScreen === 'handover' && onOpenHandover) {
+      onOpenHandover();
+      return;
+    }
+    if (action.targetScreen === 'incident' && onOpenIncident) {
+      onOpenIncident();
+      return;
+    }
+    if (action.targetScreen === 'scanner' && onTriggerScan) {
+      onTriggerScan();
+      return;
+    }
+    setActiveAction(action);
   };
 
   const handleStartValidation = () => {
+    if (scanLocked) return;
     if (onTriggerScan) {
       onTriggerScan();
-    } else {
-      setActiveModal('Pindai Boks AI 📦');
+      return;
     }
+    setActiveAction(MOCK_QUICK_ACTIONS_GURU[0]);
   };
-
-  const selectedDay = days.find((d) => d.id === selectedDayId) || days[3];
 
   return (
     <ScrollView
@@ -56,71 +82,55 @@ export const GuruDashboardView: React.FC<GuruDashboardViewProps> = ({ onTriggerS
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      {/* 1. Header (Hi, Jose Maria / Hi, Ibu Siti Aminah) */}
       <DashboardHeader user={MOCK_GURU_USER} />
 
-      {/* 2. Weekly Calendar Strip (Mon 7 ... Thu 10 ... Sun 13) */}
       <WeeklyCalendarStrip
-        days={days}
+        days={MOCK_WEEKLY_DAYS}
         selectedDayId={selectedDayId}
-        onSelectDay={handleSelectDay}
+        onSelectDay={(day) => setSelectedDayId(day.id)}
       />
 
-      {/* 3. Hero Meal Status Card (Morning Sun Illustration + Evening Pill) */}
+      <HaccpCountdown minutes={haccpMinutes} />
+
       <HeroMealCard
         mealStatus={MOCK_HERO_MEAL_GURU}
-        onPressDetail={() => setActiveModal('Rincian Menu & Alokasi')}
+        validatedCount={MOCK_DASHBOARD_METRICS.completedCount}
+        onPressDetail={() => setMenuDetailVisible(true)}
         onPressSecondary={() =>
-          Alert.alert('Sesi Siang', 'Sesi makan siang dijadwalkan pukul 12:30 WIB.')
+          Alert.alert(
+            'Sesi Siang',
+            'Jadwal sesi makan siang 12:30 WIB. Rincian menu sesi siang belum tersedia di prototipe ini.',
+          )
         }
       />
 
-      {/* 4. Quick Actions (Pastel Cards Carousel) */}
-      <QuickActionSection
-        actions={MOCK_QUICK_ACTIONS_GURU}
-        onSelectAction={handleSelectAction}
-        onSeeAll={() => setActiveModal('Daftar Seluruh Prosedur')}
-      />
+      <QuickActionSection actions={MOCK_QUICK_ACTIONS_GURU} onSelectAction={handleSelectAction} />
 
-      {/* 5. Nutrient Capsule Section (Matches Screen 2 of Reference) */}
       <NutrientCapsuleSection
         totalTarget={MOCK_DASHBOARD_METRICS.totalTarget}
+        juniorTarget={MOCK_DASHBOARD_METRICS.juniorTarget}
+        seniorTarget={MOCK_DASHBOARD_METRICS.seniorTarget}
         completedCount={MOCK_DASHBOARD_METRICS.completedCount}
+        rejectedCount={MOCK_DASHBOARD_METRICS.rejectedCount}
         nutrients={MOCK_NUTRIENT_CAPSULES_GURU}
         onStartValidation={handleStartValidation}
+        lockReason={
+          scanLocked ? 'Jam aman konsumsi habis. Scan boks dikunci sampai batch ditarik.' : undefined
+        }
       />
 
-      {/* Interactive Detail Modal for Fast Testing */}
-      <Modal
-        visible={activeModal !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setActiveModal(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>{activeModal}</Text>
-            <Text style={styles.modalBody}>
-              Fitur validasi terintegrasi dengan SPPG Dapur #04 Menteng. Seluruh data tervalidasi akan dikirim secara real-time ke Command Center MBG Nasional.
-            </Text>
+      <MenuDetailSheet
+        visible={menuDetailVisible}
+        onClose={closeSheets}
+        meal={MOCK_HERO_MEAL_GURU}
+        haccp={haccp}
+      />
 
-            <View style={styles.modalInfoBox}>
-              <Text style={styles.modalInfoTitle}>Ringkasan Boks Hari Ini:</Text>
-              <Text style={styles.modalInfoText}>• Target: 650 Porsi Siswa (13 Master Totes)</Text>
-              <Text style={styles.modalInfoText}>• Suhu Saat Tiba: 65.4°C (Batas Aman &gt; 60°C)</Text>
-              <Text style={styles.modalInfoText}>• Waktu HACCP Tersisa: 165 Menit</Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setActiveModal(null)}
-            >
-              <Text style={styles.modalCloseButtonText}>Tutup</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <ActionDetailSheet
+        visible={activeAction !== null}
+        onClose={closeSheets}
+        action={activeAction}
+      />
     </ScrollView>
   );
 };
@@ -128,73 +138,9 @@ export const GuruDashboardView: React.FC<GuruDashboardViewProps> = ({ onTriggerS
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9F8F6', // Soft warm background matching reference
+    backgroundColor: '#F9F8F6',
   },
   contentContainer: {
-    paddingBottom: 110, // Avoid bottom tab bar
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 36,
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#CBD5E1',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 8,
-  },
-  modalBody: {
-    fontSize: 14,
-    color: '#64748B',
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  modalInfoBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 20,
-    gap: 4,
-  },
-  modalInfoTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 4,
-  },
-  modalInfoText: {
-    fontSize: 12,
-    color: '#475569',
-  },
-  modalCloseButton: {
-    backgroundColor: '#EBA338',
-    borderRadius: 20,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCloseButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    paddingBottom: 110,
   },
 });

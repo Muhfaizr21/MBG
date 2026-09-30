@@ -40,7 +40,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "check": "node scripts/checks/haccp.check.ts && node scripts/checks/quality.check.ts && node scripts/checks/handover.check.ts && node scripts/checks/incident.check.ts && node scripts/checks/distribution.check.ts"
   },
   "private": true
 }

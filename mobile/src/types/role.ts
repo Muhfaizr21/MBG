@@ -1,10 +1,3 @@
-/**
- * ==============================================================================
- * TYPE DEFINITIONS & CONTRACTS (SOLID: Interface Segregation Principle)
- * Mendukung Multi-Role: Guru (Validator Lapangan) & Siswa (Penerima Manfaat)
- * ==============================================================================
- */
-
 export type UserRole = 'guru' | 'siswa';
 
 export interface UserProfile {
@@ -12,7 +5,6 @@ export interface UserProfile {
   name: string;
   role: UserRole;
   roleTitle: string;
-  avatarUrl: string;
   schoolName: string;
   npsn: string;
   className?: string; // Khusus siswa (misal: "Kelas 4A")
@@ -21,31 +13,32 @@ export interface UserProfile {
 
 export interface DayItem {
   id: string;
-  dayName: string; // "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"
+  dayName: string; // "Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"
   dayNumber: number; // 7, 8, 9, 10, ...
-  dateString: string;
-  isToday: boolean;
-  isActive: boolean;
-  hasDelivery: boolean;
+  hasDelivery: boolean; // Menandai hari yang punya jadwal pengantaran
 }
+
+export type ArmadaStatus = 'en_route' | 'arrived' | 'delayed';
 
 export interface HeroMealStatus {
   id: string;
-  sessionTitle: string; // "Sesi Sarapan Pagi Siaga"
-  greeting: string; // "Mari sambut hari dengan gizi terbaik"
+  sessionTitle: string; // "Sesi Makan Pagi Bergizi"
+  greeting: string; // "Menyambut hari dengan gizi terbaik."
   menuName: string; // "Paket A: Nasi Ayam Panggang Madu"
-  sideDish: string; // "Tahu Segar & Capcay Brokoli"
+  sideDish: string; // "Tahu Organik & Capcay Brokoli Wortel"
   fruitAndDrink: string; // "Pisang Cavendish & Susu UHT 125ml"
+  allergens: string[]; // Rincian alergen menu hari ini
   totalPortions: number; // 650
-  portionsValidated: number; // 420
-  portionsPending: number; // 230
+  masterTotes: number; // 13 master tote @ 50 porsi
+  armadaStatus: ArmadaStatus; // Status logistik armada menuju sekolah
   etaDelivery: string; // "07:10 WIB"
   fleetPlate: string; // "Armada B-9281-KBA"
   driverName: string; // "Bpk. Mulyono"
+  driverPhone: string | null; // null = nomor belum terdaftar dari Dapur SPPG
   haccpRemainingMinutes: number; // 165 menit
-  statusColor: string; // "#F59E0B"
-  illustrationType: 'morning' | 'afternoon' | 'completed';
 }
+
+export type Tone = 'neutral' | 'urgent' | 'safe' | 'warning';
 
 export interface QuickActionItem {
   id: string;
@@ -53,27 +46,24 @@ export interface QuickActionItem {
   subtitle: string;
   tagLeft: string;
   tagRight: string;
-  iconName: string;
-  backgroundColor: string; // Pastel color
-  accentColor: string;
-  route: string;
-  badgeCount?: number;
+  tone: Tone; // Warna tag mengikuti status nyata, bukan warna dekoratif
+  flow: string[]; // Alur kerja nyata dari VALIDATOR.md, dipakai di modal detail
+  /** Halaman yang dibuka ketika diketuk. Absent = cukup buka alur di modal. */
+  targetScreen?: 'scanner' | 'handover' | 'incident';
 }
 
 export interface NutrientCapsuleItem {
   id: string;
   name: string; // "Protein", "Karbo", "Serat", "Lemak"
   amount: string; // "34g"
-  percentage: number; // 98
-  color: string; // Bar color
-  bgColor: string; // Pill track background
+  percentage: number; // Persentase dari batas AKG Kemenkes
   status: 'optimal' | 'warning' | 'alert';
 }
 
 export interface DashboardMetricSummary {
   totalTarget: number;
+  juniorTarget: number; // Kuota SD kelas bawah
+  seniorTarget: number; // Kuota SD kelas atas
   completedCount: number;
-  complianceRate: number; // 96.8%
-  activeHaccpCountdown: string; // "02:45:00"
-  isHaccpSafe: boolean;
+  rejectedCount: number; // Porsi ditolak atau disisihkan karena bermasalah
 }

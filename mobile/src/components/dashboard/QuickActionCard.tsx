@@ -1,6 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { QuickActionItem } from '../../types/role';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { ChevronRight } from 'lucide-react-native';
+import { QuickActionItem, Tone } from '../../types/role';
+
+// Tag kanan memakai warna hanya jika menyatakan status nyata (mendesak, aman,
+// peringatan). Netral berarti tidak ada status yang perlu fanfare (R-29).
+const TAG_BY_TONE: Record<Tone, string> = {
+  neutral: '#475569',
+  urgent: '#B91C1C',
+  safe: '#15803D',
+  warning: '#B45309',
+};
 
 interface QuickActionCardProps {
   item: QuickActionItem;
@@ -10,27 +20,27 @@ interface QuickActionCardProps {
 export const QuickActionCard: React.FC<QuickActionCardProps> = ({ item, onPress }) => {
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: item.backgroundColor }]}
+      style={styles.card}
       onPress={() => onPress(item)}
       activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title}. ${item.subtitle}. ${item.tagRight}`}
     >
-      <View style={styles.content}>
-        <View style={styles.titleRow}>
+      <View style={styles.main}>
+        <View style={styles.content}>
           <Text style={styles.titleText}>{item.title}</Text>
+          <Text style={styles.subtitleText} numberOfLines={2}>
+            {item.subtitle}
+          </Text>
         </View>
-
-        <Text style={styles.subtitleText} numberOfLines={2}>
-          {item.subtitle}
-        </Text>
+        <ChevronRight size={20} color="#94A3B8" />
       </View>
 
       <View style={styles.footer}>
         <Text style={styles.tagLeftText}>{item.tagLeft}</Text>
-        <View style={styles.tagRightPill}>
-          <Text style={[styles.tagRightText, { color: item.accentColor }]}>
-            {item.tagRight}
-          </Text>
-        </View>
+        <Text style={[styles.tagRightText, { color: TAG_BY_TONE[item.tone] }]}>
+          {item.tagRight}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -39,36 +49,31 @@ export const QuickActionCard: React.FC<QuickActionCardProps> = ({ item, onPress 
 interface QuickActionSectionProps {
   actions: QuickActionItem[];
   onSelectAction: (item: QuickActionItem) => void;
-  onSeeAll?: () => void;
 }
 
 export const QuickActionSection: React.FC<QuickActionSectionProps> = ({
   actions,
   onSelectAction,
-  onSeeAll,
 }) => {
   return (
     <View style={styles.sectionContainer}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Aksi Cepat Validasi</Text>
-        <TouchableOpacity onPress={onSeeAll} activeOpacity={0.7}>
-          <Text style={styles.seeAllText}>Semua aksi</Text>
-        </TouchableOpacity>
-      </View>
+      <Text style={styles.sectionTitle}>Aksi Validasi</Text>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {actions.map((action) => (
-          <QuickActionCard
-            key={action.id}
-            item={action}
-            onPress={onSelectAction}
-          />
-        ))}
-      </ScrollView>
+      {actions.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Belum ada aksi untuk hari ini</Text>
+          <Text style={styles.emptyBody}>
+            Aksi muncul setelah Dapur SPPG mengirim jadwal pengantaran. Tarik ke bawah
+            untuk mencoba lagi.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.listContent}>
+          {actions.map((action) => (
+            <QuickActionCard key={action.id} item={action} onPress={onSelectAction} />
+          ))}
+        </View>
+      )}
     </View>
   );
 };
@@ -77,49 +82,35 @@ const styles = StyleSheet.create({
   sectionContainer: {
     marginTop: 24,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1E293B',
     letterSpacing: -0.3,
-  },
-  seeAllText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  scrollContent: {
     paddingHorizontal: 16,
-    gap: 12,
-    paddingBottom: 4,
+    marginBottom: 12,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    gap: 10,
   },
   card: {
-    width: 175,
-    height: 145,
-    borderRadius: 22,
+    width: '100%',
+    minHeight: 96,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E7E9EC',
     padding: 14,
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    gap: 10,
+  },
+  main: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   content: {
     flex: 1,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
   },
   titleText: {
     fontSize: 14,
@@ -127,10 +118,10 @@ const styles = StyleSheet.create({
     color: '#1E293B',
   },
   subtitleText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#64748B',
     lineHeight: 15,
-    fontWeight: '400',
+    marginTop: 4,
   },
   footer: {
     flexDirection: 'row',
@@ -143,19 +134,27 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '500',
   },
-  tagRightPill: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
   tagRightText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
+  },
+  emptyState: {
+    marginHorizontal: 16,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E7E9EC',
+    backgroundColor: '#FFFFFF',
+  },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  emptyBody: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    lineHeight: 17,
   },
 });

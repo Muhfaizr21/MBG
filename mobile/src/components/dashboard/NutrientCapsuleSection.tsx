@@ -2,75 +2,114 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { NutrientCapsuleItem } from '../../types/role';
 
+// Warna bar mengikuti status, bukan identitas parameter: protein dan karbo
+// tidak boleh terbaca sebagai "berbeda prioritas", hanya tinggi bar yang
+// berbeda (R-29, R-31).
+const FILL_BY_STATUS: Record<NutrientCapsuleItem['status'], string> = {
+  optimal: '#B45309',
+  warning: '#A16207',
+  alert: '#B91C1C',
+};
+
+const STATUS_LABEL: Record<NutrientCapsuleItem['status'], string> = {
+  optimal: 'terpenuhi',
+  warning: 'perlu perhatian',
+  alert: 'di bawah batas',
+};
+
 interface NutrientCapsuleSectionProps {
   totalTarget: number;
   completedCount: number;
+  juniorTarget: number;
+  seniorTarget: number;
+  rejectedCount: number;
   nutrients: NutrientCapsuleItem[];
   onStartValidation?: () => void;
+  /** Alasan tombol validasi dikunci, mis. karena HACCP kedaluwarsa. */
+  lockReason?: string;
 }
 
 export const NutrientCapsuleSection: React.FC<NutrientCapsuleSectionProps> = ({
   totalTarget,
   completedCount,
+  juniorTarget,
+  seniorTarget,
+  rejectedCount,
   nutrients,
   onStartValidation,
+  lockReason,
 }) => {
   return (
     <View style={styles.container}>
-      {/* Big Hero Metric (Matching Screen 2 of Reference) */}
       <View style={styles.heroMetricContainer}>
         <Text style={styles.bigHeroNumber}>{completedCount}</Text>
         <Text style={styles.heroSubtitle}>
-          Porsi tervalidasi dari {totalTarget} target penerima manfaat hari ini.
+          porsi tervalidasi dari {totalTarget} target hari ini · data contoh
+        </Text>
+        <Text style={styles.quotaSplitText}>
+          Target {totalTarget} porsi: {juniorTarget} SD bawah + {seniorTarget} SD atas
+        </Text>
+        <Text style={styles.rejectedText}>
+          {rejectedCount} porsi ditolak atau diisolate
         </Text>
       </View>
 
-      {/* White Card with Rounded Capsules */}
       <View style={styles.cardContainer}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>Standar Gizi & Kualitas</Text>
+          <Text style={styles.cardTitle}>Estimasi gizi per porsi</Text>
           <Text style={styles.cardSubtitle}>
-            4 parameter utama kecukupan nutrisi standar Kemenkes RI
+            Nilai estimasi dibanding target AKG kelompok SD atas
           </Text>
         </View>
 
-        {/* 4 Vertical Capsule Bars */}
         <View style={styles.capsulesRow}>
           {nutrients.map((item) => {
+            const clamped = Math.min(Math.max(item.percentage, 4), 100);
             return (
-              <View key={item.id} style={styles.capsuleColumn}>
-                {/* Capsule Track */}
+              <View
+                key={item.id}
+                style={styles.capsuleColumn}
+                accessible
+                accessibilityLabel={`${item.name} ${item.amount}, ${item.percentage} persen dari batas AKG, ${STATUS_LABEL[item.status]}`}
+              >
                 <View style={styles.capsuleTrack}>
-                  {/* Fill from bottom */}
                   <View
                     style={[
                       styles.capsuleFill,
-                      {
-                        height: `${Math.min(Math.max(item.percentage, 20), 100)}%`,
-                        backgroundColor: item.color,
-                      },
+                      { height: `${clamped}%`, backgroundColor: FILL_BY_STATUS[item.status] },
                     ]}
-                  >
-                    <Text style={styles.percentageText}>{item.percentage}%</Text>
-                  </View>
+                  />
                 </View>
 
-                {/* Capsule Label below */}
                 <Text style={styles.capsuleLabel}>{item.name}</Text>
-                <Text style={styles.capsuleAmount}>{item.amount}</Text>
+                <Text style={styles.capsuleAmount}>
+                  {item.percentage}% · {item.amount}
+                </Text>
               </View>
             );
           })}
         </View>
       </View>
 
-      {/* Bottom Action Pill Button (Matching Reference) */}
+      {lockReason && (
+        <View style={styles.lockNotice}>
+          <Text style={styles.lockNoticeText}>{lockReason}</Text>
+        </View>
+      )}
+
       <TouchableOpacity
-        style={styles.actionButton}
-        onPress={onStartValidation}
+        style={[styles.actionButton, lockReason && styles.actionButtonLocked]}
+        onPress={lockReason ? undefined : onStartValidation}
+        disabled={Boolean(lockReason)}
         activeOpacity={0.88}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: Boolean(lockReason) }}
+        accessibilityLabel="Mulai validasi porsi kelas"
+        accessibilityHint={lockReason ?? 'Membuka pemindai boks'}
       >
-        <Text style={styles.actionButtonText}>Mulai Validasi Porsi Kelas</Text>
+        <Text style={styles.actionButtonText}>
+          {lockReason ? 'Validasi Terkunci' : 'Mulai Validasi Porsi Kelas'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -101,15 +140,34 @@ const styles = StyleSheet.create({
     maxWidth: 280,
     lineHeight: 18,
   },
+  quotaSplitText: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  rejectedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#B91C1C',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  lockNotice: {
+    backgroundColor: '#FDECEC',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 16,
+  },
+  lockNoticeText: {
+    fontSize: 12,
+    color: '#991B1B',
+    lineHeight: 17,
+  },
   cardContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 28,
+    borderRadius: 20,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
   },
   cardHeader: {
     marginBottom: 24,
@@ -122,69 +180,57 @@ const styles = StyleSheet.create({
   },
   cardSubtitle: {
     fontSize: 12,
-    color: '#94A3B8',
-    fontWeight: '400',
+    color: '#64748B',
     marginTop: 4,
   },
   capsulesRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingHorizontal: 4,
   },
   capsuleColumn: {
     alignItems: 'center',
     width: 64,
   },
   capsuleTrack: {
-    width: 58,
-    height: 180,
-    backgroundColor: '#ECEEEF', // Smooth light grey track matching reference
-    borderRadius: 29,
+    width: 44,
+    height: 168,
+    backgroundColor: '#EDEFF3',
+    borderRadius: 22,
     overflow: 'hidden',
     justifyContent: 'flex-end',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   capsuleFill: {
     width: '100%',
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 14,
-  },
-  percentageText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    borderRadius: 22,
   },
   capsuleLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: '#1E293B',
     marginBottom: 2,
   },
   capsuleAmount: {
     fontSize: 11,
-    color: '#94A3B8',
+    color: '#64748B',
     fontWeight: '500',
   },
   actionButton: {
-    backgroundColor: '#EBA338', // Golden amber matching reference
-    borderRadius: 28,
+    backgroundColor: '#EBA338',
+    borderRadius: 999,
     paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 20,
-    shadowColor: '#EBA338',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 4,
+  },
+  actionButtonLocked: {
+    backgroundColor: '#E7E9EC',
   },
   actionButtonText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontWeight: '800',
+    color: '#1E293B',
     letterSpacing: -0.2,
   },
 });
