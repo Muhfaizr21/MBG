@@ -19,6 +19,11 @@
       },
       "predictiveBackGestureEnabled": false
     },
+    "androidStatusBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#ffffff",
+      "translucent": false
+    },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"

@@ -2,7 +2,8 @@ import React, { useEffect } from 'react';
 import { DefaultTheme, ThemeProvider, Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
+import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import { StatusBar, Platform } from 'react-native';
 import { RoleProvider } from '../context/RoleContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -11,7 +12,7 @@ const AppTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: '#F9F8F6',
+    background: '#FFFFFF',
     card: '#FFFFFF',
     text: '#1E293B',
     primary: '#EBA338',
@@ -20,15 +21,27 @@ const AppTheme = {
 
 export default function RootLayout() {
   useEffect(() => {
-    // Hide splash screen smoothly on mount
+    // Sembunyikan splash screen
     SplashScreen.hideAsync().catch(() => {});
+
+    // Untuk lingkungan Web / PWA: atur meta theme-color menjadi putih
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+      if (!metaThemeColor) {
+        metaThemeColor = document.createElement('meta');
+        metaThemeColor.setAttribute('name', 'theme-color');
+        document.head.appendChild(metaThemeColor);
+      }
+      metaThemeColor.setAttribute('content', '#ffffff');
+    }
   }, []);
 
   return (
     <SafeAreaProvider>
       <ThemeProvider value={AppTheme}>
         <RoleProvider initialRole="guru">
-          <StatusBar style="dark" />
+          <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
+          <ExpoStatusBar style="dark" />
           <Slot />
         </RoleProvider>
       </ThemeProvider>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthRole } from '../context/RoleContext';
 import { GuruDashboardView } from '../components/dashboard/GuruDashboardView';
@@ -68,6 +68,7 @@ export default function MobileAppEntry() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
       <View style={styles.mainContent}>
         {renderActiveScreen()}
       </View>
@@ -87,9 +88,10 @@ export default function MobileAppEntry() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9F8F6',
+    backgroundColor: '#FFFFFF',
   },
   mainContent: {
     flex: 1,
+    backgroundColor: '#F9F8F6',
   },
 });

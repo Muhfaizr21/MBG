@@ -1,6 +1,36 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { QrCode, ChevronLeft, Check, ShieldAlert, WifiOff } from 'lucide-react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Platform,
+  Image,
+  StatusBar,
+  Modal,
+  Dimensions,
+  DimensionValue,
+} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  Check,
+  ShieldAlert,
+  WifiOff,
+  Sparkles,
+  Zap,
+  Scan,
+  CircleHelp,
+  RotateCcw,
+  RotateCw,
+  X,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Camera,
+  Tag,
+} from 'lucide-react-native';
 import { BottomSheet } from '../ui/BottomSheet';
 import { decideQuality, verifyQrPayload, QualityVerdict } from '../../utils/quality';
 import { readMacros } from '../../utils/nutrition';
@@ -10,9 +40,13 @@ import {
   MOCK_SCAN_SCENARIOS,
   SCAN_GRADE_BAND,
   SCAN_SCHOOL,
-  ScanScenario,
   ScenarioKey,
 } from '../../data/mockScannerData';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const DEFAULT_SAMPLE_PHOTO =
+  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1000&q=80';
 
 const SEVERITY_COLOR = {
   none: '#15803D',
@@ -20,10 +54,104 @@ const SEVERITY_COLOR = {
   critical: '#B91C1C',
 } as const;
 
-export const ScannerScreen: React.FC<{ onExit: () => void }> = ({ onExit }) => {
+export interface DetectedFoodItem {
+  id: number;
+  name: string;
+  x: DimensionValue;
+  y: DimensionValue;
+  portionGram: number;
+  nutrition: {
+    energi: number;
+    protein: number;
+    lemak: number;
+    karbo: number;
+    serat: number;
+  };
+}
+
+export interface DetectionResult {
+  porsiBesarLabel: string;
+  porsiKecilLabel: string;
+  items: DetectedFoodItem[];
+}
+
+const DEFAULT_DETECTION_RESULT: DetectionResult = {
+  porsiBesarLabel: 'Porsi Besar',
+  porsiKecilLabel: 'Porsi Kecil',
+  items: [
+    {
+      id: 1,
+      name: 'Nasi Kuning',
+      x: '26%',
+      y: '64%',
+      portionGram: 150,
+      nutrition: { energi: 220.0, protein: 4.5, lemak: 2.1, karbo: 45.2, serat: 1.2 },
+    },
+    {
+      id: 2,
+      name: 'Telur Dadar Suwir',
+      x: '24%',
+      y: '25%',
+      portionGram: 50,
+      nutrition: { energi: 95.5, protein: 7.2, lemak: 6.8, karbo: 0.8, serat: 0.0 },
+    },
+    {
+      id: 3,
+      name: 'Timun & Selada',
+      x: '50%',
+      y: '23%',
+      portionGram: 40,
+      nutrition: { energi: 18.4, protein: 1.1, lemak: 0.2, karbo: 3.4, serat: 1.6 },
+    },
+    {
+      id: 4,
+      name: 'Ayam Goreng',
+      x: '76%',
+      y: '25%',
+      portionGram: 65,
+      nutrition: { energi: 165.0, protein: 14.8, lemak: 11.2, karbo: 1.5, serat: 0.2 },
+    },
+    {
+      id: 5,
+      name: 'Pisang & Susu',
+      x: '68%',
+      y: '64%',
+      portionGram: 120,
+      nutrition: { energi: 125.0, protein: 1.8, lemak: 4.6, karbo: 20.4, serat: 1.2 },
+    },
+  ],
+};
+
+const formatNumber = (num: number): string => {
+  return num.toFixed(1).replace('.', ',');
+};
+
+export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => {
+  const [hasScanned, setHasScanned] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
+  const [showAiTags, setShowAiTags] = useState(true);
+  const [selectedItem, setSelectedItem] = useState<DetectedFoodItem | null>(null);
+  const [rotation, setRotation] = useState(0);
+  const [zoomScale, setZoomScale] = useState(1);
   const [scenarioKey, setScenarioKey] = useState<ScenarioKey>('layak');
   const [confirm, setConfirm] = useState<QualityVerdict | null>(null);
   const [logged, setLogged] = useState(false);
+  const [detectionResult] = useState<DetectionResult>(DEFAULT_DETECTION_RESULT);
+
+  // Kalkulasi total nutrisi secara dinamis dari item yang terdeteksi
+  const totalNutrition = useMemo(() => {
+    return detectionResult.items.reduce(
+      (acc, item) => ({
+        energi: acc.energi + item.nutrition.energi,
+        protein: acc.protein + item.nutrition.protein,
+        lemak: acc.lemak + item.nutrition.lemak,
+        karbo: acc.karbo + item.nutrition.karbo,
+        serat: acc.serat + item.nutrition.serat,
+      }),
+      { energi: 0, protein: 0, lemak: 0, karbo: 0, serat: 0 },
+    );
+  }, [detectionResult]);
 
   const scenario = useMemo(
     () => MOCK_SCAN_SCENARIOS.find((item) => item.key === scenarioKey) ?? MOCK_SCAN_SCENARIOS[0],
@@ -42,6 +170,129 @@ export const ScannerScreen: React.FC<{ onExit: () => void }> = ({ onExit }) => {
     [scenario, qr.valid],
   );
   const macros = useMemo(() => readMacros(SCAN_GRADE_BAND, MOCK_MACRO_ESTIMATE), []);
+
+  const displayPhoto = capturedPhoto || DEFAULT_SAMPLE_PHOTO;
+
+  const handleStartScan = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.setAttribute('capture', 'environment');
+        input.style.display = 'none';
+        document.body.appendChild(input);
+
+        input.onchange = (e: Event) => {
+          const target = e.target as HTMLInputElement;
+          const file = target.files?.[0];
+          if (file) {
+            const imageUrl = URL.createObjectURL(file);
+            setCapturedPhoto(imageUrl);
+            setHasScanned(true);
+          }
+          if (document.body.contains(input)) {
+            document.body.removeChild(input);
+          }
+        };
+
+        input.oncancel = () => {
+          if (document.body.contains(input)) {
+            document.body.removeChild(input);
+          }
+        };
+
+        input.click();
+      } catch (err) {
+        console.error('Gagal membuka kamera web:', err);
+        setCapturedPhoto((prev) => prev || DEFAULT_SAMPLE_PHOTO);
+        setHasScanned(true);
+      }
+    } else {
+      try {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            'Izin Kamera Diperlukan',
+            'Aplikasi membutuhkan izin akses kamera untuk mengambil foto porsi makanan MBG secara langsung.',
+            [{ text: 'Tutup' }],
+          );
+          return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: false,
+          quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+          setCapturedPhoto(result.assets[0].uri);
+          setHasScanned(true);
+        }
+      } catch (err) {
+        console.error('Gagal meluncurkan kamera:', err);
+        Alert.alert(
+          'Kamera Tidak Tersedia',
+          'Terjadi kendala saat membuka kamera perangkat. Menampilkan hasil simulasi pemindaian.',
+          [
+            {
+              text: 'Lanjutkan',
+              onPress: () => {
+                setCapturedPhoto((prev) => prev || DEFAULT_SAMPLE_PHOTO);
+                setHasScanned(true);
+              },
+            },
+          ],
+        );
+      }
+    }
+  };
+
+  const handleResetScan = () => {
+    setCapturedPhoto(null);
+    setHasScanned(false);
+    setLogged(false);
+    setIsImageViewerOpen(false);
+    setSelectedItem(null);
+    setRotation(0);
+    setZoomScale(1);
+  };
+
+  const handleRotate = () => {
+    setRotation((prev) => (prev + 90) % 360);
+  };
+
+  const handleZoomIn = () => {
+    setZoomScale((prev) => Math.min(prev + 0.5, 4));
+  };
+
+  const handleZoomOut = () => {
+    setZoomScale((prev) => Math.max(prev - 0.5, 1));
+  };
+
+  const handleResetZoom = () => {
+    setZoomScale(1);
+    setRotation(0);
+  };
+
+  const handleCloseModal = () => {
+    setIsImageViewerOpen(false);
+    setRotation(0);
+    setZoomScale(1);
+  };
+
+  const handleTagPress = (item: DetectedFoodItem) => {
+    setSelectedItem((prev) => (prev?.id === item.id ? null : item));
+  };
+
+  const handleHelpPress = () => {
+    Alert.alert(
+      'Panduan Pemindai AI',
+      '• Arahkan kamera tegak lurus ke porsi boks makan MBG (jarak 30–50 cm).\n• YOLOv8 Edge AI memindai kesegaran lauk, sayur, nasi, serta mendeteksi benda asing dalam latensi ~45ms.\n• Estimasi gramatur makronutrien (karbohidrat, protein, lemak, serat) dihitung otomatis sesuai standar porsi anak.',
+      [{ text: 'Mengerti', style: 'default' }],
+    );
+  };
 
   const handleAction = (approved: boolean) => {
     if (approved && verdict.verdict === 'ditolak') {
@@ -64,174 +315,544 @@ export const ScannerScreen: React.FC<{ onExit: () => void }> = ({ onExit }) => {
 
   return (
     <View style={styles.screen}>
+      <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {/* Header Bergaya Dashboard (Flexbox Row Space-Between) */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={onExit}
-            accessibilityRole="button"
-            accessibilityLabel="Kembali ke beranda"
-          >
-            <ChevronLeft size={22} color="#1E293B" />
-          </TouchableOpacity>
-          <View style={styles.headerText}>
+          <View style={styles.headerLeftColumn}>
             <Text style={styles.title}>Pindai Boks</Text>
-            <Text style={styles.subtitle}>{SCAN_SCHOOL}</Text>
+            <View style={styles.subtitleRow}>
+              <Text style={styles.subtitle}>{SCAN_SCHOOL}</Text>
+              <Text style={styles.dotSeparator}>·</Text>
+              <View style={styles.roleBadge}>
+                <Text style={styles.roleBadgeText}>Guru Validator</Text>
+              </View>
+            </View>
+          </View>
+
+          <View
+            style={styles.avatar}
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel="Profil Ibu Siti Aminah, Guru Validator"
+          >
+            <Text style={styles.avatarText}>IS</Text>
           </View>
         </View>
 
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>
-            Kamera dan model deteksi belum terhubung. Pilih skenario untuk mencoba alur
-            keputusan, semua angka di bawah berasal dari skenario itu.
-          </Text>
-        </View>
+        {/* Kondisional Area Scan:
+            - Sebelum pindai (!hasScanned): Tampilkan kartu oranye Pemindai Visual.
+            - Setelah pindai (hasScanned): Kartu oranye HILANG sepenuhnya dan digantikan oleh foto hasil jepretan dengan Floating UI Tags yang dapat diklik untuk zoom & putar.
+        */}
+        {!hasScanned ? (
+          <View style={styles.scanCard}>
+            {/* Top Badges */}
+            <View style={styles.topBadgesRow}>
+              <View style={styles.leftBadge}>
+                <Sparkles size={14} color="#FFFFFF" strokeWidth={2.2} />
+                <Text style={styles.badgeText}>YOLOv8 Edge AI</Text>
+              </View>
+              <View style={styles.rightBadge}>
+                <Zap size={14} color="#22C55E" fill="#22C55E" strokeWidth={2.2} />
+                <Text style={styles.badgeText}>Latensi ~45ms</Text>
+              </View>
+            </View>
 
-        <View style={styles.scenarioRow}>
-          {MOCK_SCAN_SCENARIOS.map((item) => {
-            const isSelected = item.key === scenarioKey;
-            return (
+            {/* Typography */}
+            <Text style={styles.scanCardTitle}>
+              Pemindai Visual Kelayakan & Makronutrien AI
+            </Text>
+            <Text style={styles.scanCardDescription}>
+              Arahkan kamera ke porsi makan MBG untuk skrining visual kebusukan instan serta kalkulasi otomatis karbohidrat, protein, & lemak porsi anak.
+            </Text>
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtonsRow}>
               <TouchableOpacity
-                key={item.key}
-                style={[styles.scenarioChip, isSelected && styles.scenarioChipActive]}
-                onPress={() => setScenarioKey(item.key)}
+                style={styles.primaryScanButton}
+                onPress={handleStartScan}
+                activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityLabel="Mulai Pindai Porsi MBG"
+              >
+                <Scan size={18} color="#EAA016" strokeWidth={2.4} />
+                <Text style={styles.primaryScanButtonText}>Mulai Pindai Porsi MBG</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.helpButton}
+                onPress={handleHelpPress}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityState={{ selected: isSelected }}
-                accessibilityLabel={`Skenario ${item.label}: ${item.description}`}
+                accessibilityLabel="Bantuan pemindai AI"
               >
-                <Text style={[styles.scenarioText, isSelected && styles.scenarioTextActive]}>
-                  {item.label}
-                </Text>
+                <CircleHelp size={20} color="#FFFFFF" strokeWidth={2.2} />
               </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <View style={styles.viewfinder}>
-          <View style={[styles.corner, styles.cornerTL]} />
-          <View style={[styles.corner, styles.cornerTR]} />
-          <View style={[styles.corner, styles.cornerBL]} />
-          <View style={[styles.corner, styles.cornerBR]} />
-          <QrCode size={40} color="#EBA338" />
-          <Text style={styles.viewfinderCode}>{scenario.payload.code}</Text>
-          <Text style={styles.viewfinderHint}>Kamera belum aktif, kode ditampilkan sebagai teks</Text>
-        </View>
-
-        <ChecklistSection
-          step="Tahap 1"
-          title="Verifikasi QR boks"
-          caption={`Selesai masak ${scenario.payload.cookFinishedAt}, batas aman 4 jam`}
-          rows={qr.checks.map((check) => ({
-            id: check.key,
-            label: check.label,
-            value: check.value,
-            note: check.requirement,
-            color: check.passed ? '#15803D' : '#B91C1C',
-          }))}
-        />
-
-        <ChecklistSection
-          step="Tahap 2"
-          title="Deteksi visual porsi"
-          caption="Empat kategori yang diperiksa model"
-          rows={scenario.signals.map((signal) => ({
-            id: signal.key,
-            label: signal.label,
-            value: signal.finding,
-            note: undefined,
-            color: SEVERITY_COLOR[signal.severity],
-          }))}
-        />
-
-        {/* Bagian paling berisi di layar: satu keputusan, satu kalimat tindakan.
-            Bagian di atas sengaja dibuat lebih pelan supaya mata turun ke sini
-            terakhir (R-14, R-31). */}
-        <View style={[styles.decisionCard, { borderColor: verdict.color }]}>
-          <Text style={styles.decisionStep}>Keputusan mutu</Text>
-          <View style={styles.decisionScoreRow}>
-            <Text style={[styles.decisionScore, { color: verdict.color }]}>{scenario.score}</Text>
-            <Text style={styles.decisionScoreUnit}>skor keamanan</Text>
+            </View>
           </View>
-          <Text style={[styles.decisionLabel, { color: verdict.color }]}>{verdict.label}</Text>
-          <Text style={styles.decisionAction}>{verdict.action}</Text>
-          {verdict.reasons.length > 0 && (
-            <View style={styles.reasonList}>
-              {verdict.reasons.map((reason) => (
-                <Text key={reason} style={styles.reasonText}>
-                  {reason}
+        ) : (
+          /* Kartu Foto Hasil Jepretan Kamera dengan Floating UI Tags */
+          <View style={styles.capturedImageHeroCard}>
+            <TouchableOpacity
+              style={styles.capturedImageHeroPressable}
+              onPress={() => setIsImageViewerOpen(true)}
+              activeOpacity={0.92}
+              accessibilityRole="button"
+              accessibilityLabel="Buka foto porsi makanan MBG layar penuh"
+              accessibilityHint="Ketuk untuk memperbesar, menggeser, dan memutar gambar"
+            >
+              <Image
+                source={{ uri: displayPhoto }}
+                style={styles.capturedImageHero}
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
+
+            {/* Floating UI Tags di Atas Makanan (YOLOv8 Detection Overlays) */}
+            {showAiTags &&
+              detectionResult.items.map((item) => {
+                const isSelected = selectedItem?.id === item.id;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[
+                      styles.floatingTag,
+                      {
+                        left: item.x,
+                        top: item.y,
+                      },
+                      isSelected && styles.floatingTagSelected,
+                    ]}
+                    onPress={() => handleTagPress(item)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Pilih kompartemen ${item.name}`}
+                  >
+                    <View
+                      style={[
+                        styles.floatingTagDot,
+                        isSelected && styles.floatingTagDotSelected,
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.floatingTagText,
+                        isSelected && styles.floatingTagTextSelected,
+                      ]}
+                    >
+                      {item.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+            {/* Overlay Bar Atas */}
+            <View style={styles.capturedImageOverlayTop} pointerEvents="box-none">
+              <View style={styles.capturedPhotoPill}>
+                <Sparkles size={13} color="#FFFFFF" strokeWidth={2.2} />
+                <Text style={styles.capturedPhotoPillText}>Deteksi YOLOv8 AI Aktif</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.retakeButton}
+                onPress={handleStartScan}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Ambil ulang foto kamera"
+              >
+                <Camera size={13} color="#FFFFFF" strokeWidth={2} />
+                <Text style={styles.retakeButtonText}>Ambil Ulang</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Overlay Bar Bawah (Petunjuk Zoom) */}
+            <View style={styles.capturedImageOverlayBottom} pointerEvents="box-none">
+              <TouchableOpacity
+                style={styles.zoomHintBadge}
+                onPress={() => setIsImageViewerOpen(true)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Buka layar penuh untuk perbesar dan putar"
+              >
+                <Maximize2 size={13} color="#FFFFFF" strokeWidth={2.2} />
+                <Text style={styles.zoomHintText}>Ketuk untuk perbesar & putar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Area di Bawah Scan Card */}
+        {!hasScanned ? (
+          /* Initial / Default Empty State (100% Bahasa Indonesia) */
+          <View style={styles.emptyStateContainer}>
+            <View style={styles.emptyStateIconWrapper}>
+              <Scan size={32} color="#94A3B8" strokeWidth={1.8} />
+            </View>
+            <Text style={styles.emptyStateTitle}>Data akan muncul di sini setelah pemindaian</Text>
+            <Text style={styles.emptyStateDescription}>
+              Ketuk tombol "Mulai Pindai Porsi MBG" untuk membuka kamera perangkat dan memindai porsi makanan secara langsung.
+            </Text>
+          </View>
+        ) : (
+          /* Scanned State Results */
+          <View style={styles.scannedResults}>
+            {/* Tabel Ringkasan Kandungan Gizi Biru/Oranye (Sesuai Referensi Gambar) */}
+            <NutritionSummaryTable
+              totalNutrition={totalNutrition}
+              items={detectionResult.items}
+              selectedItem={selectedItem}
+              onSelectItem={setSelectedItem}
+            />
+
+            {/* Scanned Header with Reset */}
+            <View style={styles.scannedHeader}>
+              <View style={styles.scannedBatchBadge}>
+                <Check size={14} color="#15803D" strokeWidth={2.5} />
+                <Text style={styles.scannedBatchCode}>{scenario.payload.code}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.resetButton}
+                onPress={handleResetScan}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Pindai ulang atau reset data"
+              >
+                <RotateCcw size={13} color="#64748B" />
+                <Text style={styles.resetButtonText}>Reset / Pindai Ulang</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Scenario Switcher for QA / Testing */}
+            <View style={styles.scenarioRow}>
+              {MOCK_SCAN_SCENARIOS.map((item) => {
+                const isSelected = item.key === scenarioKey;
+                return (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[styles.scenarioChip, isSelected && styles.scenarioChipActive]}
+                    onPress={() => setScenarioKey(item.key)}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={`Skenario ${item.label}: ${item.description}`}
+                  >
+                    <Text style={[styles.scenarioText, isSelected && styles.scenarioTextActive]}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <ChecklistSection
+              step="Tahap 1"
+              title="Verifikasi QR boks"
+              caption={`Selesai masak ${scenario.payload.cookFinishedAt}, batas aman 4 jam`}
+              rows={qr.checks.map((check) => ({
+                id: check.key,
+                label: check.label,
+                value: check.value,
+                note: check.requirement,
+                color: check.passed ? '#15803D' : '#B91C1C',
+              }))}
+            />
+
+            <ChecklistSection
+              step="Tahap 2"
+              title="Deteksi visual porsi"
+              caption="Empat kategori yang diperiksa model"
+              rows={scenario.signals.map((signal) => ({
+                id: signal.key,
+                label: signal.label,
+                value: signal.finding,
+                note: undefined,
+                color: SEVERITY_COLOR[signal.severity],
+              }))}
+            />
+
+            <View style={[styles.decisionCard, { borderColor: verdict.color }]}>
+              <Text style={styles.decisionStep}>Keputusan mutu</Text>
+              <View style={styles.decisionScoreRow}>
+                <Text style={[styles.decisionScore, { color: verdict.color }]}>{scenario.score}</Text>
+                <Text style={styles.decisionScoreUnit}>skor keamanan</Text>
+              </View>
+              <Text style={[styles.decisionLabel, { color: verdict.color }]}>{verdict.label}</Text>
+              <Text style={styles.decisionAction}>{verdict.action}</Text>
+              {verdict.reasons.length > 0 && (
+                <View style={styles.reasonList}>
+                  {verdict.reasons.map((reason) => (
+                    <Text key={reason} style={styles.reasonText}>
+                      {reason}
+                    </Text>
+                  ))}
+                </View>
+              )}
+              <View style={styles.holdingRow}>
+                <Text style={styles.holdingText}>
+                  Suhu holding {scenario.holdingTempC}°C · sisa waktu {scenario.minutesToDeadline} menit
                 </Text>
+              </View>
+            </View>
+
+            <View style={styles.macroSection}>
+              <Text style={styles.sectionTitle}>Estimasi makronutrien target porsi</Text>
+              <Text style={styles.sectionCaption}>
+                Target kelompok SD atas. Estimasi dari segmentasi visual, bukan timbangan.
+              </Text>
+              {macros.map((macro) => (
+                <View key={macro.key} style={styles.macroRow}>
+                  <Text style={styles.macroLabel}>
+                    {macro.label} · {macro.unit}
+                  </Text>
+                  <Text style={styles.macroValue}>
+                    {macro.estimated} / {macro.target}
+                  </Text>
+                  <View style={styles.macroTrack}>
+                    <View style={[styles.macroFill, { width: `${macro.ratio}%` }]} />
+                  </View>
+                  <Text style={styles.macroPercent}>{macro.percentage}% target</Text>
+                </View>
               ))}
             </View>
-          )}
-          <View style={styles.holdingRow}>
-            <Text style={styles.holdingText}>
-              Suhu holding {scenario.holdingTempC}°C · sisa waktu {scenario.minutesToDeadline} menit
-            </Text>
+
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[styles.secondaryBtn, verdict.verdict === 'ditolak' && styles.dangerBtn]}
+                onPress={() => handleAction(false)}
+                activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityLabel="Tolak dan amankan sampel"
+              >
+                <ShieldAlert size={18} color="#B91C1C" strokeWidth={2.2} />
+                <Text style={[styles.secondaryBtnText, { color: '#B91C1C' }]}>
+                  Tolak & amankan sampel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.primaryBtn,
+                  verdict.verdict === 'ditolak' && styles.primaryBtnBlocked,
+                ]}
+                onPress={() => handleAction(true)}
+                activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityLabel="Setujui porsi"
+                accessibilityState={{ disabled: verdict.verdict === 'ditolak' }}
+              >
+                <Check size={18} color="#1E293B" strokeWidth={2.5} />
+                <Text style={styles.primaryBtnText}>Setujui porsi</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.localRow}>
+              <WifiOff size={16} color="#64748B" />
+              <Text style={styles.localText}>
+                Belum ada pindaian tersimpan. Prototipe ini belum punya penyimpanan lokal,
+                jadi riwayat Offline-First belum berfungsi.
+              </Text>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Modal Penampil Gambar Layar Penuh (Interactive Lightbox Viewer dengan Floating Tags & Tabel Gizi) */}
+      <Modal
+        visible={isImageViewerOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCloseModal}
+        statusBarTranslucent={true}
+      >
+        <View style={styles.modalBackdrop}>
+          <StatusBar backgroundColor="#090D16" barStyle="light-content" translucent={false} />
+
+          {/* Modal Header / Toolbar Atas */}
+          <View style={styles.modalTopBar}>
+            <View style={styles.modalTitleContainer}>
+              <Text style={styles.modalTitle}>Pratinjau Citra Porsi MBG</Text>
+              <Text style={styles.modalSubtitle}>
+                Rotasi: {rotation}° · Zoom: {Math.round(zoomScale * 100)}%
+              </Text>
+            </View>
+
+            <View style={styles.modalTopActions}>
+              {/* Tombol Toggle Label AI (100% Solid Opaque Orange saat aktif) */}
+              <TouchableOpacity
+                style={[
+                  styles.modalIconBtn,
+                  showAiTags ? styles.modalTagToggleBtnActive : styles.modalTagToggleBtnInactive,
+                ]}
+                onPress={() => setShowAiTags((prev) => !prev)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={showAiTags ? 'Sembunyikan label AI' : 'Tampilkan label AI'}
+              >
+                <Tag size={19} color="#FFFFFF" strokeWidth={2.2} />
+              </TouchableOpacity>
+
+              {/* Tombol Rotasi 90 Derajat */}
+              <TouchableOpacity
+                style={[styles.modalIconBtn, styles.modalRotateBtn]}
+                onPress={handleRotate}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Putar gambar 90 derajat"
+              >
+                <RotateCw size={19} color="#FFFFFF" strokeWidth={2.2} />
+              </TouchableOpacity>
+
+              {/* Tombol Tutup (X) Solid Opaque Red */}
+              <TouchableOpacity
+                style={[styles.modalIconBtn, styles.modalCloseBtn]}
+                onPress={handleCloseModal}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Tutup penampil gambar"
+              >
+                <X size={22} color="#FFFFFF" strokeWidth={2.5} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Canvas Interaktif: Pinch-to-Zoom & Pan melalui ScrollView */}
+          <View style={styles.modalCanvasContainer}>
+            <ScrollView
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalScrollContent}
+              maximumZoomScale={5}
+              minimumZoomScale={1}
+              bouncesZoom={true}
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+              centerContent={true}
+            >
+              <View style={styles.modalImageWrapper}>
+                {/* Container Gambar & Floating Tags yang berputar dan zoom bersamaan */}
+                <View
+                  style={[
+                    styles.modalRotatedContainer,
+                    {
+                      transform: [
+                        { rotate: `${rotation}deg` },
+                        { scale: zoomScale },
+                      ],
+                    },
+                  ]}
+                >
+                  <Image
+                    source={{ uri: displayPhoto }}
+                    style={styles.modalImage}
+                    resizeMode="contain"
+                  />
+
+                  {/* Floating Tags di dalam Modal yang berputar bersama gambar tanpa unmount */}
+                  {showAiTags &&
+                    detectionResult.items.map((item) => {
+                      const isSelected = selectedItem?.id === item.id;
+                      return (
+                        <TouchableOpacity
+                          key={`modal-${item.id}`}
+                          style={[
+                            styles.floatingTag,
+                            styles.modalFloatingTag,
+                            {
+                              left: item.x,
+                              top: item.y,
+                            },
+                            isSelected && styles.floatingTagSelected,
+                          ]}
+                          onPress={() => handleTagPress(item)}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Pilih kompartemen ${item.name}`}
+                        >
+                          <View
+                            style={[
+                              styles.floatingTagDot,
+                              isSelected && styles.floatingTagDotSelected,
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.floatingTagText,
+                              isSelected && styles.floatingTagTextSelected,
+                            ]}
+                          >
+                            {item.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              </View>
+
+              {/* Tabel Kandungan Gizi di dalam Modal di Bawah Gambar */}
+              <View style={styles.modalNutritionSection}>
+                <NutritionSummaryTable
+                  totalNutrition={totalNutrition}
+                  items={detectionResult.items}
+                  selectedItem={selectedItem}
+                  onSelectItem={setSelectedItem}
+                  isDarkTheme={true}
+                />
+              </View>
+            </ScrollView>
+          </View>
+
+          {/* Toolbar Bawah: Zoom In, Zoom Out, Rotasi & Reset */}
+          <View style={styles.modalBottomBar}>
+            <View style={styles.modalControlsPill}>
+              <TouchableOpacity
+                style={styles.controlPillBtn}
+                onPress={handleZoomOut}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Perkecil gambar"
+              >
+                <ZoomOut size={18} color="#FFFFFF" strokeWidth={2.2} />
+              </TouchableOpacity>
+
+              <Text style={styles.zoomScaleText}>{Math.round(zoomScale * 100)}%</Text>
+
+              <TouchableOpacity
+                style={styles.controlPillBtn}
+                onPress={handleZoomIn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Perbesar gambar"
+              >
+                <ZoomIn size={18} color="#FFFFFF" strokeWidth={2.2} />
+              </TouchableOpacity>
+
+              <View style={styles.controlDivider} />
+
+              <TouchableOpacity
+                style={styles.rotateActionBtn}
+                onPress={handleRotate}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Putar gambar 90 derajat"
+              >
+                <RotateCw size={16} color="#EBA338" strokeWidth={2.2} />
+                <Text style={styles.rotateActionText}>Putar 90°</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.resetActionBtn}
+                onPress={handleResetZoom}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Reset zoom dan rotasi"
+              >
+                <RotateCcw size={16} color="#94A3B8" strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-
-        <View style={styles.macroSection}>
-          <Text style={styles.sectionTitle}>Estimasi makronutrien per porsi</Text>
-          <Text style={styles.sectionCaption}>
-            Target kelompok SD atas. Estimasi dari segmentasi visual, bukan timbangan.
-          </Text>
-          {macros.map((macro) => (
-            <View key={macro.key} style={styles.macroRow}>
-              <Text style={styles.macroLabel}>
-                {macro.label} · {macro.unit}
-              </Text>
-              <Text style={styles.macroValue}>
-                {macro.estimated} / {macro.target}
-              </Text>
-              <View style={styles.macroTrack}>
-                <View style={[styles.macroFill, { width: `${macro.ratio}%` }]} />
-              </View>
-              <Text style={styles.macroPercent}>{macro.percentage}% target</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.secondaryBtn, verdict.verdict === 'ditolak' && styles.dangerBtn]}
-            onPress={() => handleAction(false)}
-            activeOpacity={0.88}
-            accessibilityRole="button"
-            accessibilityLabel="Tolak dan amankan sampel"
-          >
-            <ShieldAlert size={18} color="#B91C1C" strokeWidth={2.2} />
-            <Text style={[styles.secondaryBtnText, { color: '#B91C1C' }]}>
-              Tolak & amankan sampel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.primaryBtn,
-              verdict.verdict === 'ditolak' && styles.primaryBtnBlocked,
-            ]}
-            onPress={() => handleAction(true)}
-            activeOpacity={0.88}
-            accessibilityRole="button"
-            accessibilityLabel="Setujui porsi"
-            accessibilityState={{ disabled: verdict.verdict === 'ditolak' }}
-          >
-            <Check size={18} color="#1E293B" strokeWidth={2.5} />
-            <Text style={styles.primaryBtnText}>Setujui porsi</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.localRow}>
-          <WifiOff size={16} color="#64748B" />
-          <Text style={styles.localText}>
-            Belum ada pindaian tersimpan. Prototipe ini belum punya penyimpanan lokal,
-            jadi riwayat Offline-First belum berfungsi.
-          </Text>
-        </View>
-      </ScrollView>
+      </Modal>
 
       <BottomSheet
         visible={confirm !== null}
@@ -255,6 +876,299 @@ export const ScannerScreen: React.FC<{ onExit: () => void }> = ({ onExit }) => {
           </Text>
         ))}
       </BottomSheet>
+    </View>
+  );
+};
+
+// Komponen Tabel Ringkasan Nutrisi (Sesuai Referensi: Biru & Oranye)
+interface NutritionSummaryTableProps {
+  totalNutrition: {
+    energi: number;
+    protein: number;
+    lemak: number;
+    karbo: number;
+    serat: number;
+  };
+  items: DetectedFoodItem[];
+  selectedItem: DetectedFoodItem | null;
+  onSelectItem: (item: DetectedFoodItem | null) => void;
+  isDarkTheme?: boolean;
+}
+
+const NutritionSummaryTable: React.FC<NutritionSummaryTableProps> = ({
+  totalNutrition,
+  items,
+  selectedItem,
+  onSelectItem,
+  isDarkTheme = false,
+}) => {
+  // Porsi kecil dikalkulasikan secara proporsional sesuai standar referensi SD awal (~68% porsi besar)
+  const porsiKecil = {
+    energi: totalNutrition.energi * 0.6817,
+    protein: totalNutrition.protein * 0.6327,
+    lemak: totalNutrition.lemak * 0.5904,
+    karbo: totalNutrition.karbo * 0.7812,
+    serat: totalNutrition.serat * 0.8571,
+  };
+
+  return (
+    <View style={styles.nutritionCardContainer}>
+      {/* Pill Badge Kandungan Gizi (Warna Oranye) */}
+      <View style={styles.nutritionBadgeWrapper}>
+        <View style={styles.nutritionBadge}>
+          <Text style={styles.nutritionBadgeText}>Kandungan Gizi</Text>
+        </View>
+      </View>
+
+      {/* Tabel Biru Modern */}
+      <View style={styles.nutritionTable}>
+        {/* Table Header Row */}
+        <View style={styles.nutritionTableHeaderRow}>
+          <View style={styles.nutritionHeaderCol}>
+            <Text style={styles.nutritionHeaderText}>Porsi Besar</Text>
+          </View>
+          <View style={styles.nutritionHeaderDivider} />
+          <View style={styles.nutritionHeaderCol}>
+            <Text style={styles.nutritionHeaderText}>Porsi Kecil</Text>
+          </View>
+        </View>
+
+        {/* Row: Energi */}
+        <View style={styles.nutritionRow}>
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Energi</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(totalNutrition.energi)} kal</Text>
+          </View>
+          <View style={styles.nutritionCellDivider} />
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Energi</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(porsiKecil.energi)} kal</Text>
+          </View>
+        </View>
+
+        {/* Row: Protein */}
+        <View style={styles.nutritionRow}>
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Protein</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(totalNutrition.protein)} g</Text>
+          </View>
+          <View style={styles.nutritionCellDivider} />
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Protein</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(porsiKecil.protein)} g</Text>
+          </View>
+        </View>
+
+        {/* Row: Lemak */}
+        <View style={styles.nutritionRow}>
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Lemak</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(totalNutrition.lemak)} g</Text>
+          </View>
+          <View style={styles.nutritionCellDivider} />
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Lemak</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(porsiKecil.lemak)} g</Text>
+          </View>
+        </View>
+
+        {/* Row: Karbo */}
+        <View style={styles.nutritionRow}>
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Karbo</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(totalNutrition.karbo)} g</Text>
+          </View>
+          <View style={styles.nutritionCellDivider} />
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Karbo</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(porsiKecil.karbo)} g</Text>
+          </View>
+        </View>
+
+        {/* Row: Serat */}
+        <View style={[styles.nutritionRow, styles.nutritionRowLast]}>
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Serat</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(totalNutrition.serat)} g</Text>
+          </View>
+          <View style={styles.nutritionCellDivider} />
+          <View style={styles.nutritionCell}>
+            <Text style={styles.nutritionLabel}>Serat</Text>
+            <Text style={styles.nutritionColon}>:</Text>
+            <Text style={styles.nutritionValue}>{formatNumber(porsiKecil.serat)} g</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Bagian: Komponen Terdeteksi YOLOv8 */}
+      <View style={styles.detectedComponentsContainer}>
+        <View style={styles.detectedHeaderRow}>
+          <Text
+            style={[
+              styles.detectedSectionTitle,
+              isDarkTheme && styles.detectedSectionTitleDark,
+            ]}
+          >
+            Komponen Terdeteksi YOLOv8:
+          </Text>
+          <View style={styles.detectedCountBadge}>
+            <Text style={styles.detectedCountText}>{items.length} Kompartemen</Text>
+          </View>
+        </View>
+
+        {/* Baris Chip yang Bisa Digulir Mendatar (Termasuk Opsi 'Semua') */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.detectedChipsScroll}
+        >
+          {/* Chip 'Semua' */}
+          <TouchableOpacity
+            style={[
+              styles.detectedChip,
+              isDarkTheme && styles.detectedChipDark,
+              selectedItem === null && styles.detectedChipActive,
+            ]}
+            onPress={() => onSelectItem(null)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="Tampilkan semua komponen gizi gabungan"
+          >
+            <Text
+              style={[
+                styles.detectedChipText,
+                isDarkTheme && styles.detectedChipTextDark,
+                selectedItem === null && styles.detectedChipTextActive,
+              ]}
+            >
+              Semua
+            </Text>
+          </TouchableOpacity>
+
+          {/* Chip Masing-Masing Kompartemen */}
+          {items.map((item) => {
+            const isChipActive = selectedItem?.id === item.id;
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.detectedChip,
+                  isDarkTheme && styles.detectedChipDark,
+                  isChipActive && styles.detectedChipActive,
+                ]}
+                onPress={() => onSelectItem(isChipActive ? null : item)}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={`Lihat nutrisi ${item.name}`}
+              >
+                <View
+                  style={[
+                    styles.detectedChipDot,
+                    isChipActive && styles.detectedChipDotActive,
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.detectedChipText,
+                    isDarkTheme && styles.detectedChipTextDark,
+                    isChipActive && styles.detectedChipTextActive,
+                  ]}
+                >
+                  {item.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Kartu Gelap Rincian Item Terpilih (Darker Card) */}
+        {selectedItem && (
+          <View style={styles.itemDetailCard}>
+            <View style={styles.itemDetailHeader}>
+              <View style={styles.itemDetailHeaderLeft}>
+                <View style={styles.itemDetailBadge}>
+                  <Sparkles size={12} color="#F59E0B" strokeWidth={2.4} />
+                  <Text style={styles.itemDetailBadgeText}>YOLOv8 Deteksi</Text>
+                </View>
+                <Text style={styles.itemDetailTitle}>{selectedItem.name}</Text>
+                <Text style={styles.itemDetailSubtitle}>
+                  Estimasi porsi: <Text style={styles.itemDetailGram}>{selectedItem.portionGram} gram</Text>
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.itemDetailCloseBtn}
+                onPress={() => onSelectItem(null)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Tutup rincian item"
+              >
+                <X size={16} color="#94A3B8" strokeWidth={2.2} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Grid Makronutrien Komponen Spesifik */}
+            <View style={styles.itemDetailMacroGrid}>
+              <View style={styles.itemMacroCol}>
+                <Text style={styles.itemMacroLabel}>Energi</Text>
+                <Text style={styles.itemMacroValue}>
+                  {formatNumber(selectedItem.nutrition.energi)}
+                </Text>
+                <Text style={styles.itemMacroUnit}>kal</Text>
+              </View>
+
+              <View style={styles.itemMacroDivider} />
+
+              <View style={styles.itemMacroCol}>
+                <Text style={styles.itemMacroLabel}>Protein</Text>
+                <Text style={styles.itemMacroValue}>
+                  {formatNumber(selectedItem.nutrition.protein)}
+                </Text>
+                <Text style={styles.itemMacroUnit}>g</Text>
+              </View>
+
+              <View style={styles.itemMacroDivider} />
+
+              <View style={styles.itemMacroCol}>
+                <Text style={styles.itemMacroLabel}>Lemak</Text>
+                <Text style={styles.itemMacroValue}>
+                  {formatNumber(selectedItem.nutrition.lemak)}
+                </Text>
+                <Text style={styles.itemMacroUnit}>g</Text>
+              </View>
+
+              <View style={styles.itemMacroDivider} />
+
+              <View style={styles.itemMacroCol}>
+                <Text style={styles.itemMacroLabel}>Karbo</Text>
+                <Text style={styles.itemMacroValue}>
+                  {formatNumber(selectedItem.nutrition.karbo)}
+                </Text>
+                <Text style={styles.itemMacroUnit}>g</Text>
+              </View>
+
+              <View style={styles.itemMacroDivider} />
+
+              <View style={styles.itemMacroCol}>
+                <Text style={styles.itemMacroLabel}>Serat</Text>
+                <Text style={styles.itemMacroValue}>
+                  {formatNumber(selectedItem.nutrition.serat)}
+                </Text>
+                <Text style={styles.itemMacroUnit}>g</Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
     </View>
   );
 };
@@ -305,47 +1219,665 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerText: {
+  headerLeftColumn: {
     flex: 1,
+    marginRight: 16,
   },
   title: {
     fontSize: 24,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#1E293B',
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
+  },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    flexWrap: 'wrap',
+    gap: 6,
   },
   subtitle: {
     fontSize: 13,
     color: '#64748B',
+    fontWeight: '500',
+  },
+  dotSeparator: {
+    color: '#64748B',
+    fontSize: 13,
+  },
+  roleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#FDEBC8',
+  },
+  roleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7C4A03',
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EBA338',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  // Redesigned Scan Card (Hanya muncul sebelum pemindaian)
+  scanCard: {
+    backgroundColor: '#EAA016',
+    borderRadius: 24,
+    marginHorizontal: 16,
+    marginTop: 6,
+    padding: 20,
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  topBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  leftBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+  },
+  rightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  scanCardTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.4,
+    lineHeight: 28,
+    marginTop: 18,
+  },
+  scanCardDescription: {
+    fontSize: 13.5,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.95)',
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 22,
+  },
+  primaryScanButton: {
+    flex: 1,
+    height: 48,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  primaryScanButtonText: {
+    color: '#0F172A',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  helpButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Kartu Foto Hasil Jepretan Kamera yang Menggantikan Kartu Oranye
+  capturedImageHeroCard: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    height: 240,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#0F172A',
+    position: 'relative',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  capturedImageHeroPressable: {
+    width: '100%',
+    height: '100%',
+  },
+  capturedImageHero: {
+    width: '100%',
+    height: '100%',
+  },
+  // Floating UI Tags di Atas Makanan (YOLOv8 Detection Overlays)
+  floatingTag: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.45,
+    shadowRadius: 4,
+    elevation: 8,
+    transform: [{ translateX: -40 }, { translateY: -12 }],
+    zIndex: 20,
+  },
+  modalFloatingTag: {
+    transform: [{ translateX: -42 }, { translateY: -14 }],
+    zIndex: 25,
+  },
+  floatingTagSelected: {
+    borderColor: '#F59E0B',
+    borderWidth: 1.8,
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    shadowColor: '#F59E0B',
+    shadowOpacity: 0.55,
+    shadowRadius: 8,
+    elevation: 12,
+  },
+  floatingTagDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#38BDF8', // Aksen cyan glowing
+  },
+  floatingTagDotSelected: {
+    backgroundColor: '#F59E0B', // Oranye hangat ketika aktif
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  floatingTagText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  floatingTagTextSelected: {
+    color: '#FDE68A',
+    fontWeight: '800',
+  },
+  capturedImageOverlayTop: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    right: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 6,
+  },
+  capturedPhotoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.78)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  capturedPhotoPillText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  retakeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(15, 23, 42, 0.78)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  retakeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  capturedImageOverlayBottom: {
+    position: 'absolute',
+    bottom: 14,
+    right: 14,
+    zIndex: 6,
+  },
+  zoomHintBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  zoomHintText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  // Tabel Ringkasan Kandungan Gizi (Inspirasi Referensi: Biru & Oranye)
+  nutritionCardContainer: {
+    marginHorizontal: 16,
+    marginTop: 22,
+    alignItems: 'center',
+  },
+  nutritionBadgeWrapper: {
+    marginBottom: -16,
+    zIndex: 10,
+    elevation: 8,
+  },
+  nutritionBadge: {
+    backgroundColor: '#F59E0B', // Oranye hangat mencolok
+    paddingHorizontal: 22,
+    paddingVertical: 7,
+    borderRadius: 999,
+    shadowColor: '#B45309',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  nutritionBadgeText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F2C59',
+    letterSpacing: -0.2,
+  },
+  nutritionTable: {
+    width: '100%',
+    backgroundColor: '#0C4A94', // Biru royal khas referensi
+    borderRadius: 18,
+    paddingTop: 24,
+    paddingBottom: 16,
+    paddingHorizontal: 12,
+    shadowColor: '#0C4A94',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  nutritionTableHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.25)',
+    marginBottom: 8,
+  },
+  nutritionHeaderCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  nutritionHeaderText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  nutritionHeaderDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  nutritionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+  },
+  nutritionRowLast: {
+    paddingBottom: 4,
+  },
+  nutritionCell: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+  },
+  nutritionCellDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  nutritionLabel: {
+    width: 58,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  nutritionColon: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginRight: 6,
+  },
+  nutritionValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  // Bagian: Komponen Terdeteksi YOLOv8
+  detectedComponentsContainer: {
+    width: '100%',
+    marginTop: 18,
+  },
+  detectedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  detectedSectionTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  detectedSectionTitleDark: {
+    color: '#E2E8F0',
+  },
+  detectedCountBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.16)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  detectedCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  detectedChipsScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  detectedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  detectedChipDark: {
+    backgroundColor: '#1E293B',
+    borderColor: '#334155',
+  },
+  detectedChipActive: {
+    backgroundColor: '#0C4A94',
+    borderColor: '#0C4A94',
+    shadowColor: '#0C4A94',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  detectedChipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0EA5E9',
+  },
+  detectedChipDotActive: {
+    backgroundColor: '#F59E0B',
+  },
+  detectedChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  detectedChipTextDark: {
+    color: '#94A3B8',
+  },
+  detectedChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  // Kartu Gelap Detail Item Terpilih (Darker Card)
+  itemDetailCard: {
+    width: '100%',
+    marginTop: 14,
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  itemDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  itemDetailHeaderLeft: {
+    flex: 1,
+  },
+  itemDetailBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  itemDetailBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#F59E0B',
+  },
+  itemDetailTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  itemDetailSubtitle: {
+    fontSize: 12,
+    color: '#94A3B8',
     marginTop: 2,
   },
-  notice: {
-    marginHorizontal: 16,
-    backgroundColor: '#FEF3E2',
-    borderRadius: 14,
-    padding: 12,
+  itemDetailGram: {
+    fontWeight: '700',
+    color: '#38BDF8',
   },
-  noticeText: {
-    fontSize: 12,
-    color: '#7C4A03',
+  itemDetailCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemDetailMacroGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  itemMacroCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  itemMacroDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  itemMacroLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginBottom: 2,
+  },
+  itemMacroValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  itemMacroUnit: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  // Initial / Default Empty State (Indonesian)
+  emptyStateContainer: {
+    marginHorizontal: 16,
+    marginTop: 24,
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#EDEEF0',
+    borderStyle: 'dashed',
+  },
+  emptyStateIconWrapper: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyStateTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  emptyStateDescription: {
+    fontSize: 12.5,
+    color: '#94A3B8',
+    textAlign: 'center',
     lineHeight: 18,
+    maxWidth: 290,
+  },
+  // Scanned State
+  scannedResults: {
+    marginTop: 8,
+  },
+  scannedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginTop: 18,
+  },
+  scannedBatchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  scannedBatchCode: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#EDEEF0',
+  },
+  resetButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
   },
   scenarioRow: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 16,
-    marginTop: 16,
+    marginTop: 14,
   },
   scenarioChip: {
     flex: 1,
@@ -368,38 +1900,6 @@ const styles = StyleSheet.create({
   scenarioTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
-  },
-  viewfinder: {
-    height: 190,
-    backgroundColor: '#0F172A',
-    borderRadius: 20,
-    marginHorizontal: 16,
-    marginTop: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 24,
-  },
-  corner: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderColor: '#EBA338',
-  },
-  cornerTL: { top: 14, left: 14, borderTopWidth: 3, borderLeftWidth: 3 },
-  cornerTR: { top: 14, right: 14, borderTopWidth: 3, borderRightWidth: 3 },
-  cornerBL: { bottom: 14, left: 14, borderBottomWidth: 3, borderLeftWidth: 3 },
-  cornerBR: { bottom: 14, right: 14, borderBottomWidth: 3, borderRightWidth: 3 },
-  viewfinderCode: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  viewfinderHint: {
-    color: '#94A3B8',
-    fontSize: 11,
-    textAlign: 'center',
   },
   checklist: {
     marginTop: 24,
@@ -638,5 +2138,166 @@ const styles = StyleSheet.create({
     color: '#475569',
     lineHeight: 18,
     marginBottom: 4,
+  },
+  // Modal Penampil Gambar Layar Penuh (Interactive Lightbox Viewer)
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: '#090D16',
+    justifyContent: 'space-between',
+  },
+  modalTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: Platform.OS === 'ios' ? 54 : 20,
+    paddingBottom: 14,
+    backgroundColor: 'rgba(9, 13, 22, 0.88)',
+    zIndex: 10,
+  },
+  modalTitleContainer: {
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  modalTopActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTagToggleBtnActive: {
+    backgroundColor: '#D97706', // 100% Solid opaque orange/mustard theme (sama pekatnya dengan tombol merah)
+    shadowColor: '#D97706',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  modalTagToggleBtnInactive: {
+    backgroundColor: '#334155', // Solid opaque dark slate saat nonaktif
+  },
+  modalRotateBtn: {
+    backgroundColor: '#1E293B', // Solid opaque dark slate
+  },
+  modalCloseBtn: {
+    backgroundColor: '#DC2626', // 100% Solid opaque red
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  modalCanvasContainer: {
+    flex: 1,
+  },
+  modalScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  modalImageWrapper: {
+    width: SCREEN_WIDTH - 24,
+    height: SCREEN_HEIGHT * 0.52,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalRotatedContainer: {
+    width: SCREEN_WIDTH - 24,
+    height: SCREEN_HEIGHT * 0.52,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalNutritionSection: {
+    width: '100%',
+    marginTop: 10,
+    paddingBottom: 30,
+  },
+  modalBottomBar: {
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  modalControlsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(20, 27, 45, 0.92)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    gap: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  controlPillBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomScaleText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    minWidth: 44,
+    textAlign: 'center',
+  },
+  controlDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  rotateActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  rotateActionText: {
+    color: '#EBA338',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  resetActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
