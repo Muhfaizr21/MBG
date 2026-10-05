@@ -30,8 +30,12 @@ import {
   Maximize2,
   Camera,
   Tag,
+  ShieldCheck,
+  Bot,
+  MessageSquare,
 } from 'lucide-react-native';
 import { BottomSheet } from '../ui/BottomSheet';
+import { ContextualAiChatSheet } from './ContextualAiChatSheet';
 import { decideQuality, verifyQrPayload, QualityVerdict } from '../../utils/quality';
 import { readMacros } from '../../utils/nutrition';
 import { addScanLogEntry } from '../../utils/scanLog';
@@ -138,6 +142,8 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
   const [confirm, setConfirm] = useState<QualityVerdict | null>(null);
   const [logged, setLogged] = useState(false);
   const [detectionResult] = useState<DetectionResult>(DEFAULT_DETECTION_RESULT);
+  const [activeTab, setActiveTab] = useState<'gizi' | 'kelayakan'>('gizi');
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Kalkulasi total nutrisi secara dinamis dari item yang terdeteksi
   const totalNutrition = useMemo(() => {
@@ -257,6 +263,8 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
     setSelectedItem(null);
     setRotation(0);
     setZoomScale(1);
+    setActiveTab('gizi');
+    setIsChatOpen(false);
   };
 
   const handleRotate = () => {
@@ -499,15 +507,7 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
         ) : (
           /* Scanned State Results */
           <View style={styles.scannedResults}>
-            {/* Tabel Ringkasan Kandungan Gizi Biru/Oranye (Sesuai Referensi Gambar) */}
-            <NutritionSummaryTable
-              totalNutrition={totalNutrition}
-              items={detectionResult.items}
-              selectedItem={selectedItem}
-              onSelectItem={setSelectedItem}
-            />
-
-            {/* Scanned Header with Reset */}
+            {/* Scanned Header with Batch Code & Reset */}
             <View style={styles.scannedHeader}>
               <View style={styles.scannedBatchBadge}>
                 <Check size={14} color="#15803D" strokeWidth={2.5} />
@@ -525,135 +525,260 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
               </TouchableOpacity>
             </View>
 
-            {/* Scenario Switcher for QA / Testing */}
-            <View style={styles.scenarioRow}>
-              {MOCK_SCAN_SCENARIOS.map((item) => {
-                const isSelected = item.key === scenarioKey;
-                return (
-                  <TouchableOpacity
-                    key={item.key}
-                    style={[styles.scenarioChip, isSelected && styles.scenarioChipActive]}
-                    onPress={() => setScenarioKey(item.key)}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                    accessibilityLabel={`Skenario ${item.label}: ${item.description}`}
+            {/* Segmented Control (Pill-shaped Tab Switcher) */}
+            <View style={styles.segmentedControlWrapper}>
+              <View style={styles.segmentedControl}>
+                <TouchableOpacity
+                  style={[
+                    styles.segmentBtn,
+                    activeTab === 'gizi' && styles.segmentBtnActive,
+                  ]}
+                  onPress={() => setActiveTab('gizi')}
+                  activeOpacity={0.8}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: activeTab === 'gizi' }}
+                  accessibilityLabel="Tab Informasi Gizi"
+                >
+                  <Sparkles
+                    size={15}
+                    color={activeTab === 'gizi' ? '#0C4A94' : '#64748B'}
+                    strokeWidth={activeTab === 'gizi' ? 2.5 : 2}
+                  />
+                  <Text
+                    style={[
+                      styles.segmentBtnText,
+                      activeTab === 'gizi' && styles.segmentBtnTextActive,
+                    ]}
                   >
-                    <Text style={[styles.scenarioText, isSelected && styles.scenarioTextActive]}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                    Informasi Gizi
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.segmentBtn,
+                    activeTab === 'kelayakan' && styles.segmentBtnActive,
+                  ]}
+                  onPress={() => setActiveTab('kelayakan')}
+                  activeOpacity={0.8}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: activeTab === 'kelayakan' }}
+                  accessibilityLabel="Tab Validasi Kelayakan"
+                >
+                  <ShieldCheck
+                    size={15}
+                    color={activeTab === 'kelayakan' ? '#0C4A94' : '#64748B'}
+                    strokeWidth={activeTab === 'kelayakan' ? 2.5 : 2}
+                  />
+                  <Text
+                    style={[
+                      styles.segmentBtnText,
+                      activeTab === 'kelayakan' && styles.segmentBtnTextActive,
+                    ]}
+                  >
+                    Validasi Kelayakan
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
-            <ChecklistSection
-              step="Tahap 1"
-              title="Verifikasi QR boks"
-              caption={`Selesai masak ${scenario.payload.cookFinishedAt}, batas aman 4 jam`}
-              rows={qr.checks.map((check) => ({
-                id: check.key,
-                label: check.label,
-                value: check.value,
-                note: check.requirement,
-                color: check.passed ? '#15803D' : '#B91C1C',
-              }))}
-            />
+            {/* VIEW A: INFORMASI GIZI (DEFAULT) */}
+            {activeTab === 'gizi' ? (
+              <View style={styles.viewContainer}>
+                {/* Tabel Ringkasan Kandungan Gizi Biru/Oranye (Sesuai Referensi Gambar) */}
+                <NutritionSummaryTable
+                  totalNutrition={totalNutrition}
+                  items={detectionResult.items}
+                  selectedItem={selectedItem}
+                  onSelectItem={setSelectedItem}
+                />
 
-            <ChecklistSection
-              step="Tahap 2"
-              title="Deteksi visual porsi"
-              caption="Empat kategori yang diperiksa model"
-              rows={scenario.signals.map((signal) => ({
-                id: signal.key,
-                label: signal.label,
-                value: signal.finding,
-                note: undefined,
-                color: SEVERITY_COLOR[signal.severity],
-              }))}
-            />
-
-            <View style={[styles.decisionCard, { borderColor: verdict.color }]}>
-              <Text style={styles.decisionStep}>Keputusan mutu</Text>
-              <View style={styles.decisionScoreRow}>
-                <Text style={[styles.decisionScore, { color: verdict.color }]}>{scenario.score}</Text>
-                <Text style={styles.decisionScoreUnit}>skor keamanan</Text>
-              </View>
-              <Text style={[styles.decisionLabel, { color: verdict.color }]}>{verdict.label}</Text>
-              <Text style={styles.decisionAction}>{verdict.action}</Text>
-              {verdict.reasons.length > 0 && (
-                <View style={styles.reasonList}>
-                  {verdict.reasons.map((reason) => (
-                    <Text key={reason} style={styles.reasonText}>
-                      {reason}
-                    </Text>
+                {/* Estimasi Makronutrien Target Porsi (Progress Bars) */}
+                <View style={styles.macroSection}>
+                  <Text style={styles.sectionTitle}>Estimasi makronutrien target porsi</Text>
+                  <Text style={styles.sectionCaption}>
+                    Target kelompok SD atas. Estimasi dari segmentasi visual, bukan timbangan.
+                  </Text>
+                  {macros.map((macro) => (
+                    <View key={macro.key} style={styles.macroRow}>
+                      <Text style={styles.macroLabel}>
+                        {macro.label} · {macro.unit}
+                      </Text>
+                      <Text style={styles.macroValue}>
+                        {macro.estimated} / {macro.target}
+                      </Text>
+                      <View style={styles.macroTrack}>
+                        <View style={[styles.macroFill, { width: `${macro.ratio}%` }]} />
+                      </View>
+                      <Text style={styles.macroPercent}>{macro.percentage}% target</Text>
+                    </View>
                   ))}
                 </View>
-              )}
-              <View style={styles.holdingRow}>
-                <Text style={styles.holdingText}>
-                  Suhu holding {scenario.holdingTempC}°C · sisa waktu {scenario.minutesToDeadline} menit
-                </Text>
-              </View>
-            </View>
 
-            <View style={styles.macroSection}>
-              <Text style={styles.sectionTitle}>Estimasi makronutrien target porsi</Text>
-              <Text style={styles.sectionCaption}>
-                Target kelompok SD atas. Estimasi dari segmentasi visual, bukan timbangan.
-              </Text>
-              {macros.map((macro) => (
-                <View key={macro.key} style={styles.macroRow}>
-                  <Text style={styles.macroLabel}>
-                    {macro.label} · {macro.unit}
-                  </Text>
-                  <Text style={styles.macroValue}>
-                    {macro.estimated} / {macro.target}
-                  </Text>
-                  <View style={styles.macroTrack}>
-                    <View style={[styles.macroFill, { width: `${macro.ratio}%` }]} />
+                {/* Contextual AI Consult Card */}
+                <TouchableOpacity
+                  style={styles.aiConsultCard}
+                  onPress={() => setIsChatOpen(true)}
+                  activeOpacity={0.88}
+                  accessibilityRole="button"
+                  accessibilityLabel="Buka konsultasi gizi AI"
+                >
+                  <View style={styles.aiConsultLeft}>
+                    <View style={styles.aiConsultBadge}>
+                      <Bot size={13} color="#0C4A94" strokeWidth={2.4} />
+                      <Text style={styles.aiConsultBadgeText}>Tanya KawanGizi AI</Text>
+                    </View>
+                    <Text style={styles.aiConsultTitle}>Kesesuaian Gizi untuk Siswa SD</Text>
+                    <Text style={styles.aiConsultDescription}>
+                      Ingin tahu apakah protein {formatNumber(totalNutrition.protein)}g ini cukup untuk anak usia 10 tahun? Tanyakan langsung ke asisten AI.
+                    </Text>
                   </View>
-                  <Text style={styles.macroPercent}>{macro.percentage}% target</Text>
+                  <View style={styles.aiConsultActionBtn}>
+                    <Sparkles size={16} color="#FFFFFF" strokeWidth={2.2} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* VIEW B: VALIDASI KELAYAKAN */
+              <View style={styles.viewContainer}>
+                {/* Scenario Switcher / Manual Decision Buttons for QA / Testing */}
+                <View style={styles.scenarioRow}>
+                  {MOCK_SCAN_SCENARIOS.map((item) => {
+                    const isSelected = item.key === scenarioKey;
+                    return (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={[styles.scenarioChip, isSelected && styles.scenarioChipActive]}
+                        onPress={() => setScenarioKey(item.key)}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        accessibilityLabel={`Skenario ${item.label}: ${item.description}`}
+                      >
+                        <Text style={[styles.scenarioText, isSelected && styles.scenarioTextActive]}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-              ))}
-            </View>
 
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={[styles.secondaryBtn, verdict.verdict === 'ditolak' && styles.dangerBtn]}
-                onPress={() => handleAction(false)}
-                activeOpacity={0.88}
-                accessibilityRole="button"
-                accessibilityLabel="Tolak dan amankan sampel"
-              >
-                <ShieldAlert size={18} color="#B91C1C" strokeWidth={2.2} />
-                <Text style={[styles.secondaryBtnText, { color: '#B91C1C' }]}>
-                  Tolak & amankan sampel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.primaryBtn,
-                  verdict.verdict === 'ditolak' && styles.primaryBtnBlocked,
-                ]}
-                onPress={() => handleAction(true)}
-                activeOpacity={0.88}
-                accessibilityRole="button"
-                accessibilityLabel="Setujui porsi"
-                accessibilityState={{ disabled: verdict.verdict === 'ditolak' }}
-              >
-                <Check size={18} color="#1E293B" strokeWidth={2.5} />
-                <Text style={styles.primaryBtnText}>Setujui porsi</Text>
-              </TouchableOpacity>
-            </View>
+                {/* Tahap 1: Verifikasi QR boks */}
+                <ChecklistSection
+                  step="Tahap 1"
+                  title="Verifikasi QR boks"
+                  caption={`Selesai masak ${scenario.payload.cookFinishedAt}, batas aman 4 jam`}
+                  rows={qr.checks.map((check) => ({
+                    id: check.key,
+                    label: check.label,
+                    value: check.value,
+                    note: check.requirement,
+                    color: check.passed ? '#15803D' : '#B91C1C',
+                  }))}
+                />
 
-            <View style={styles.localRow}>
-              <WifiOff size={16} color="#64748B" />
-              <Text style={styles.localText}>
-                Belum ada pindaian tersimpan. Prototipe ini belum punya penyimpanan lokal,
-                jadi riwayat Offline-First belum berfungsi.
-              </Text>
-            </View>
+                {/* Tahap 2: Deteksi visual porsi */}
+                <ChecklistSection
+                  step="Tahap 2"
+                  title="Deteksi visual porsi"
+                  caption="Empat kategori yang diperiksa model"
+                  rows={scenario.signals.map((signal) => ({
+                    id: signal.key,
+                    label: signal.label,
+                    value: signal.finding,
+                    note: undefined,
+                    color: SEVERITY_COLOR[signal.severity],
+                  }))}
+                />
+
+                {/* Keputusan Mutu Card */}
+                <View style={[styles.decisionCard, { borderColor: verdict.color }]}>
+                  <Text style={styles.decisionStep}>Keputusan mutu</Text>
+                  <View style={styles.decisionScoreRow}>
+                    <Text style={[styles.decisionScore, { color: verdict.color }]}>{scenario.score}</Text>
+                    <Text style={styles.decisionScoreUnit}>skor keamanan</Text>
+                  </View>
+                  <Text style={[styles.decisionLabel, { color: verdict.color }]}>{verdict.label}</Text>
+                  <Text style={styles.decisionAction}>{verdict.action}</Text>
+                  {verdict.reasons.length > 0 && (
+                    <View style={styles.reasonList}>
+                      {verdict.reasons.map((reason) => (
+                        <Text key={reason} style={styles.reasonText}>
+                          {reason}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                  <View style={styles.holdingRow}>
+                    <Text style={styles.holdingText}>
+                      Suhu holding {scenario.holdingTempC}°C · sisa waktu {scenario.minutesToDeadline} menit
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Contextual AI Safety Check Banner */}
+                <TouchableOpacity
+                  style={styles.safetyAiBanner}
+                  onPress={() => setIsChatOpen(true)}
+                  activeOpacity={0.88}
+                  accessibilityRole="button"
+                  accessibilityLabel="Konsultasi keamanan pangan dengan AI"
+                >
+                  <View style={styles.safetyAiBannerLeft}>
+                    <View style={styles.safetyAiBadge}>
+                      <ShieldCheck size={12} color="#15803D" strokeWidth={2.4} />
+                      <Text style={styles.safetyAiBadgeText}>Kepatuhan HACCP</Text>
+                    </View>
+                    <Text style={styles.safetyAiTitle}>Tanyakan Batas Suhu Holding & Alergen</Text>
+                    <Text style={styles.safetyAiCaption}>
+                      AI siap memvalidasi potensi kontaminasi dan kepatuhan batas suhu kritis 60°C.
+                    </Text>
+                  </View>
+                  <View style={styles.safetyAiActionBtn}>
+                    <Bot size={16} color="#FFFFFF" strokeWidth={2.2} />
+                  </View>
+                </TouchableOpacity>
+
+                {/* Action Decision Buttons */}
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, verdict.verdict === 'ditolak' && styles.dangerBtn]}
+                    onPress={() => handleAction(false)}
+                    activeOpacity={0.88}
+                    accessibilityRole="button"
+                    accessibilityLabel="Tolak dan amankan sampel"
+                  >
+                    <ShieldAlert size={18} color="#B91C1C" strokeWidth={2.2} />
+                    <Text style={[styles.secondaryBtnText, { color: '#B91C1C' }]}>
+                      Tolak & amankan sampel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.primaryBtn,
+                      verdict.verdict === 'ditolak' && styles.primaryBtnBlocked,
+                    ]}
+                    onPress={() => handleAction(true)}
+                    activeOpacity={0.88}
+                    accessibilityRole="button"
+                    accessibilityLabel="Setujui porsi"
+                    accessibilityState={{ disabled: verdict.verdict === 'ditolak' }}
+                  >
+                    <Check size={18} color="#1E293B" strokeWidth={2.5} />
+                    <Text style={styles.primaryBtnText}>Setujui porsi</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Local Offline Banner */}
+                <View style={styles.localRow}>
+                  <WifiOff size={16} color="#64748B" />
+                  <Text style={styles.localText}>
+                    Belum ada pindaian tersimpan. Prototipe ini belum punya penyimpanan lokal,
+                    jadi riwayat Offline-First belum berfungsi.
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -876,6 +1001,40 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
           </Text>
         ))}
       </BottomSheet>
+
+      {/* Floating Action Button (FAB) Asisten Tanya AI Gizi (Always Visible di kedua tab) */}
+      {hasScanned && (
+        <TouchableOpacity
+          style={styles.chatFab}
+          onPress={() => setIsChatOpen(true)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Buka Tanya Asisten AI Gizi"
+        >
+          <View style={styles.chatFabInner}>
+            <View style={styles.chatFabIconBg}>
+              <Bot size={20} color="#FFFFFF" strokeWidth={2.4} />
+              <View style={styles.chatFabSparklePill}>
+                <Sparkles size={8} color="#F59E0B" fill="#F59E0B" />
+              </View>
+            </View>
+            <Text style={styles.chatFabLabel}>Tanya AI Gizi</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* Modal Asisten Tanya AI Gizi Kontekstual */}
+      <ContextualAiChatSheet
+        visible={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        batchCode={scenario.payload.code}
+        totalNutrition={totalNutrition}
+        detectedItems={detectionResult.items}
+        score={scenario.score}
+        holdingTempC={scenario.holdingTempC}
+        minutesToDeadline={scenario.minutesToDeadline}
+        verdict={verdict}
+      />
     </View>
   );
 };
@@ -1844,6 +2003,201 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     marginTop: 18,
+  },
+  // Segmented Control (Pill Switcher)
+  segmentedControlWrapper: {
+    paddingHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EDEEF0',
+    borderRadius: 999,
+    padding: 4,
+  },
+  segmentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  segmentBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  segmentBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  segmentBtnTextActive: {
+    color: '#0C4A94',
+    fontWeight: '800',
+  },
+  viewContainer: {
+    width: '100%',
+  },
+  // Contextual AI Consult Cards & Banners
+  aiConsultCard: {
+    marginHorizontal: 16,
+    marginTop: 24,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  aiConsultLeft: {
+    flex: 1,
+  },
+  aiConsultBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  aiConsultBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  aiConsultTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1E3A8A',
+    marginBottom: 2,
+  },
+  aiConsultDescription: {
+    fontSize: 11.5,
+    color: '#3B82F6',
+    lineHeight: 16,
+  },
+  aiConsultActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#0C4A94',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0C4A94',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  safetyAiBanner: {
+    marginHorizontal: 16,
+    marginTop: 20,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  safetyAiBannerLeft: {
+    flex: 1,
+  },
+  safetyAiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  safetyAiBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  safetyAiTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#14532D',
+    marginBottom: 2,
+  },
+  safetyAiCaption: {
+    fontSize: 11.5,
+    color: '#16A34A',
+    lineHeight: 16,
+  },
+  safetyAiActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#15803D',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#15803D',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  // Floating Action Button (FAB)
+  chatFab: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 28 : 20,
+    right: 16,
+    zIndex: 99,
+    borderRadius: 999,
+    backgroundColor: '#0F172A',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  chatFabInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  chatFabIconBg: {
+    position: 'relative',
+  },
+  chatFabSparklePill: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 6,
+    padding: 1,
+  },
+  chatFabLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
   scannedBatchBadge: {
     flexDirection: 'row',
