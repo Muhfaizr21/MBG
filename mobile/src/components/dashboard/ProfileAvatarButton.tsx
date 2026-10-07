@@ -76,7 +76,7 @@ export const ProfileAvatarButton: React.FC<ProfileAvatarButtonProps> = ({
       setIsLoggingOut(true);
       await logout();
       setShowLogoutConfirm(false);
-      router.replace('/login');
+      router.replace('/welcome' as any);
     } catch (err) {
       console.warn('Logout error:', err);
     } finally {

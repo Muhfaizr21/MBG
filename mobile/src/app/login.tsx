@@ -11,7 +11,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link, Redirect } from 'expo-router';
+import { Link, Redirect, useRouter } from 'expo-router';
+import { ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 
 const DEMO_ACCOUNTS = [
@@ -19,6 +20,7 @@ const DEMO_ACCOUNTS = [
 ];
 
 export default function LoginScreen() {
+  const router = useRouter();
   const { user, loading, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,6 +58,18 @@ export default function LoginScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.topNavRow}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.replace('/welcome')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Kembali ke Layar Pembuka"
+          >
+            <ArrowLeft size={20} color="#1E293B" />
+          </TouchableOpacity>
+        </View>
+
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled">
@@ -150,6 +164,21 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  topNavRow: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 0,
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   scrollContent: {
     flexGrow: 1,

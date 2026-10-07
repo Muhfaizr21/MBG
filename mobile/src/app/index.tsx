@@ -27,9 +27,9 @@ export default function MobileAppEntry() {
     );
   }
 
-  // Belum login (atau role bukan akun mobile): paksa ke layar login.
+  // Belum login (atau role bukan akun mobile): paksa ke layar welcome awal.
   if (!user) {
-    return <Redirect href="/login" />;
+    return <Redirect href="/welcome" />;
   }
 
   const handleCenterAction = () => {

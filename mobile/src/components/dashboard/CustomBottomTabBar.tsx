@@ -28,9 +28,9 @@ export interface TabDefinition {
 
 export const TABS: TabDefinition[] = [
   { key: 'home', label: 'Beranda', icon: Home, hint: 'Beranda dan ringkasan kuota MBG' },
-  { key: 'explore', label: 'Distribusi', icon: Compass, hint: 'Verifikasi distribusi per kelas' },
   { key: 'action', label: 'Skrining', icon: Camera, hint: 'Pindai boks & evaluasi gizi AI' },
   { key: 'journey', label: 'Riwayat', icon: FileText, hint: 'Riwayat BAST dan presensi kehadiran' },
+  { key: 'explore', label: 'Distribusi', icon: Compass, hint: 'Verifikasi distribusi per kelas' },
   { key: 'community', label: 'Komunitas', icon: Users, hint: 'Forum komunikasi sesama guru validator' },
 ];
 

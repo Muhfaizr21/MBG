@@ -36,7 +36,7 @@ export const ProfileTabContent: React.FC<ProfileTabContentProps> = ({ onBack }) 
       setIsLoggingOut(true);
       await logout();
       setShowLogoutModal(false);
-      router.replace('/login');
+      router.replace('/welcome' as any);
     } catch (err) {
       console.warn('Logout error:', err);
     } finally {
