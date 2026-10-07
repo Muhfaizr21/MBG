@@ -134,7 +134,7 @@ export const ProfileAvatarButton: React.FC<ProfileAvatarButtonProps> = ({
                   {user.name}
                 </Text>
                 <Text style={styles.menuHeaderRole} numberOfLines={1}>
-                  Guru Validator · {user.schoolName}
+                  {user.roleTitle}
                 </Text>
               </View>
 
@@ -161,7 +161,9 @@ export const ProfileAvatarButton: React.FC<ProfileAvatarButtonProps> = ({
                 accessibilityLabel="Keluar dari Akun"
               >
                 <LogOut size={18} color="#EF4444" />
-                <Text style={styles.menuItemTextKeluar}>Keluar</Text>
+                <Text style={styles.menuItemTextKeluar}>
+                  {user.roleTitle.includes('Tamu') ? 'Keluar Mode Tamu' : 'Keluar'}
+                </Text>
               </Pressable>
             </Pressable>
           </View>
@@ -177,13 +179,14 @@ export const ProfileAvatarButton: React.FC<ProfileAvatarButtonProps> = ({
           if (!isLoggingOut) setShowLogoutConfirm(false);
         }}
       >
-        <Pressable
-          style={styles.dialogBackdrop}
-          onPress={() => {
-            if (!isLoggingOut) setShowLogoutConfirm(false);
-          }}
-        >
-          <Pressable style={styles.dialogCard} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.dialogBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              if (!isLoggingOut) setShowLogoutConfirm(false);
+            }}
+          />
+          <View style={styles.dialogCard}>
             <View style={styles.logoutIconWrapper}>
               <LogOut size={26} color="#EF4444" />
             </View>
@@ -215,8 +218,8 @@ export const ProfileAvatarButton: React.FC<ProfileAvatarButtonProps> = ({
                 )}
               </TouchableOpacity>
             </View>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </>
   );
@@ -313,6 +316,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     alignItems: 'center',
+    zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,

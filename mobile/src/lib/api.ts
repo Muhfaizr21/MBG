@@ -4,6 +4,7 @@
 
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { saveAuthSession, loadAuthSession, clearAuthSession } from './storage';
 
 function resolveApiBase(): string {
   if (Platform.OS === 'web') {
@@ -106,6 +107,12 @@ export async function loginRequest(email: string, password: string): Promise<Aut
     body: JSON.stringify({ email, password }),
   });
   accessToken = body.data.accessToken;
+  await saveAuthSession(
+    body.data.accessToken,
+    body.data.user,
+    body.data.permissions || [],
+    false,
+  );
   return body.data;
 }
 
@@ -137,6 +144,7 @@ export async function logoutRequest(): Promise<void> {
     await api('/api/auth/logout', { method: 'POST' });
   } finally {
     accessToken = null;
+    await clearAuthSession();
   }
 }
 
@@ -182,18 +190,49 @@ export async function scanRequest(params: ScanRequestParams): Promise<any> {
   return api('/api/scans', { method: 'POST', body: form });
 }
 
-/** Sesi diam-diam saat aplikasi dibuka: pakai token yang masih hidup, lalu refresh cookie. */
+/** Sesi diam-diam saat aplikasi dibuka: cek persistent storage lebih dulu, lalu refresh cookie bila perlu. */
 export async function bootstrapSession(): Promise<AuthPayload | null> {
   try {
-    if (accessToken) {
-      return await meRequest();
+    // 1. Cek sesi tersimpan di storage (localStorage / AsyncStorage)
+    const stored = await loadAuthSession();
+    if (stored.token && stored.user) {
+      accessToken = stored.token;
+
+      // Mode Tamu: kembalikan langsung tanpa perlu panggil backend
+      if (stored.isGuest || stored.user.role === 'guest') {
+        return {
+          accessToken: stored.token,
+          user: stored.user,
+          permissions: stored.permissions,
+        };
+      }
+
+      // Akun validator: verifikasi /api/auth/me, fallback ke stored jika server belum siap
+      try {
+        const me = await meRequest();
+        await saveAuthSession(stored.token, me.user, me.permissions || stored.permissions, false);
+        return me;
+      } catch {
+        return {
+          accessToken: stored.token,
+          user: stored.user,
+          permissions: stored.permissions,
+        };
+      }
     }
+
+    // 2. Jika tidak ada di storage, coba refresh cookie
     const refreshed = await tryRefresh();
     if (refreshed) {
-      return await meRequest();
+      const me = await meRequest();
+      if (refreshed.accessToken) {
+        await saveAuthSession(refreshed.accessToken, me.user, me.permissions || [], false);
+      }
+      return me;
     }
   } catch {
     accessToken = null;
+    await clearAuthSession();
   }
   return null;
 }

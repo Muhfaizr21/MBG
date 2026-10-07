@@ -17,6 +17,18 @@ export interface RoleProviderProps {
 }
 
 function toProfile(backendUser: BackendUser): UserProfile {
+  const isGuest = backendUser.role === 'guest';
+  if (isGuest) {
+    return {
+      id: backendUser.id,
+      name: 'Mode Tamu',
+      role: 'guru',
+      roleTitle: 'Pratinjau Publik (Mode Tamu)',
+      schoolName: 'Pratinjau Terbatas MBG',
+      npsn: '-',
+      assignedSPPG: '-',
+    };
+  }
   return {
     id: backendUser.id,
     name: backendUser.fullName,

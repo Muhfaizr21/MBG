@@ -6,15 +6,18 @@ import {
   loginRequest,
   logoutRequest,
 } from '../lib/api';
+import { saveAuthSession, clearAuthSession } from '../lib/storage';
 
-/** Mobile hanya melayani akun lapangan validator; akun lain ditolak. */
-const MOBILE_ALLOWED_ROLES = ['validator'];
+/** Mobile melayani akun validator resmi serta mode tamu terbatas. */
+const MOBILE_ALLOWED_ROLES = ['validator', 'guest'];
 
 interface AuthContextType {
   user: BackendUser | null;
   permissions: string[];
   loading: boolean;
+  isGuest: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginAsGuest: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -32,15 +35,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const payload = await bootstrapSession();
-      if (cancelled) return;
-      if (payload && MOBILE_ALLOWED_ROLES.includes(payload.user.role)) {
-        applySession(payload, (u, p) => {
-          setUser(u);
-          setPermissions(p);
-        });
+      try {
+        const payload = await bootstrapSession();
+        if (cancelled) return;
+        if (payload && MOBILE_ALLOWED_ROLES.includes(payload.user.role)) {
+          applySession(payload, (u, p) => {
+            setUser(u);
+            setPermissions(p);
+          });
+        }
+      } catch (err) {
+        console.warn('Bootstrap session error:', err);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -61,20 +71,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const loginAsGuest = useCallback(async () => {
+    const guestUser: BackendUser = {
+      id: 'guest-preview',
+      fullName: 'Mode Tamu',
+      email: 'tamu@kawangizi.id',
+      role: 'guest',
+      schoolName: 'Pratinjau Publik',
+    };
+    const guestPerms = ['view:scanner', 'view:community'];
+    await saveAuthSession('guest-token', guestUser, guestPerms, true);
+    setUser(guestUser);
+    setPermissions(guestPerms);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await logoutRequest();
     } catch (err) {
       console.warn('Logout request failed:', err);
     } finally {
+      await clearAuthSession();
       setUser(null);
       setPermissions([]);
     }
   }, []);
 
+  const isGuest = user?.role === 'guest';
+
   const value = useMemo(
-    () => ({ user, permissions, loading, login, logout }),
-    [user, permissions, loading, login, logout],
+    () => ({ user, permissions, loading, isGuest, login, loginAsGuest, logout }),
+    [user, permissions, loading, isGuest, login, loginAsGuest, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

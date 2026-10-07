@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   Image,
   Dimensions,
   Modal,
-  Alert,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -16,7 +18,6 @@ import {
   ShieldCheck,
   CircleHelp,
   Sparkles,
-  Zap,
   Check,
   CheckCircle2,
   Scan,
@@ -25,7 +26,6 @@ import {
   BookOpen,
   Info,
   X,
-  FileText,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
@@ -34,6 +34,33 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const BENTO_MEAL_IMAGE =
   'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1000&q=80';
+
+const FEATURE_SLIDES = [
+  {
+    id: 'slide-1',
+    title: 'Skrining Kamera Instan',
+    desc: 'Deteksi visual risiko basi, kontaminasi mikroba, dan anomali aroma dalam 3 detik sebelum distribusi ke ruang kelas.',
+    icon: Scan,
+    iconColor: '#D97706',
+    iconBg: '#FEF3C7',
+  },
+  {
+    id: 'slide-2',
+    title: 'Kalkulasi Gizi Otomatis',
+    desc: 'Estimasi presisi karbohidrat, protein hewani, serat sayur, dan kecukupan kalori standar Bappenas & Kemenkes.',
+    icon: PieChart,
+    iconColor: '#059669',
+    iconBg: '#DCFCE7',
+  },
+  {
+    id: 'slide-3',
+    title: 'Terkoneksi Satgas MBG',
+    desc: 'BAST digital otomatis terunggah ke dasbor pusat, mengunci akuntabilitas katering dan kepastian keselamatan siswa.',
+    icon: ShieldCheck,
+    iconColor: '#2563EB',
+    iconBg: '#DBEAFE',
+  },
+];
 
 export interface WelcomeScreenProps {
   onLoginPress?: () => void;
@@ -47,10 +74,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onSopPress,
 }) => {
   const router = useRouter();
-  const { login } = useAuth();
+  const { loginAsGuest } = useAuth();
   const [showSopModal, setShowSopModal] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [isGuestLoading, setIsGuestLoading] = useState(false);
+  const [activeSlide, setActiveSlide] = useState(0);
+
+  const carouselRef = useRef<ScrollView>(null);
+  const slideWidth = Math.min(SCREEN_WIDTH - 40, 380);
 
   const handleNavigateLogin = () => {
     if (onLoginPress) {
@@ -65,10 +96,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       onGuestPress();
       return;
     }
-    // Mode Tamu / Demo: Auto-login dengan akun demo validator
+    // Mode Tamu: Akses terbatas hanya untuk Skrining dan Komunitas (bukan akun validator resmi)
     try {
       setIsGuestLoading(true);
-      await login('validator@sdn01menteng.sch.id', 'Validator123!');
+      await loginAsGuest();
       router.replace('/');
     } catch (err) {
       console.warn('Guest login error:', err);
@@ -83,6 +114,14 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       onSopPress();
     } else {
       setShowSopModal(true);
+    }
+  };
+
+  const handleCarouselScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / (slideWidth + 12));
+    if (index >= 0 && index < FEATURE_SLIDES.length && index !== activeSlide) {
+      setActiveSlide(index);
     }
   };
 
@@ -199,53 +238,59 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </View>
         </View>
 
-        {/* Value Proposition Feature Cards Section */}
-        <View style={styles.featuresSection}>
-          {/* Card 1: Skrining Kamera Instan */}
-          <View style={styles.featureCard}>
-            <View style={styles.featureIconBoxAmber}>
-              <Scan size={22} color="#D97706" strokeWidth={2.4} />
-            </View>
-            <View style={styles.featureContent}>
-              <Text style={styles.featureTitle}>Skrining Kamera Instan</Text>
-              <Text style={styles.featureDesc}>
-                Deteksi visual risiko basi, kontaminasi mikroba, dan anomali aroma dalam 3 detik sebelum distribusi ke ruang kelas.
-              </Text>
-            </View>
-          </View>
-
-          {/* Card 2: Kalkulasi Gizi Otomatis */}
-          <View style={styles.featureCard}>
-            <View style={styles.featureIconBoxGreen}>
-              <PieChart size={22} color="#059669" strokeWidth={2.4} />
-            </View>
-            <View style={styles.featureContent}>
-              <Text style={styles.featureTitle}>Kalkulasi Gizi Otomatis</Text>
-              <Text style={styles.featureDesc}>
-                Estimasi presisi karbohidrat, protein hewani, serat sayur, dan kecukupan kalori standar Bappenas & Kemenkes.
-              </Text>
-            </View>
-          </View>
-
-          {/* Card 3: Terkoneksi Satgas MBG */}
-          <View style={styles.featureCard}>
-            <View style={styles.featureIconBoxBlue}>
-              <ShieldCheck size={22} color="#2563EB" strokeWidth={2.4} />
-            </View>
-            <View style={styles.featureContent}>
-              <Text style={styles.featureTitle}>Terkoneksi Satgas MBG</Text>
-              <Text style={styles.featureDesc}>
-                BAST digital otomatis terunggah ke dasbor pusat, mengunci akuntabilitas katering dan kepastian keselamatan siswa.
-              </Text>
-            </View>
-          </View>
+        {/* Feature Cards Horizontal Carousel */}
+        <View style={styles.carouselSection}>
+          <ScrollView
+            ref={carouselRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            decelerationRate="fast"
+            snapToInterval={slideWidth + 12}
+            snapToAlignment="start"
+            contentContainerStyle={styles.carouselContainer}
+            onScroll={handleCarouselScroll}
+            onMomentumScrollEnd={handleCarouselScroll}
+            scrollEventThrottle={16}
+          >
+            {FEATURE_SLIDES.map((slide) => {
+              const IconComponent = slide.icon;
+              return (
+                <View
+                  key={slide.id}
+                  style={[styles.carouselCard, { width: slideWidth }]}
+                >
+                  <View style={[styles.featureIconBox, { backgroundColor: slide.iconBg }]}>
+                    <IconComponent size={22} color={slide.iconColor} strokeWidth={2.4} />
+                  </View>
+                  <View style={styles.featureContent}>
+                    <Text style={styles.featureTitle}>{slide.title}</Text>
+                    <Text style={styles.featureDesc}>{slide.desc}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
         </View>
 
-        {/* Pager Indicator Dots */}
+        {/* Dynamic Pager Indicator Dots */}
         <View style={styles.pagerDotsRow}>
-          <View style={styles.pagerDotActive} />
-          <View style={styles.pagerDotInactive} />
-          <View style={styles.pagerDotInactive} />
+          {FEATURE_SLIDES.map((slide, idx) => (
+            <TouchableOpacity
+              key={slide.id}
+              onPress={() => {
+                carouselRef.current?.scrollTo({ x: idx * (slideWidth + 12), animated: true });
+                setActiveSlide(idx);
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+              style={[
+                styles.pagerDot,
+                idx === activeSlide ? styles.pagerDotActive : styles.pagerDotInactive,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Slide ${idx + 1}: ${slide.title}`}
+            />
+          ))}
         </View>
 
         {/* Call to Action Buttons */}
@@ -306,6 +351,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         onRequestClose={() => setShowSopModal(false)}
       >
         <View style={styles.modalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowSopModal(false)}
+            accessibilityLabel="Tutup latar panduan"
+          />
           <View style={styles.sopModalCard}>
             <View style={styles.modalHeaderRow}>
               <View style={styles.modalTitleRow}>
@@ -315,12 +365,16 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <TouchableOpacity
                 onPress={() => setShowSopModal(false)}
                 style={styles.modalCloseBtn}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Tutup"
               >
                 <X size={20} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.sopScrollView}>
+            <ScrollView style={styles.sopScrollView} showsVerticalScrollIndicator={false}>
               <View style={styles.sopItem}>
                 <Text style={styles.sopNumber}>01</Text>
                 <View style={styles.sopItemText}>
@@ -375,6 +429,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <TouchableOpacity
               style={styles.modalConfirmBtn}
               onPress={() => setShowSopModal(false)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Tutup Panduan"
             >
               <Text style={styles.modalConfirmBtnText}>Tutup Panduan</Text>
             </TouchableOpacity>
@@ -390,7 +447,23 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         onRequestClose={() => setShowInfoModal(false)}
       >
         <View style={styles.modalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowInfoModal(false)}
+            accessibilityLabel="Tutup latar info"
+          />
           <View style={styles.infoModalCard}>
+            <TouchableOpacity
+              style={styles.infoCloseBtn}
+              onPress={() => setShowInfoModal(false)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Tutup"
+            >
+              <X size={20} color="#64748B" />
+            </TouchableOpacity>
+
             <View style={styles.infoIconWrapper}>
               <Info size={32} color="#D97706" />
             </View>
@@ -403,6 +476,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <TouchableOpacity
               style={styles.modalConfirmBtn}
               onPress={() => setShowInfoModal(false)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Mengerti"
             >
               <Text style={styles.modalConfirmBtnText}>Mengerti</Text>
             </TouchableOpacity>
@@ -711,18 +787,21 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
 
-  // Features Section
-  featuresSection: {
+  // Carousel Section
+  carouselSection: {
     width: '100%',
-    gap: 12,
     marginBottom: 16,
   },
-  featureCard: {
+  carouselContainer: {
+    gap: 12,
+    paddingHorizontal: 0,
+  },
+  carouselCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
-    padding: 14,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#F1F5F9',
     gap: 12,
@@ -732,27 +811,10 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 1,
   },
-  featureIconBoxAmber: {
+  featureIconBox: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#FEF3C7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featureIconBoxGreen: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#DCFCE7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featureIconBoxBlue: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#DBEAFE',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -778,16 +840,16 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 20,
   },
-  pagerDotActive: {
-    width: 22,
+  pagerDot: {
     height: 6,
     borderRadius: 3,
+  },
+  pagerDotActive: {
+    width: 22,
     backgroundColor: '#EBA338',
   },
   pagerDotInactive: {
     width: 6,
-    height: 6,
-    borderRadius: 3,
     backgroundColor: '#CBD5E1',
   },
 
@@ -882,6 +944,7 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '100%',
     maxHeight: '80%',
+    zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.15,
@@ -943,12 +1006,14 @@ const styles = StyleSheet.create({
   },
   modalConfirmBtn: {
     backgroundColor: '#EBA338',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
   modalConfirmBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -960,6 +1025,19 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     alignItems: 'center',
+    position: 'relative',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  infoCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    padding: 4,
   },
   infoIconWrapper: {
     width: 56,
@@ -982,6 +1060,6 @@ const styles = StyleSheet.create({
     color: '#64748B',
     lineHeight: 19,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 22,
   },
 });

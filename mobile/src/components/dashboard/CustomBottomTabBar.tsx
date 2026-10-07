@@ -26,12 +26,19 @@ export interface TabDefinition {
   hint: string;
 }
 
-export const TABS: TabDefinition[] = [
+export const VALIDATOR_TABS: TabDefinition[] = [
   { key: 'home', label: 'Beranda', icon: Home, hint: 'Beranda dan ringkasan kuota MBG' },
   { key: 'action', label: 'Skrining', icon: Camera, hint: 'Pindai boks & evaluasi gizi AI' },
   { key: 'journey', label: 'Riwayat', icon: FileText, hint: 'Riwayat BAST dan presensi kehadiran' },
   { key: 'community', label: 'Komunitas', icon: Users, hint: 'Forum komunikasi sesama guru validator' },
 ];
+
+export const GUEST_TABS: TabDefinition[] = [
+  { key: 'action', label: 'Skrining', icon: Camera, hint: 'Pindai boks & evaluasi gizi AI' },
+  { key: 'community', label: 'Komunitas', icon: Users, hint: 'Forum komunikasi sesama guru validator' },
+];
+
+export const TABS = VALIDATOR_TABS;
 
 const INACTIVE = '#64748B';
 const ACTIVE_ORANGE = '#EBA338';
@@ -41,11 +48,13 @@ export interface CustomBottomTabBarProps {
   activeTab: TabKey;
   onTabPress: (tab: TabKey) => void;
   onCenterActionPress?: () => void;
+  isGuest?: boolean;
 }
 
 export const CustomBottomTabBar: React.FC<CustomBottomTabBarProps> = ({
   activeTab,
   onTabPress,
+  isGuest = false,
 }) => {
   const handleTabPress = (key: TabKey) => {
     if (Platform.OS !== 'web') {
@@ -54,10 +63,12 @@ export const CustomBottomTabBar: React.FC<CustomBottomTabBarProps> = ({
     onTabPress(key);
   };
 
+  const displayedTabs = isGuest ? GUEST_TABS : VALIDATOR_TABS;
+
   return (
     <View style={styles.outerContainer} accessibilityRole="tablist">
       <View style={styles.barContainer}>
-        {TABS.map((tab) => {
+        {displayedTabs.map((tab) => {
           const isActive = activeTab === tab.key;
           const Icon = tab.icon;
 

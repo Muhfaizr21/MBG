@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, StatusBar, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect } from 'expo-router';
@@ -14,10 +14,17 @@ import { IncidentScreen } from '../components/dashboard/IncidentScreen';
 
 export default function MobileAppEntry() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabKey>('home');
+  const isGuest = user?.role === 'guest';
+  const [activeTab, setActiveTab] = useState<TabKey>(isGuest ? 'action' : 'home');
   const [flowScreen, setFlowScreen] = useState<'handover' | 'incident' | null>(null);
 
-  // Sesi masih dipulihkan: tahan render utama supaya tidak kedip ke layar login.
+  useEffect(() => {
+    if (isGuest && (activeTab === 'home' || activeTab === 'journey')) {
+      setActiveTab('action');
+    }
+  }, [isGuest, activeTab]);
+
+  // Sesi masih dipulihkan: tahan render utama supaya tidak kedip ke layar welcome.
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -38,10 +45,29 @@ export default function MobileAppEntry() {
 
   const handleExitFlow = () => {
     setFlowScreen(null);
-    setActiveTab('home');
+    setActiveTab(isGuest ? 'action' : 'home');
   };
 
   const renderActiveScreen = () => {
+    // Pembatasan Mode Tamu: hanya Skrining dan Komunitas yang dapat diakses
+    if (isGuest) {
+      switch (activeTab) {
+        case 'community':
+          return <CommunityTabContent onOpenProfile={() => setActiveTab('profile')} />;
+        case 'profile':
+          return <ProfileTabContent onBack={() => setActiveTab('action')} />;
+        case 'action':
+        default:
+          return (
+            <ScannerScreen
+              onExit={handleExitFlow}
+              onOpenProfile={() => setActiveTab('profile')}
+            />
+          );
+      }
+    }
+
+    // Mode Validator Penuh
     switch (activeTab) {
       case 'home':
         return (
@@ -75,9 +101,8 @@ export default function MobileAppEntry() {
     }
   };
 
-  // Layar alur (serah terima) menutupi tab bar: ini satu pekerjaan penuh,
-  // bukan perpindahan antar tab.
-  if (flowScreen !== null) {
+  // Layar alur (serah terima) hanya untuk validator berwenang
+  if (flowScreen !== null && !isGuest) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         {flowScreen === 'handover' ? (
@@ -98,6 +123,7 @@ export default function MobileAppEntry() {
 
       <CustomBottomTabBar
         activeTab={activeTab}
+        isGuest={isGuest}
         onTabPress={(tab) => {
           setFlowScreen(null);
           setActiveTab(tab);
