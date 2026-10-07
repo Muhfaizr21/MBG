@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link, Redirect, useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { useAuth } from '../context/AuthContext';
 
@@ -143,13 +143,6 @@ export default function LoginScreen() {
                 <Text style={styles.demoEmail}>{account.email}</Text>
               </TouchableOpacity>
             ))}
-          </View>
-
-          <View style={styles.footerRow}>
-            <Text style={styles.footerText}>Belum punya akun?</Text>
-            <Link href="/register" style={styles.footerLink}>
-              Daftar
-            </Link>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -296,22 +289,5 @@ const styles = StyleSheet.create({
     color: '#64748B',
     flexShrink: 1,
     textAlign: 'right',
-  },
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-    gap: 4,
-  },
-  footerText: {
-    fontSize: 13,
-    color: '#64748B',
-  },
-  footerLink: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#7C4A03',
-    textDecorationLine: 'underline',
   },
 });

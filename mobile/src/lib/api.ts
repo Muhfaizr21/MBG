@@ -116,24 +116,6 @@ export async function loginRequest(email: string, password: string): Promise<Aut
   return body.data;
 }
 
-export interface RegisterRequestParams {
-  fullName: string;
-  email: string;
-  password: string;
-  role?: string;
-  npsn: string;
-  schoolName: string;
-  sppgId: string;
-}
-
-/** Daftar akun baru (khusus validator; email wajib unik). */
-export async function registerRequest(params: RegisterRequestParams): Promise<any> {
-  return api('/api/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ role: 'validator', ...params }),
-  });
-}
-
 export async function meRequest(): Promise<AuthPayload> {
   const body = await api('/api/auth/me');
   return body.data;
