@@ -192,3 +192,71 @@ export async function clearAuthSession(): Promise<void> {
     }
   }
 }
+
+export async function getStorageItem(key: string): Promise<string | null> {
+  const local = getWebLocalStorage();
+  if (local) {
+    try {
+      const val = local.getItem(key);
+      if (val !== null) return val;
+    } catch {
+      // ignore
+    }
+  }
+
+  const native = getOptionalNativeStorage();
+  if (native?.getItem) {
+    try {
+      const val = await native.getItem(key);
+      if (val !== null) return val;
+    } catch {
+      // ignore
+    }
+  }
+
+  return memoryStorage.get(key) || null;
+}
+
+export async function setStorageItem(key: string, value: string): Promise<void> {
+  const local = getWebLocalStorage();
+  if (local) {
+    try {
+      local.setItem(key, value);
+    } catch {
+      // ignore
+    }
+  }
+
+  memoryStorage.set(key, value);
+
+  const native = getOptionalNativeStorage();
+  if (native?.setItem) {
+    try {
+      await native.setItem(key, value);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function removeStorageItem(key: string): Promise<void> {
+  const local = getWebLocalStorage();
+  if (local) {
+    try {
+      local.removeItem(key);
+    } catch {
+      // ignore
+    }
+  }
+
+  memoryStorage.delete(key);
+
+  const native = getOptionalNativeStorage();
+  if (native?.removeItem) {
+    try {
+      await native.removeItem(key);
+    } catch {
+      // ignore
+    }
+  }
+}

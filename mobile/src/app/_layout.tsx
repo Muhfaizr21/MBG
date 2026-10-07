@@ -6,6 +6,7 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { StatusBar, Platform } from 'react-native';
 import { AuthProvider } from '../context/AuthContext';
 import { RoleProvider } from '../context/RoleContext';
+import { CommunityProvider } from '../context/CommunityContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -42,9 +43,11 @@ export default function RootLayout() {
       <ThemeProvider value={AppTheme}>
         <AuthProvider>
           <RoleProvider>
-            <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
-            <ExpoStatusBar style="dark" />
-            <Slot />
+            <CommunityProvider>
+              <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
+              <ExpoStatusBar style="dark" />
+              <Slot />
+            </CommunityProvider>
           </RoleProvider>
         </AuthProvider>
       </ThemeProvider>

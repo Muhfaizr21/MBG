@@ -3,6 +3,7 @@ import { View, StyleSheet, StatusBar, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
+import { useCommunity } from '../context/CommunityContext';
 import { GuruDashboardView } from '../components/dashboard/GuruDashboardView';
 import { HistoryScreen } from '../components/dashboard/HistoryScreen';
 import { CommunityTabContent } from '../components/dashboard/CommunityTabContent';
@@ -14,6 +15,7 @@ import { IncidentScreen } from '../components/dashboard/IncidentScreen';
 
 export default function MobileAppEntry() {
   const { user, loading } = useAuth();
+  const { activeThreadPost } = useCommunity();
   const isGuest = user?.role === 'guest';
   const [activeTab, setActiveTab] = useState<TabKey>(isGuest ? 'action' : 'home');
   const [flowScreen, setFlowScreen] = useState<'handover' | 'incident' | null>(null);
@@ -121,15 +123,18 @@ export default function MobileAppEntry() {
         {renderActiveScreen()}
       </View>
 
-      <CustomBottomTabBar
-        activeTab={activeTab}
-        isGuest={isGuest}
-        onTabPress={(tab) => {
-          setFlowScreen(null);
-          setActiveTab(tab);
-        }}
-        onCenterActionPress={handleCenterAction}
-      />
+      {/* Sembunyikan navbar bawah saat berada di ThreadDetailScreen */}
+      {!activeThreadPost && (
+        <CustomBottomTabBar
+          activeTab={activeTab}
+          isGuest={isGuest}
+          onTabPress={(tab) => {
+            setFlowScreen(null);
+            setActiveTab(tab);
+          }}
+          onCenterActionPress={handleCenterAction}
+        />
+      )}
     </SafeAreaView>
   );
 }
