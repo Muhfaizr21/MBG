@@ -53,13 +53,23 @@ export default function MobileAppEntry() {
           />
         );
       case 'explore':
-        return <ExploreTabContent />;
+        return <ExploreTabContent onOpenProfile={() => setActiveTab('profile')} />;
       case 'journey':
-        return <HistoryScreen onOpenScanner={handleCenterAction} />;
+        return (
+          <HistoryScreen
+            onOpenScanner={handleCenterAction}
+            onOpenProfile={() => setActiveTab('profile')}
+          />
+        );
       case 'profile':
         return <ProfileTabContent />;
       case 'action':
-        return <ScannerScreen onExit={handleExitFlow} />;
+        return (
+          <ScannerScreen
+            onExit={handleExitFlow}
+            onOpenProfile={() => setActiveTab('profile')}
+          />
+        );
       default:
         return <GuruDashboardView onTriggerScan={handleCenterAction} />;
     }

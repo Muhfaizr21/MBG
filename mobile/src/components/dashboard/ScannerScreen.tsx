@@ -35,6 +35,7 @@ import {
 } from 'lucide-react-native';
 import { BottomSheet } from '../ui/BottomSheet';
 import { ContextualAiChatSheet } from './ContextualAiChatSheet';
+import { FeatureHeader } from './FeatureHeader';
 import { decideQuality, verifyQrPayload, QualityVerdict } from '../../utils/quality';
 import { readMacros } from '../../utils/nutrition';
 import { addScanLogEntry } from '../../utils/scanLog';
@@ -149,7 +150,12 @@ interface BackendScanResult {
   nutritionNote?: string;
 }
 
-export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => {
+export interface ScannerScreenProps {
+  onExit?: () => void;
+  onOpenProfile?: () => void;
+}
+
+export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProfile }) => {
   const [hasScanned, setHasScanned] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -393,32 +399,11 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
   return (
     <View style={styles.screen}>
       <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
+      <FeatureHeader title="Pindai Boks" onOpenProfile={onOpenProfile} />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header Bergaya Dashboard (Flexbox Row Space-Between) */}
-        <View style={styles.header}>
-          <View style={styles.headerLeftColumn}>
-            <Text style={styles.title}>Pindai Boks</Text>
-            <View style={styles.subtitleRow}>
-              <Text style={styles.subtitle}>{SCAN_SCHOOL}</Text>
-              <Text style={styles.dotSeparator}>·</Text>
-              <View style={styles.roleBadge}>
-                <Text style={styles.roleBadgeText}>Guru Validator</Text>
-              </View>
-            </View>
-          </View>
-
-          <View
-            style={styles.avatar}
-            accessible
-            accessibilityRole="image"
-            accessibilityLabel="Profil Ibu Siti Aminah, Guru Validator"
-          >
-            <Text style={styles.avatarText}>IS</Text>
-          </View>
-        </View>
 
         {/* Kondisional Area Scan:
             - Sebelum pindai (!hasScanned): Tampilkan kartu oranye Pemindai Visual.
@@ -1479,6 +1464,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9F8F6',
   },
   content: {
+    paddingTop: 16,
     paddingBottom: 120,
   },
   header: {

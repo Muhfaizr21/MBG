@@ -1,8 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { CheckCircle2, Clock, ChevronRight } from 'lucide-react-native';
+import { FeatureHeader } from './FeatureHeader';
 
-export const ExploreTabContent: React.FC = () => {
+export interface ExploreTabContentProps {
+  onOpenProfile?: () => void;
+}
+
+export const ExploreTabContent: React.FC<ExploreTabContentProps> = ({ onOpenProfile }) => {
   const totes = [
     { id: 'TOTE-01', class: 'Kelas 1A', count: 32, status: 'validated', temp: '65.2°C' },
     { id: 'TOTE-02', class: 'Kelas 1B', count: 32, status: 'validated', temp: '65.0°C' },
@@ -13,65 +18,73 @@ export const ExploreTabContent: React.FC = () => {
   ];
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>Daftar Master Boks MBG</Text>
-        <Text style={styles.subtitle}>Verifikasi distribusi per kelas & suhu organoleptik</Text>
-      </View>
+    <View style={styles.screen}>
+      {/* Universal Clean App Bar Header */}
+      <FeatureHeader title="Daftar Master Boks MBG" onOpenProfile={onOpenProfile} />
 
-      <View style={styles.summaryCard}>
-        <View style={styles.summaryItem}>
-          <Text style={styles.summaryVal}>13</Text>
-          <Text style={styles.summaryLbl}>Total Boks</Text>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.introSection}>
+          <Text style={styles.subtitle}>Verifikasi distribusi per kelas & suhu organoleptik</Text>
         </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryItem}>
-          <Text style={[styles.summaryVal, { color: '#10B981' }]}>4</Text>
-          <Text style={styles.summaryLbl}>Tervalidasi</Text>
-        </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryItem}>
-          <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>9</Text>
-          <Text style={styles.summaryLbl}>Menunggu</Text>
-        </View>
-      </View>
 
-      <View style={styles.listSection}>
-        {totes.map((tote) => (
-          <TouchableOpacity key={tote.id} style={styles.toteCard} activeOpacity={0.7}>
-            <View style={styles.toteLeft}>
-              <View
-                style={[
-                  styles.statusIcon,
-                  { backgroundColor: tote.status === 'validated' ? '#DCFCE7' : '#FEF3C7' },
-                ]}
-              >
-                {tote.status === 'validated' ? (
-                  <CheckCircle2 size={18} color="#10B981" />
-                ) : (
-                  <Clock size={18} color="#F59E0B" />
-                )}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryVal}>13</Text>
+            <Text style={styles.summaryLbl}>Total Boks</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={[styles.summaryVal, { color: '#10B981' }]}>4</Text>
+            <Text style={styles.summaryLbl}>Tervalidasi</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={[styles.summaryVal, { color: '#F59E0B' }]}>9</Text>
+            <Text style={styles.summaryLbl}>Menunggu</Text>
+          </View>
+        </View>
+
+        <View style={styles.listSection}>
+          {totes.map((tote) => (
+            <TouchableOpacity key={tote.id} style={styles.toteCard} activeOpacity={0.7}>
+              <View style={styles.toteLeft}>
+                <View
+                  style={[
+                    styles.statusIcon,
+                    { backgroundColor: tote.status === 'validated' ? '#DCFCE7' : '#FEF3C7' },
+                  ]}
+                >
+                  {tote.status === 'validated' ? (
+                    <CheckCircle2 size={18} color="#10B981" />
+                  ) : (
+                    <Clock size={18} color="#F59E0B" />
+                  )}
+                </View>
+                <View>
+                  <Text style={styles.toteId}>{tote.id} • {tote.class}</Text>
+                  <Text style={styles.toteMeta}>
+                    {tote.count} Porsi • Suhu: {tote.temp}
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text style={styles.toteId}>{tote.id} • {tote.class}</Text>
-                <Text style={styles.toteMeta}>
-                  {tote.count} Porsi • Suhu: {tote.temp}
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={18} color="#94A3B8" />
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+              <ChevronRight size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#F9F8F6',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F9F8F6',
@@ -81,18 +94,13 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 110,
   },
-  header: {
+  introSection: {
     marginBottom: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1E293B',
   },
   subtitle: {
     fontSize: 13,
     color: '#64748B',
-    marginTop: 4,
+    lineHeight: 18,
   },
   summaryCard: {
     flexDirection: 'row',

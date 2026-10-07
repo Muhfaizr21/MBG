@@ -26,6 +26,7 @@ import {
   Clock,
 } from 'lucide-react-native';
 import { BottomSheet } from '../ui/BottomSheet';
+import { FeatureHeader } from './FeatureHeader';
 import {
   reconcileClass,
   sumDistribution,
@@ -53,7 +54,12 @@ const RANGES: { key: HistoryRange; label: string }[] = [
 
 type ActiveTabMode = 'presensi' | 'log_pindaian';
 
-export const HistoryScreen: React.FC<{ onOpenScanner: () => void }> = ({ onOpenScanner }) => {
+export interface HistoryScreenProps {
+  onOpenScanner: () => void;
+  onOpenProfile?: () => void;
+}
+
+export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onOpenScanner, onOpenProfile }) => {
   const [classes, setClasses] = useState(MOCK_CLASSES);
   const [allocation, setAllocation] = useState<SurplusAllocation>('belum');
   const [range, setRange] = useState<HistoryRange>('hari_ini');
@@ -120,21 +126,21 @@ export const HistoryScreen: React.FC<{ onOpenScanner: () => void }> = ({ onOpenS
 
   return (
     <View style={styles.screen}>
+      {/* Universal Clean App Bar Header */}
+      <FeatureHeader title="Riwayat & Presensi" onOpenProfile={onOpenProfile} />
+
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Institutional Top Header */}
-        <View style={styles.header}>
-          <View style={styles.headerTopRow}>
-            <View style={styles.headerTitles}>
-              <Text style={styles.title}>Riwayat & Presensi</Text>
-              <View style={styles.schoolBadgeRow}>
-                <ShieldCheck size={14} color="#10B981" />
-                <Text style={styles.schoolName}>{HANDOVER_SCHOOL.name}</Text>
-                <Text style={styles.bulletDot}>•</Text>
-                <Text style={styles.dapodikVerified}>Dapodik Resmi</Text>
-              </View>
+        {/* Sub-Header / School Info & Laporan Button di dalam Page Body */}
+        <View style={styles.subHeader}>
+          <View style={styles.subHeaderTopRow}>
+            <View style={styles.schoolBadgeRow}>
+              <ShieldCheck size={14} color="#10B981" />
+              <Text style={styles.schoolName}>{HANDOVER_SCHOOL.name}</Text>
+              <Text style={styles.bulletDot}>•</Text>
+              <Text style={styles.dapodikVerified}>Dapodik Resmi</Text>
             </View>
 
             <TouchableOpacity
@@ -143,7 +149,7 @@ export const HistoryScreen: React.FC<{ onOpenScanner: () => void }> = ({ onOpenS
               activeOpacity={0.8}
               accessibilityLabel="Buka pratinjau laporan harian"
             >
-              <FileText size={18} color="#EBA338" />
+              <FileText size={16} color="#EBA338" />
               <Text style={styles.exportHeaderBtnText}>Laporan</Text>
             </TouchableOpacity>
           </View>
@@ -724,24 +730,15 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 130, // Ample space above floating bottom tab bar
   },
-  header: {
+  subHeader: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 14,
+    paddingBottom: 12,
   },
-  headerTopRow: {
+  subHeaderTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  headerTitles: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1E293B',
-    letterSpacing: -0.5,
   },
   schoolBadgeRow: {
     flexDirection: 'row',
