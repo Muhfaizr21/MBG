@@ -9,10 +9,9 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import { User, LogOut, ArrowRightLeft } from 'lucide-react-native';
+import { User, LogOut } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { UserProfile } from '../../types/role';
-import { useAuthRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
 import { getInitials } from '../../utils/initials';
 
@@ -24,12 +23,9 @@ interface DashboardHeaderProps {
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user, onOpenProfile }) => {
   const router = useRouter();
   const { logout } = useAuth();
-  const { role, toggleRole } = useAuthRole();
-  const isGuru = role === 'guru';
 
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [showRoleConfirm, setShowRoleConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const avatarRef = useRef<View>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 68, right: 20 });
@@ -92,16 +88,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user, onOpenPr
           <View style={styles.subtitleRow}>
             <Text style={styles.schoolText}>{user.schoolName}</Text>
             <Text style={styles.dotSeparator}>·</Text>
-            <TouchableOpacity
-              style={[styles.roleBadge, isGuru ? styles.guruBadge : styles.siswaBadge]}
-              onPress={() => setShowRoleConfirm(true)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={`Role aktif: ${isGuru ? 'Guru Validator' : 'Siswa'}`}
-              accessibilityHint="Ganti role pratinjau"
-            >
-              <Text style={styles.roleBadgeText}>{isGuru ? 'Guru Validator' : 'Siswa'}</Text>
-            </TouchableOpacity>
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleBadgeText}>Guru Validator</Text>
+            </View>
           </View>
         </View>
 
@@ -150,7 +139,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user, onOpenPr
                   {user.name}
                 </Text>
                 <Text style={styles.menuHeaderRole} numberOfLines={1}>
-                  {isGuru ? 'Guru Validator' : 'Siswa'} · {user.schoolName}
+                  Guru Validator · {user.schoolName}
                 </Text>
               </View>
 
@@ -234,50 +223,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user, onOpenPr
           </Pressable>
         </Pressable>
       </Modal>
-
-      {/* Dialog Konfirmasi Ganti Role */}
-      <Modal
-        visible={showRoleConfirm}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowRoleConfirm(false)}
-      >
-        <Pressable
-          style={styles.dialogBackdrop}
-          onPress={() => setShowRoleConfirm(false)}
-        >
-          <Pressable style={styles.dialogCard} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.roleIconWrapper}>
-              <ArrowRightLeft size={26} color="#D97706" />
-            </View>
-            <Text style={styles.dialogTitle}>Ganti Role Tampilan</Text>
-            <Text style={styles.dialogSubtitle}>
-              Beralih ke mode {isGuru ? 'Siswa (Penerima Manfaat)' : 'Guru (Validator Lapangan)'}?
-            </Text>
-
-            <View style={styles.dialogButtonsRow}>
-              <TouchableOpacity
-                style={styles.dialogCancelButton}
-                onPress={() => setShowRoleConfirm(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.dialogCancelText}>Batal</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.dialogPrimaryButton}
-                onPress={() => {
-                  toggleRole();
-                  setShowRoleConfirm(false);
-                }}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.dialogPrimaryText}>Ganti Sekarang</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </>
   );
 };
@@ -318,15 +263,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   roleBadge: {
+    backgroundColor: '#FDEBC8',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-  },
-  guruBadge: {
-    backgroundColor: '#FDEBC8',
-  },
-  siswaBadge: {
-    backgroundColor: '#EDEFF3',
   },
   roleBadgeText: {
     fontSize: 11,
@@ -356,7 +296,7 @@ const styles = StyleSheet.create({
     color: '#1E293B',
   },
 
-  // Dropdown Menu Styles (Sesuai spesifikasi prompt)
+  // Dropdown Menu Styles
   dropdownBackdrop: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -366,12 +306,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0', // border-gray-200
+    borderColor: '#E2E8F0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.12,
     shadowRadius: 16,
-    elevation: 10, // shadow-lg
+    elevation: 10,
     minWidth: 190,
     overflow: 'hidden',
   },
@@ -398,22 +338,22 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16, // px-4
-    paddingVertical: 12,   // py-3
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: 10,
   },
   menuItemPressed: {
-    backgroundColor: '#F1F5F9', // bg-gray-100 hover/press state
+    backgroundColor: '#F1F5F9',
   },
   menuItemTextProfil: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1E293B', // standard dark text
+    color: '#1E293B',
   },
   menuItemTextKeluar: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#EF4444', // text-red-500
+    color: '#EF4444',
   },
 
   // Dialog Styles
@@ -442,15 +382,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#FEE2E2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  roleIconWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#FEF3C7',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
@@ -499,19 +430,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  dialogPrimaryButton: {
-    flex: 1,
-    backgroundColor: '#EBA338',
-    borderRadius: 14,
-    paddingVertical: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dialogPrimaryText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
   },
   buttonDisabled: {
     opacity: 0.7,

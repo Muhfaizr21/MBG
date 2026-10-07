@@ -16,7 +16,6 @@ import { useAuth } from '../context/AuthContext';
 
 const DEMO_ACCOUNTS = [
   { label: 'Validator', email: 'validator@sdn01menteng.sch.id', password: 'Validator123!' },
-  { label: 'Siswa', email: 'siswa@sdn01menteng.sch.id', password: 'Siswa123!' },
 ];
 
 export default function LoginScreen() {
@@ -65,7 +64,7 @@ export default function LoginScreen() {
           </View>
           <Text style={styles.title}>Masuk ke KawanGizi</Text>
           <Text style={styles.subtitle}>
-            Akun validator sekolah atau siswa penerima manfaat
+            Akun validator sekolah (Guru & Staf)
           </Text>
 
           <View style={styles.formCard}>

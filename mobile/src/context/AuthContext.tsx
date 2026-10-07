@@ -7,8 +7,8 @@ import {
   logoutRequest,
 } from '../lib/api';
 
-/** Mobile hanya melayani akun lapangan; akun web (superadmin/satgas/sppg) ditolak. */
-const MOBILE_ALLOWED_ROLES = ['validator', 'siswa'];
+/** Mobile hanya melayani akun lapangan validator; akun lain ditolak. */
+const MOBILE_ALLOWED_ROLES = ['validator'];
 
 interface AuthContextType {
   user: BackendUser | null;
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!MOBILE_ALLOWED_ROLES.includes(payload.user.role)) {
       await logoutRequest();
       throw new Error(
-        'Akun ini ditujukan untuk portal web. Gunakan akun validator atau siswa untuk aplikasi mobile.',
+        'Aplikasi mobile khusus untuk akun validator sekolah (Guru & Staf).',
       );
     }
     applySession(payload, (u, p) => {

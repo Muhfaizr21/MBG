@@ -21,17 +21,6 @@ export const MOCK_GURU_USER: UserProfile = {
   assignedSPPG: 'SPPG Menteng Jaya (Dapur #04)',
 };
 
-export const MOCK_SISWA_USER: UserProfile = {
-  id: 'usr-siswa-001',
-  name: 'Budi Pratama',
-  role: 'siswa',
-  roleTitle: 'Siswa Penerima Manfaat',
-  schoolName: 'SDN Menteng 01 Pagi',
-  npsn: '20101234',
-  className: 'Kelas 4A (No. Absen 12)',
-  assignedSPPG: 'SPPG Menteng Jaya (Dapur #04)',
-};
-
 export const MOCK_WEEKLY_DAYS: DayItem[] = [
   { id: 'd-1', dayName: 'Sen', dayNumber: 7, hasDelivery: true },
   { id: 'd-2', dayName: 'Sel', dayNumber: 8, hasDelivery: true },

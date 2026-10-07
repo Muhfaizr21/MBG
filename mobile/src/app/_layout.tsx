@@ -41,7 +41,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={AppTheme}>
         <AuthProvider>
-          <RoleProvider initialRole="guru">
+          <RoleProvider>
             <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
             <ExpoStatusBar style="dark" />
             <Slot />

@@ -1,4 +1,4 @@
-export type UserRole = 'guru' | 'siswa';
+export type UserRole = 'guru';
 
 export interface UserProfile {
   id: string;
@@ -7,7 +7,6 @@ export interface UserProfile {
   roleTitle: string;
   schoolName: string;
   npsn: string;
-  className?: string; // Khusus siswa (misal: "Kelas 4A")
   assignedSPPG: string;
 }
 

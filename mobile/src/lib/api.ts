@@ -119,7 +119,7 @@ export interface RegisterRequestParams {
   sppgId: string;
 }
 
-/** Daftar akun baru (hanya validator/siswa; email wajib unik). */
+/** Daftar akun baru (khusus validator; email wajib unik). */
 export async function registerRequest(params: RegisterRequestParams): Promise<any> {
   return api('/api/auth/register', {
     method: 'POST',

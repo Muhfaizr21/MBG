@@ -3,9 +3,7 @@ import { View, StyleSheet, StatusBar, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
-import { useAuthRole } from '../context/RoleContext';
 import { GuruDashboardView } from '../components/dashboard/GuruDashboardView';
-import { SiswaDashboardView } from '../components/dashboard/SiswaDashboardView';
 import { ExploreTabContent } from '../components/dashboard/ExploreTabContent';
 import { HistoryScreen } from '../components/dashboard/HistoryScreen';
 import { ProfileTabContent } from '../components/dashboard/ProfileTabContent';
@@ -16,7 +14,6 @@ import { IncidentScreen } from '../components/dashboard/IncidentScreen';
 
 export default function MobileAppEntry() {
   const { user, loading } = useAuth();
-  const { role } = useAuthRole();
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [flowScreen, setFlowScreen] = useState<'handover' | 'incident' | null>(null);
 
@@ -47,15 +44,13 @@ export default function MobileAppEntry() {
   const renderActiveScreen = () => {
     switch (activeTab) {
       case 'home':
-        return role === 'guru' ? (
+        return (
           <GuruDashboardView
             onTriggerScan={handleCenterAction}
             onOpenHandover={() => setFlowScreen('handover')}
             onOpenIncident={() => setFlowScreen('incident')}
             onOpenProfile={() => setActiveTab('profile')}
           />
-        ) : (
-          <SiswaDashboardView onOpenProfile={() => setActiveTab('profile')} />
         );
       case 'explore':
         return <ExploreTabContent />;

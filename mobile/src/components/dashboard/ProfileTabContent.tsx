@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Pressable,
 } from 'react-native';
-import { UserCheck, Shield, School, ArrowRightLeft, LogOut, Mail } from 'lucide-react-native';
+import { UserCheck, Shield, School, LogOut, Mail } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuthRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
@@ -18,20 +18,10 @@ import { getInitials } from '../../utils/initials';
 export const ProfileTabContent: React.FC = () => {
   const router = useRouter();
   const { user: sessionUser, logout } = useAuth();
-  const { user, role, toggleRole } = useAuthRole();
+  const { user } = useAuthRole();
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [showRoleModal, setShowRoleModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-
-  const handleRoleToggle = () => {
-    setShowRoleModal(true);
-  };
-
-  const handleConfirmRoleToggle = () => {
-    toggleRole();
-    setShowRoleModal(false);
-  };
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -71,9 +61,7 @@ export const ProfileTabContent: React.FC = () => {
 
           <View style={styles.badgeRow}>
             <View style={styles.roleBadge}>
-              <Text style={styles.roleBadgeText}>
-                {role === 'guru' ? 'Mode Guru / Validator' : 'Mode Siswa'}
-              </Text>
+              <Text style={styles.roleBadgeText}>Mode Guru / Validator</Text>
             </View>
           </View>
         </View>
@@ -114,18 +102,7 @@ export const ProfileTabContent: React.FC = () => {
           </View>
         </View>
 
-        {/* SOLID Multi-Role Switcher */}
-        <TouchableOpacity
-          style={styles.switchRoleButton}
-          onPress={handleRoleToggle}
-          activeOpacity={0.85}
-        >
-          <ArrowRightLeft size={18} color="#FFFFFF" />
-          <Text style={styles.switchRoleText}>
-            Beralih ke Role {role === 'guru' ? 'Siswa' : 'Guru'}
-          </Text>
-        </TouchableOpacity>
-
+        {/* Transisi langsung dari Informasi Penugasan ke Keluar dari Aplikasi */}
         <TouchableOpacity
           style={styles.logoutButton}
           onPress={handleLogout}
@@ -183,44 +160,6 @@ export const ProfileTabContent: React.FC = () => {
                 ) : (
                   <Text style={styles.modalDangerText}>Ya, Keluar</Text>
                 )}
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Modal Konfirmasi Ganti Role Cross-Platform */}
-      <Modal
-        visible={showRoleModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowRoleModal(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowRoleModal(false)}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.roleIconWrapper}>
-              <ArrowRightLeft size={26} color="#D97706" />
-            </View>
-            <Text style={styles.modalTitle}>Ganti Role Tampilan</Text>
-            <Text style={styles.modalSubtitle}>
-              Beralih ke mode {role === 'guru' ? 'Siswa (Penerima Manfaat)' : 'Guru (Validator Lapangan)'}?
-            </Text>
-
-            <View style={styles.modalButtonsRow}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => setShowRoleModal(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalCancelText}>Batal</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalPrimaryButton}
-                onPress={handleConfirmRoleToggle}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.modalPrimaryText}>Ganti Sekarang</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -338,32 +277,12 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     marginTop: 1,
   },
-  switchRoleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#EBA338',
-    borderRadius: 20,
-    paddingVertical: 14,
-    shadowColor: '#EBA338',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 3,
-    marginBottom: 12,
-  },
-  switchRoleText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   logoutText: {
     fontSize: 13,
@@ -395,15 +314,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#FEE2E2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  roleIconWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#FEF3C7',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
@@ -452,19 +362,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  modalPrimaryButton: {
-    flex: 1,
-    backgroundColor: '#EBA338',
-    borderRadius: 14,
-    paddingVertical: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
   },
   buttonDisabled: {
     opacity: 0.7,
