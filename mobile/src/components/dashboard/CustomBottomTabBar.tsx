@@ -1,105 +1,105 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
-import { Home, Compass, FileText, User, Plus, LucideIcon } from 'lucide-react-native';
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Text,
+  Platform,
+  LayoutAnimation,
+  UIManager,
+} from 'react-native';
+import { Home, Compass, Camera, FileText, Users, LucideIcon } from 'lucide-react-native';
 
-export type TabKey = 'home' | 'explore' | 'action' | 'journey' | 'profile';
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
-interface TabDefinition {
+export type TabKey = 'home' | 'explore' | 'action' | 'journey' | 'community' | 'profile';
+
+export interface TabDefinition {
   key: TabKey;
   label: string;
   icon: LucideIcon;
   hint: string;
 }
 
-const TABS: TabDefinition[] = [
-  { key: 'home', label: 'Beranda', icon: Home, hint: 'Beranda dan kuota porsi hari ini' },
+export const TABS: TabDefinition[] = [
+  { key: 'home', label: 'Beranda', icon: Home, hint: 'Beranda dan ringkasan kuota MBG' },
   { key: 'explore', label: 'Distribusi', icon: Compass, hint: 'Verifikasi distribusi per kelas' },
-  { key: 'journey', label: 'Riwayat', icon: FileText, hint: 'Riwayat BAST dan serah terima' },
-  { key: 'profile', label: 'Profil', icon: User, hint: 'Akun sekolah dan preferensi' },
+  { key: 'action', label: 'Skrining', icon: Camera, hint: 'Pindai boks & evaluasi gizi AI' },
+  { key: 'journey', label: 'Riwayat', icon: FileText, hint: 'Riwayat BAST dan presensi kehadiran' },
+  { key: 'community', label: 'Komunitas', icon: Users, hint: 'Forum komunikasi sesama guru validator' },
 ];
 
 const INACTIVE = '#64748B';
+const ACTIVE_ORANGE = '#EBA338';
+const ACTIVE_ICON_COLOR = '#1E293B';
 
-interface CustomBottomTabBarProps {
+export interface CustomBottomTabBarProps {
   activeTab: TabKey;
   onTabPress: (tab: TabKey) => void;
-  onCenterActionPress: () => void;
+  onCenterActionPress?: () => void;
 }
 
 export const CustomBottomTabBar: React.FC<CustomBottomTabBarProps> = ({
   activeTab,
   onTabPress,
-  onCenterActionPress,
 }) => {
+  const handleTabPress = (key: TabKey) => {
+    if (Platform.OS !== 'web') {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    onTabPress(key);
+  };
+
   return (
     <View style={styles.outerContainer} accessibilityRole="tablist">
       <View style={styles.barContainer}>
-        {TABS.slice(0, 2).map((tab) => (
-          <TabButton
-            key={tab.key}
-            tab={tab}
-            isActive={activeTab === tab.key}
-            onPress={() => onTabPress(tab.key)}
-          />
-        ))}
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          const Icon = tab.icon;
 
-        <View style={styles.centerButtonWrapper}>
-          <TouchableOpacity
-            style={styles.centerActionButton}
-            onPress={onCenterActionPress}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Pindai boks"
-            accessibilityHint="Membuka pemindai QR boks"
-          >
-            {/* Ikon gelap di atas amber: putih di atas amber hanya 2:1 (R-25).
-                Tanpa glow, karena glow amber milik kartu hero (R-13). */}
-            <Plus size={26} color="#1E293B" strokeWidth={3} />
-          </TouchableOpacity>
-        </View>
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tabButton, isActive && styles.tabButtonActive]}
+              onPress={() => handleTabPress(tab.key)}
+              activeOpacity={0.8}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={tab.label}
+              accessibilityHint={tab.hint}
+            >
+              {isActive ? (
+                /* Dynamic Floating Action Circle: Flat solid orange, no stroke/border, dark icon */
+                <View style={styles.activeCircle}>
+                  <Icon size={24} color={ACTIVE_ICON_COLOR} strokeWidth={2.6} />
+                </View>
+              ) : (
+                /* Standard Inactive Icon */
+                <View style={styles.iconWrapper}>
+                  <Icon size={22} color={INACTIVE} strokeWidth={2} />
+                </View>
+              )}
 
-        {TABS.slice(2).map((tab) => (
-          <TabButton
-            key={tab.key}
-            tab={tab}
-            isActive={activeTab === tab.key}
-            onPress={() => onTabPress(tab.key)}
-          />
-        ))}
+              {/* Text Label */}
+              <Text
+                style={[
+                  styles.tabLabel,
+                  isActive && styles.tabLabelActive,
+                ]}
+                numberOfLines={1}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
-  );
-};
-
-interface TabButtonProps {
-  tab: TabDefinition;
-  isActive: boolean;
-  onPress: () => void;
-}
-
-const TabButton: React.FC<TabButtonProps> = ({ tab, isActive, onPress }) => {
-  const Icon = tab.icon;
-
-  return (
-    <TouchableOpacity
-      style={styles.tabButton}
-      onPress={onPress}
-      activeOpacity={0.7}
-      accessibilityRole="tab"
-      accessibilityState={{ selected: isActive }}
-      accessibilityLabel={tab.label}
-      accessibilityHint={tab.hint}
-    >
-      {/* Pill amber hanya untuk tab aktif: satu aksen, satu status nyata. */}
-      <View style={[styles.iconWrapper, isActive && styles.iconActivePill]}>
-        <Icon
-          size={22}
-          color={isActive ? '#7C4A03' : INACTIVE}
-          strokeWidth={isActive ? 2.5 : 2}
-        />
-      </View>
-      <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{tab.label}</Text>
-    </TouchableOpacity>
   );
 };
 
@@ -112,6 +112,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     alignItems: 'center',
     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    zIndex: 999,
   },
   barContainer: {
     flexDirection: 'row',
@@ -132,12 +133,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 4,
   },
+  tabButtonActive: {
+    zIndex: 10,
+  },
   iconWrapper: {
     padding: 6,
     borderRadius: 14,
   },
-  iconActivePill: {
-    backgroundColor: '#FDEBC8',
+  activeCircle: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: ACTIVE_ORANGE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -18,
+    marginBottom: 2,
   },
   tabLabel: {
     fontSize: 11,
@@ -148,19 +159,5 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: '#7C4A03',
     fontWeight: '700',
-  },
-  centerButtonWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    top: -14,
-    width: 60,
-  },
-  centerActionButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#EBA338',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

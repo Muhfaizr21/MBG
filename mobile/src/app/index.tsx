@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { GuruDashboardView } from '../components/dashboard/GuruDashboardView';
 import { ExploreTabContent } from '../components/dashboard/ExploreTabContent';
 import { HistoryScreen } from '../components/dashboard/HistoryScreen';
+import { CommunityTabContent } from '../components/dashboard/CommunityTabContent';
 import { ProfileTabContent } from '../components/dashboard/ProfileTabContent';
 import { CustomBottomTabBar, TabKey } from '../components/dashboard/CustomBottomTabBar';
 import { ScannerScreen } from '../components/dashboard/ScannerScreen';
@@ -54,15 +55,6 @@ export default function MobileAppEntry() {
         );
       case 'explore':
         return <ExploreTabContent onOpenProfile={() => setActiveTab('profile')} />;
-      case 'journey':
-        return (
-          <HistoryScreen
-            onOpenScanner={handleCenterAction}
-            onOpenProfile={() => setActiveTab('profile')}
-          />
-        );
-      case 'profile':
-        return <ProfileTabContent />;
       case 'action':
         return (
           <ScannerScreen
@@ -70,6 +62,17 @@ export default function MobileAppEntry() {
             onOpenProfile={() => setActiveTab('profile')}
           />
         );
+      case 'journey':
+        return (
+          <HistoryScreen
+            onOpenScanner={handleCenterAction}
+            onOpenProfile={() => setActiveTab('profile')}
+          />
+        );
+      case 'community':
+        return <CommunityTabContent onOpenProfile={() => setActiveTab('profile')} />;
+      case 'profile':
+        return <ProfileTabContent onBack={() => setActiveTab('home')} />;
       default:
         return <GuruDashboardView onTriggerScan={handleCenterAction} />;
     }

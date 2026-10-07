@@ -9,13 +9,17 @@ import {
   ActivityIndicator,
   Pressable,
 } from 'react-native';
-import { UserCheck, Shield, School, LogOut, Mail } from 'lucide-react-native';
+import { UserCheck, Shield, School, LogOut, Mail, ArrowLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuthRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
 import { getInitials } from '../../utils/initials';
 
-export const ProfileTabContent: React.FC = () => {
+export interface ProfileTabContentProps {
+  onBack?: () => void;
+}
+
+export const ProfileTabContent: React.FC<ProfileTabContentProps> = ({ onBack }) => {
   const router = useRouter();
   const { user: sessionUser, logout } = useAuth();
   const { user } = useAuthRole();
@@ -48,6 +52,18 @@ export const ProfileTabContent: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
+          {onBack && (
+            <TouchableOpacity
+              onPress={onBack}
+              style={styles.backButton}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Kembali ke Beranda"
+            >
+              <ArrowLeft size={20} color="#1E293B" />
+              <Text style={styles.backButtonText}>Kembali</Text>
+            </TouchableOpacity>
+          )}
           <Text style={styles.title}>Profil Pengguna</Text>
           <Text style={styles.subtitle}>Kelola akun & preferensi validasi MBG</Text>
         </View>
@@ -181,6 +197,24 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 16,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  backButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
   },
   title: {
     fontSize: 22,
