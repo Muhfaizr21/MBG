@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { useAuth } from '../../context/AuthContext'
 import { guardAdminAction } from '../../lib/adminActions'
 import { SchedulePanel } from '../../components/dashboard/SchedulePanel'
 import { INITIAL_SCHEDULE_LIST } from '../../data/scheduleData'
 import { fetchSchedules } from '../../lib/api'
+import { toScheduleView } from '../../components/dashboard/scheduleView'
 
 /**
  * ==============================================================================
@@ -21,43 +22,24 @@ export function SchedulePage() {
   const [schedulesList, setSchedulesList] = useState(INITIAL_SCHEDULE_LIST)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let isMounted = true
-    fetchSchedules()
-      .then((data) => {
-        if (isMounted && Array.isArray(data) && data.length > 0) {
-          const mapped = data.map((s) => ({
-            ...s,
-            id: s.id,
-            sppgId: s.sppgId || 'SPPG-01',
-            sppgName: s.sppgId === 'SPPG-04' ? 'SPPG Sentral Sukajadi Bandung' : 'SPPG 01 Menteng Sentral',
-            routeName: s.routeName,
-            fleetName: s.fleetName,
-            licensePlate: s.licensePlate,
-            driverName: s.driverName,
-            driverPhone: s.driverPhone,
-            departureTime: s.departureTime,
-            arrivalEta: s.arrivalEta,
-            totalPortions: s.totalPortions,
-            status: s.status || 'on_time',
-            statusLabel: s.status === 'on_time' ? 'Tepat Waktu' : 'Sedang Pengantaran',
-            targetSchools: Array.isArray(s.targetSchools) ? s.targetSchools : [],
-            telemetry: typeof s.telemetry === 'object' && s.telemetry !== null ? s.telemetry : { speedKmh: 35, tempC: 22.8 },
-          }))
-          setSchedulesList(mapped)
-        }
-      })
-      .catch((err) => {
-        console.warn('Menggunakan data awal schedules:', err)
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false)
-      })
-
-    return () => {
-      isMounted = false
+  const loadSchedules = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await fetchSchedules()
+      if (Array.isArray(data) && data.length > 0) {
+        const mapped = data.map(toScheduleView).filter(Boolean)
+        setSchedulesList(mapped)
+      }
+    } catch (err) {
+      console.warn('Menggunakan data awal schedules:', err)
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    loadSchedules()
+  }, [loadSchedules])
 
   useEffect(() => {
     if (!toast) return
@@ -93,6 +75,7 @@ export function SchedulePage() {
         schedulesList={schedulesList}
         onSuperadminAction={handleSuperadminAction}
         showToast={setToast}
+        onReload={loadSchedules}
       />
     </AdminLayout>
   )

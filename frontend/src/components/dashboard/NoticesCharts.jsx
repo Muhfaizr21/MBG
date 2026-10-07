@@ -11,6 +11,7 @@ import {
   Cell
 } from 'recharts'
 import { Users, ShieldAlert, CheckCircle2 } from 'lucide-react'
+import { STATUS } from './chartTheme.jsx'
 
 const URGENCY_COLORS = {
   critical: STATUS.critical,
@@ -18,7 +19,6 @@ const URGENCY_COLORS = {
   info: STATUS.info,
 }
 
-import { STATUS } from './chartTheme.jsx'
 export function NoticesCharts({ notices = [] }) {
   // 1. Urgency Breakdown for Donut Chart
   const urgencyCounts = notices.reduce((acc, n) => {
@@ -55,12 +55,12 @@ export function NoticesCharts({ notices = [] }) {
   const readershipData = notices
     .filter((n) => n.status === 'active')
     .map((n) => ({
-      title: n.title.length > 22 ? n.title.substring(0, 20) + '..' : n.title,
-      fullTitle: n.title,
-      acknowledged: n.acknowledgementStats.acknowledgedCount,
-      pending: n.acknowledgementStats.totalRecipients - n.acknowledgementStats.acknowledgedCount,
-      rate: n.acknowledgementStats.complianceRate,
-      urgency: n.urgency
+      title: (n.title || '').length > 22 ? (n.title || '').substring(0, 20) + '..' : (n.title || ''),
+      fullTitle: n.title || 'Pengumuman Resmi',
+      acknowledged: n.acknowledgementStats?.acknowledgedCount || 0,
+      pending: Math.max(0, (n.acknowledgementStats?.totalRecipients || 0) - (n.acknowledgementStats?.acknowledgedCount || 0)),
+      rate: n.acknowledgementStats?.complianceRate || 0,
+      urgency: n.urgency || 'info'
     }))
 
   return (

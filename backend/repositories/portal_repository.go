@@ -10,8 +10,6 @@ import (
 type PortalRepository interface {
 	GetAllSchools(ctx context.Context) ([]models.School, error)
 	GetSchoolByNPSN(ctx context.Context, npsn string) (*models.School, error)
-	GetAllSPPGs(ctx context.Context) ([]models.SPPGKitchen, error)
-	GetSPPGByID(ctx context.Context, id string) (*models.SPPGKitchen, error)
 	GetAllMenuPackages(ctx context.Context) ([]models.MenuPackage, error)
 	GetAllCalendarDays(ctx context.Context) ([]models.CalendarDay, error)
 	GetAllDeliveries(ctx context.Context) ([]models.Delivery, error)
@@ -21,7 +19,6 @@ type PortalRepository interface {
 	GetAllFeedbacks(ctx context.Context) ([]models.Feedback, error)
 	CreateFeedback(ctx context.Context, fb *models.Feedback) error
 	GetAllReports(ctx context.Context) ([]models.Report, error)
-	GetAllValidators(ctx context.Context) ([]models.ValidatorProfile, error)
 	GetAdminMetrics(ctx context.Context) (*models.AdminDashboardMetrics, error)
 }
 
@@ -73,59 +70,6 @@ func (r *postgresPortalRepository) GetSchoolByNPSN(ctx context.Context, npsn str
 		&s.PrincipalName, &s.PrincipalNIP, &s.PrincipalPhone, &s.PrincipalEmail,
 		&s.TotalStudents, &s.TotalCalorieTarget, &s.DietaryNotes, &s.SPPGID,
 		&s.AcceptanceRate, &s.AvgArrivalTime, &s.CreatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &s, nil
-}
-
-func (r *postgresPortalRepository) GetAllSPPGs(ctx context.Context) ([]models.SPPGKitchen, error) {
-	rows, err := database.Pool().Query(ctx, `
-		SELECT id, code, name, legal_entity, type, type_label, address, subdistrict, city, province,
-		       cluster, coordinates, manager_name, manager_nip, manager_phone, nutritionist_name,
-		       nutritionist_str, staff_count, kitchen_area, fleet_count, fleet_type,
-		       max_daily_portions, active_quota, safety_score, cold_chain_score, timeliness_score,
-		       composite_score, grade, status, created_at, updated_at
-		FROM sppg_kitchens ORDER BY name ASC`)
-	if err != nil {
-		return nil, fmt.Errorf("query sppg: %w", err)
-	}
-	defer rows.Close()
-
-	var list []models.SPPGKitchen
-	for rows.Next() {
-		var s models.SPPGKitchen
-		if err := rows.Scan(
-			&s.ID, &s.Code, &s.Name, &s.LegalEntity, &s.Type, &s.TypeLabel,
-			&s.Address, &s.Subdistrict, &s.City, &s.Province, &s.Cluster, &s.Coordinates,
-			&s.ManagerName, &s.ManagerNIP, &s.ManagerPhone, &s.NutritionistName, &s.NutritionistSTR,
-			&s.StaffCount, &s.KitchenArea, &s.FleetCount, &s.FleetType,
-			&s.MaxDailyPortions, &s.ActiveQuota, &s.SafetyScore, &s.ColdChainScore,
-			&s.TimelinessScore, &s.CompositeScore, &s.Grade, &s.Status, &s.CreatedAt, &s.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan sppg: %w", err)
-		}
-		list = append(list, s)
-	}
-	return list, nil
-}
-
-func (r *postgresPortalRepository) GetSPPGByID(ctx context.Context, id string) (*models.SPPGKitchen, error) {
-	var s models.SPPGKitchen
-	err := database.Pool().QueryRow(ctx, `
-		SELECT id, code, name, legal_entity, type, type_label, address, subdistrict, city, province,
-		       cluster, coordinates, manager_name, manager_nip, manager_phone, nutritionist_name,
-		       nutritionist_str, staff_count, kitchen_area, fleet_count, fleet_type,
-		       max_daily_portions, active_quota, safety_score, cold_chain_score, timeliness_score,
-		       composite_score, grade, status, created_at, updated_at
-		FROM sppg_kitchens WHERE id = $1`, id).Scan(
-		&s.ID, &s.Code, &s.Name, &s.LegalEntity, &s.Type, &s.TypeLabel,
-		&s.Address, &s.Subdistrict, &s.City, &s.Province, &s.Cluster, &s.Coordinates,
-		&s.ManagerName, &s.ManagerNIP, &s.ManagerPhone, &s.NutritionistName, &s.NutritionistSTR,
-		&s.StaffCount, &s.KitchenArea, &s.FleetCount, &s.FleetType,
-		&s.MaxDailyPortions, &s.ActiveQuota, &s.SafetyScore, &s.ColdChainScore,
-		&s.TimelinessScore, &s.CompositeScore, &s.Grade, &s.Status, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -379,34 +323,6 @@ func (r *postgresPortalRepository) GetAllReports(ctx context.Context) ([]models.
 			return nil, fmt.Errorf("scan report: %w", err)
 		}
 		list = append(list, rep)
-	}
-	return list, nil
-}
-
-func (r *postgresPortalRepository) GetAllValidators(ctx context.Context) ([]models.ValidatorProfile, error) {
-	rows, err := database.Pool().Query(ctx, `
-		SELECT v.id, v.user_id, v.satgas_id, v.name, v.nip, v.npsn, COALESCE(s.name, ''),
-		       v.role, v.device, v.device_id, v.certification, v.status,
-		       v.scans_today, v.quota_today, v.scan_logs, v.created_at
-		FROM validator_profiles v
-		LEFT JOIN schools s ON v.npsn = s.npsn
-		ORDER BY v.name ASC`)
-	if err != nil {
-		return nil, fmt.Errorf("query validator profiles: %w", err)
-	}
-	defer rows.Close()
-
-	var list []models.ValidatorProfile
-	for rows.Next() {
-		var val models.ValidatorProfile
-		if err := rows.Scan(
-			&val.ID, &val.UserID, &val.SatgasID, &val.Name, &val.NIP, &val.NPSN, &val.SchoolName,
-			&val.Role, &val.Device, &val.DeviceID, &val.Certification, &val.Status,
-			&val.ScansToday, &val.QuotaToday, &val.ScanLogs, &val.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan validator profile: %w", err)
-		}
-		list = append(list, val)
 	}
 	return list, nil
 }

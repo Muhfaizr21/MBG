@@ -22,6 +22,7 @@ type ScanLog struct {
 	VisualScore  float64   `json:"visualScore"`
 	HoldingTempC *float64  `json:"holdingTempC,omitempty"`
 	ReleaseTempC *float64  `json:"releaseTempC,omitempty"`
+	DurationMS   *int      `json:"durationMs,omitempty"`
 	Verdict      string    `json:"verdict"`
 	Reason       string    `json:"reason"`
 	ActorID      string    `json:"actorId"`

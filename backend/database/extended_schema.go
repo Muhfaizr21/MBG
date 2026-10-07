@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS schools (
 	sppg_id VARCHAR(64) REFERENCES sppg_kitchens(id) ON DELETE SET NULL,
 	acceptance_rate DOUBLE PRECISION NOT NULL DEFAULT 100,
 	avg_arrival_time VARCHAR(50) NOT NULL DEFAULT '',
+	demographics JSONB NOT NULL DEFAULT '{}',
+	emergency_contacts JSONB NOT NULL DEFAULT '{}',
+	transit_details JSONB NOT NULL DEFAULT '{}',
+	last_audit_date VARCHAR(50) NOT NULL DEFAULT '26 Sep 2026',
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -197,6 +201,12 @@ CREATE TABLE IF NOT EXISTS attendances (
 	finish_rate DOUBLE PRECISION NOT NULL DEFAULT 100,
 	reconciliation_status VARCHAR(64) NOT NULL DEFAULT 'surplus_safe',
 	target_tomorrow_quota INT NOT NULL DEFAULT 0,
+	absent_details JSONB NOT NULL DEFAULT '{"sick": 0, "permission": 0, "unexplained": 0}',
+	consumption_eval JSONB NOT NULL DEFAULT '{"finishRate": 100, "riceWastePct": 0, "proteinWastePct": 0, "veggieWastePct": 0, "feedbackNotes": ""}',
+	golden_window JSONB NOT NULL DEFAULT '{"cookedAt": "06:00 WIB", "deliveredAt": "07:00 WIB", "lunchTime": "09:30 WIB", "safeUntil": "10:30 WIB", "minutesLeft": 60, "isSafeToRedistribute": true}',
+	discrepancy_count INT NOT NULL DEFAULT 0,
+	head_validator VARCHAR(150) NOT NULL DEFAULT '',
+	redistribution_log JSONB,
 	notes TEXT NOT NULL DEFAULT '',
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -217,9 +227,18 @@ CREATE TABLE IF NOT EXISTS notices (
 	content TEXT NOT NULL DEFAULT '',
 	is_flash_alert BOOLEAN NOT NULL DEFAULT FALSE,
 	requires_acknowledgement BOOLEAN NOT NULL DEFAULT FALSE,
+	status VARCHAR(32) NOT NULL DEFAULT 'active',
+	status_label VARCHAR(64) NOT NULL DEFAULT 'Tayang Publik',
+	status_reason TEXT NOT NULL DEFAULT '',
+	acknowledgement_stats JSONB NOT NULL DEFAULT '{"totalRecipients": 0, "acknowledgedCount": 0, "complianceRate": 0}',
 	attachments JSONB NOT NULL DEFAULT '[]',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_notices_status ON notices(status);
+CREATE INDEX IF NOT EXISTS idx_notices_category ON notices(category);
+CREATE INDEX IF NOT EXISTS idx_notices_urgency ON notices(urgency);
+CREATE INDEX IF NOT EXISTS idx_notices_target_audience ON notices(target_audience);
 
 -- 11. Feedbacks (Pusat Aduan & Triage Insiden)
 CREATE TABLE IF NOT EXISTS feedbacks (
@@ -310,6 +329,41 @@ CREATE TABLE IF NOT EXISTS validator_profiles (
 );
 
 -- Relasi dan Indeks Pendukung
+-- Surat peringatan resmi BGN terhadap dapur SPPG (SP-1, SP-2, penangguhan).
+-- Dipisah dari sppg_kitchens karena sebuah dapur bisa punya beberapa surat
+-- dan setiap surat adalah dokumen dengan nomornya sendiri.
+CREATE TABLE IF NOT EXISTS sppg_warning_letters (
+	id             VARCHAR(64) PRIMARY KEY,
+	sppg_id        VARCHAR(64) REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	letter_type    VARCHAR(32) NOT NULL CHECK (letter_type IN ('SP-1','SP-2','SUSPENSION')),
+	letter_number  VARCHAR(100) NOT NULL,
+	reason         TEXT NOT NULL DEFAULT '',
+	deadline_label VARCHAR(100) NOT NULL DEFAULT '',
+	status         VARCHAR(64) NOT NULL DEFAULT '',
+	issued_by      VARCHAR(64) NOT NULL DEFAULT '',
+	created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_warning_letters_sppg ON sppg_warning_letters(sppg_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_deliveries_sppg_scan_date ON deliveries(sppg_id, scan_date);
+
+-- Status audit resep, penangguhan, dan perubahan kuota pada dapurnya.
+ALTER TABLE sppg_kitchens ADD COLUMN IF NOT EXISTS tkpi_status VARCHAR(32) NOT NULL DEFAULT 'PENDING';
+ALTER TABLE sppg_kitchens ADD COLUMN IF NOT EXISTS avg_deviation_pct DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE sppg_kitchens ADD COLUMN IF NOT EXISTS recipe_audited_at TIMESTAMPTZ;
+ALTER TABLE sppg_kitchens ADD COLUMN IF NOT EXISTS recipe_auditor VARCHAR(150) NOT NULL DEFAULT '';
+ALTER TABLE sppg_kitchens ADD COLUMN IF NOT EXISTS suspended_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE sppg_kitchens ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
+ALTER TABLE sppg_kitchens ADD COLUMN IF NOT EXISTS quota_updated_at TIMESTAMPTZ;
+ALTER TABLE sppg_kitchens ADD COLUMN IF NOT EXISTS quota_updated_by VARCHAR(64) NOT NULL DEFAULT '';
+
+-- Kolom superadmin override AI dan audit uji petik laboratorium Dinkes untuk pengiriman MBG
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS override_by VARCHAR(150) NOT NULL DEFAULT '';
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS override_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS overridden_at TIMESTAMPTZ;
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lab_target VARCHAR(150) NOT NULL DEFAULT '';
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lab_notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS lab_ordered_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_schools_sppg ON schools(sppg_id);
 CREATE INDEX IF NOT EXISTS idx_deliveries_school ON deliveries(school_npsn);
 CREATE INDEX IF NOT EXISTS idx_deliveries_batch ON deliveries(batch_id);
@@ -321,6 +375,166 @@ CREATE INDEX IF NOT EXISTS idx_schedules_sppg ON schedules(sppg_id);
 CREATE INDEX IF NOT EXISTS idx_sppg_batches_sppg ON sppg_batches(sppg_id);
 CREATE INDEX IF NOT EXISTS idx_sppg_billings_sppg ON sppg_billings(sppg_id);
 CREATE INDEX IF NOT EXISTS idx_validator_profiles_npsn ON validator_profiles(npsn);
+
+-- Kolom tambahan untuk audit hasil pindai & batch penugasan validator.
+-- CREATE TABLE di atas hanya berlaku untuk database baru; ADD COLUMN IF NOT EXISTS
+-- menambal database yang sudah termigrasi sebelumnya.
+ALTER TABLE scan_logs            ADD COLUMN IF NOT EXISTS duration_ms INT;
+ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS backup_validator_id VARCHAR(64) REFERENCES validator_profiles(id) ON DELETE SET NULL;
+ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS warning_count INT NOT NULL DEFAULT 0;
+ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS last_warning_at TIMESTAMPTZ;
+ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS last_warning_note TEXT NOT NULL DEFAULT '';
+
+-- Kolom jadwal distribusi operasional MBG & cold-chain
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS school_id VARCHAR(64) DEFAULT '';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS school_name VARCHAR(255) DEFAULT '';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS npsn VARCHAR(50) DEFAULT '';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS city VARCHAR(100) DEFAULT '';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS portions INT DEFAULT 0;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS status_label VARCHAR(100) DEFAULT '';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS status_reason TEXT DEFAULT '';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS corridor_name VARCHAR(255) DEFAULT '';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS distance_remaining_km NUMERIC(5,2) DEFAULT 0.0;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS timestamps JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS fleet JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS validator_contact JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_schedules_city ON schedules(city);
+CREATE INDEX IF NOT EXISTS idx_schedules_status ON schedules(status);
+CREATE INDEX IF NOT EXISTS idx_schedules_npsn ON schedules(npsn);
+
+-- Kolom Kalender Operasional MBG & Siklus Menu Nasional
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS day_number INT NOT NULL DEFAULT 1;
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS month_year VARCHAR(50) NOT NULL DEFAULT 'Oktober 2026';
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS day_type_label VARCHAR(100) NOT NULL DEFAULT 'Hari Operasional Reguler';
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS title VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS menu_status VARCHAR(32) NOT NULL DEFAULT 'locked';
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS menu_status_label VARCHAR(100) NOT NULL DEFAULT 'Menu Terkunci & Valid';
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS is_operational_blackout BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS blackout_reason TEXT;
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS active_kitchens INT NOT NULL DEFAULT 180;
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS has_inspection BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS inspection_detail JSONB;
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS has_substitution BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS substitution_id VARCHAR(64);
+ALTER TABLE calendar_days ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS menu_substitutions (
+	id VARCHAR(64) PRIMARY KEY,
+	date DATE NOT NULL,
+	cycle_code VARCHAR(32) NOT NULL,
+	region VARCHAR(255) NOT NULL,
+	original_ingredient TEXT NOT NULL,
+	substitute_ingredient TEXT NOT NULL,
+	reason TEXT NOT NULL,
+	nutrition_comparison JSONB NOT NULL DEFAULT '{}',
+	nutritionist_review TEXT NOT NULL DEFAULT '',
+	status VARCHAR(32) NOT NULL DEFAULT 'pending',
+	status_label VARCHAR(100) NOT NULL DEFAULT 'Menunggu Otorisasi Superadmin',
+	approved_at VARCHAR(100),
+	approved_by VARCHAR(150),
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_calendar_days_date ON calendar_days(date);
+CREATE INDEX IF NOT EXISTS idx_calendar_days_month_year ON calendar_days(month_year);
+CREATE INDEX IF NOT EXISTS idx_calendar_days_day_type ON calendar_days(day_type);
+CREATE INDEX IF NOT EXISTS idx_calendar_days_menu_status ON calendar_days(menu_status);
+CREATE INDEX IF NOT EXISTS idx_menu_substitutions_date ON menu_substitutions(date);
+CREATE INDEX IF NOT EXISTS idx_menu_substitutions_status ON menu_substitutions(status);
+
+-- Kolom Ekstensi Katalog Dokumen Laporan Resmi MBG
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS scope VARCHAR(255) NOT NULL DEFAULT '38 Provinsi (514 Kab/Kota)';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS total_portions INT NOT NULL DEFAULT 250000;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS success_rate NUMERIC(5,2) NOT NULL DEFAULT 99.4;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS file_formats JSONB NOT NULL DEFAULT '["PDF","XLSX","CSV"]'::jsonb;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS file_size_pdf VARCHAR(50) NOT NULL DEFAULT '3.4 MB';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS file_size_xlsx VARCHAR(50) NOT NULL DEFAULT '1.8 MB';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS file_size_csv VARCHAR(50) NOT NULL DEFAULT '620 KB';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS signee VARCHAR(255) NOT NULL DEFAULT 'Satgas MBG Pusat & BGN';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS audit_badge VARCHAR(100) NOT NULL DEFAULT 'BPK Ready';
+
+-- Berkas Berita Acara Serah Terima Digital (BAST Digital)
+CREATE TABLE IF NOT EXISTS digital_basts (
+	id VARCHAR(64) PRIMARY KEY,
+	ref_number VARCHAR(100) NOT NULL UNIQUE,
+	date VARCHAR(50) NOT NULL,
+	delivery_time VARCHAR(50) NOT NULL DEFAULT '',
+	school_name VARCHAR(255) NOT NULL,
+	npsn VARCHAR(50) NOT NULL,
+	sppg_name VARCHAR(255) NOT NULL,
+	sppg_id VARCHAR(64) NOT NULL,
+	menu_package VARCHAR(255) NOT NULL,
+	ordered_portions INT NOT NULL DEFAULT 0,
+	verified_ai_portions INT NOT NULL DEFAULT 0,
+	rejected_portions INT NOT NULL DEFAULT 0,
+	thermal_temp_arrive VARCHAR(100) NOT NULL DEFAULT '',
+	lead_validator VARCHAR(255) NOT NULL DEFAULT '',
+	driver_name VARCHAR(255) NOT NULL DEFAULT '',
+	sha256_hash VARCHAR(100) NOT NULL DEFAULT '',
+	qr_token_verified BOOLEAN NOT NULL DEFAULT true,
+	bsre_status VARCHAR(100) NOT NULL DEFAULT 'Simulasi: stempel tidak diverifikasi',
+	payment_clearance_status VARCHAR(50) NOT NULL DEFAULT 'cleared',
+	payment_clearance_label VARCHAR(100) NOT NULL DEFAULT 'Disetujui Cair (100% Valid)',
+	subtotal_amount BIGINT NOT NULL DEFAULT 0,
+	approval_notes TEXT NOT NULL DEFAULT '',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Rekapitulasi Tagihan Katering & Payment Clearance (Otorisasi SP2D)
+CREATE TABLE IF NOT EXISTS vendor_invoices (
+	id VARCHAR(64) PRIMARY KEY,
+	invoice_number VARCHAR(100) NOT NULL UNIQUE,
+	sppg_name VARCHAR(255) NOT NULL,
+	sppg_id VARCHAR(64) NOT NULL,
+	vendor_company VARCHAR(255) NOT NULL,
+	bank_account VARCHAR(255) NOT NULL,
+	period VARCHAR(100) NOT NULL,
+	total_claimed_portions INT NOT NULL DEFAULT 0,
+	total_claimed_amount BIGINT NOT NULL DEFAULT 0,
+	verified_bast_portions INT NOT NULL DEFAULT 0,
+	rejected_deduction_portions INT NOT NULL DEFAULT 0,
+	penalty_deduction_amount BIGINT NOT NULL DEFAULT 0,
+	approved_payment_amount BIGINT NOT NULL DEFAULT 0,
+	bast_completeness_rate NUMERIC(5,2) NOT NULL DEFAULT 100.0,
+	status VARCHAR(50) NOT NULL DEFAULT 'ready_to_sign',
+	status_label VARCHAR(100) NOT NULL DEFAULT 'Siap Otorisasi Superadmin',
+	sp2d_number VARCHAR(100),
+	notes TEXT NOT NULL DEFAULT '',
+	signed_at VARCHAR(100),
+	signed_by VARCHAR(255),
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Temuan Audit Forensik Anggaran (Forensic Audit Discrepancy Findings)
+CREATE TABLE IF NOT EXISTS forensic_audit_findings (
+	id VARCHAR(64) PRIMARY KEY,
+	invoice_ref VARCHAR(100) NOT NULL,
+	sppg_name VARCHAR(255) NOT NULL,
+	date_logged VARCHAR(100) NOT NULL,
+	finding_type VARCHAR(100) NOT NULL,
+	finding_type_label VARCHAR(255) NOT NULL,
+	claimed_portions INT NOT NULL DEFAULT 0,
+	ai_valid_portions INT NOT NULL DEFAULT 0,
+	discrepancy_count INT NOT NULL DEFAULT 0,
+	potential_loss_amount BIGINT NOT NULL DEFAULT 0,
+	severity VARCHAR(50) NOT NULL DEFAULT 'warning',
+	severity_label VARCHAR(100) NOT NULL DEFAULT '',
+	explanation TEXT NOT NULL DEFAULT '',
+	action_taken TEXT NOT NULL DEFAULT '',
+	status VARCHAR(50) NOT NULL DEFAULT 'safeguarded',
+	status_label VARCHAR(100) NOT NULL DEFAULT 'Anggaran Terselamatkan',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_category ON reports(category);
+CREATE INDEX IF NOT EXISTS idx_digital_basts_date ON digital_basts(date);
+CREATE INDEX IF NOT EXISTS idx_digital_basts_npsn ON digital_basts(npsn);
+CREATE INDEX IF NOT EXISTS idx_vendor_invoices_status ON vendor_invoices(status);
+CREATE INDEX IF NOT EXISTS idx_forensic_findings_status ON forensic_audit_findings(status);
 `
 
 // MigrateExtended menjalankan migrasi untuk seluruh tabel ekosistem KawanGizi MBG.

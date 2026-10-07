@@ -221,8 +221,8 @@ func (s *AuthService) Me(ctx context.Context, userID string) (*models.User, erro
 	return user, nil
 }
 
-// ParseAccessToken validates a JWT access token and returns its subject (user id) and role.
-func (s *AuthService) ParseAccessToken(tokenString string) (userID string, role string, err error) {
+// ParseAccessToken validates a JWT access token and returns user claims (subject, role, sppgId, npsn).
+func (s *AuthService) ParseAccessToken(tokenString string) (userID string, role string, sppgID string, npsn string, err error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("metode signing tak dikenal")
@@ -230,28 +230,32 @@ func (s *AuthService) ParseAccessToken(tokenString string) (userID string, role 
 		return s.jwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		return "", "", ErrInvalidToken
+		return "", "", "", "", ErrInvalidToken
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", "", ErrInvalidToken
+		return "", "", "", "", ErrInvalidToken
 	}
 	sub, _ := claims["sub"].(string)
 	userRole, _ := claims["role"].(string)
+	userSppgID, _ := claims["sppgId"].(string)
+	userNPSN, _ := claims["npsn"].(string)
 	if sub == "" || !models.ValidRole(userRole) {
-		return "", "", ErrInvalidToken
+		return "", "", "", "", ErrInvalidToken
 	}
-	return sub, userRole, nil
+	return sub, userRole, userSppgID, userNPSN, nil
 }
 
 // newSession signs the access token and persists a fresh refresh token.
 func (s *AuthService) newSession(ctx context.Context, user *models.User) (*models.User, string, string, time.Time, error) {
 	now := time.Now()
 	access, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  user.ID,
-		"role": user.Role,
-		"iat":  now.Unix(),
-		"exp":  now.Add(s.accessTTL).Unix(),
+		"sub":    user.ID,
+		"role":   user.Role,
+		"sppgId": user.SppgID,
+		"npsn":   user.NPSN,
+		"iat":    now.Unix(),
+		"exp":    now.Add(s.accessTTL).Unix(),
 	}).SignedString(s.jwtSecret)
 	if err != nil {
 		return nil, "", "", time.Time{}, err

@@ -56,10 +56,35 @@ type Prediction struct {
 	LatencyMS          float64            `json:"latency_ms"`
 }
 
+// ScanSubmission adalah input tervalidasi untuk satu pemindaian boks.
+//
+// Dipakai struct (bukan daftar parameter) karenaSubmitScan sudah punya banyak
+// input opsional; satu perubahan field tidak boleh menggeser posisi argumen.
+type ScanSubmission struct {
+	ActorID      string
+	Image        []byte
+	FileName     string
+	QRToken      string
+	BoxID        string
+	BatchID      string
+	Items        string
+	HoldingTempC *float64
+	ReleaseTempC *float64
+
+	// DurationMS adalah lama inspeksi visual yang diukur klien, dalam
+	// milidetik. Dipakai audit superadmin untuk menandai pindai "kilat"
+	// (Juknis MBG Pasal 14). Nil bila klien tidak mengirimkannya.
+	DurationMS *int
+
+	Persist  bool
+	Rating   int
+	Feedback string
+}
+
 // ScanService defines business logic for the scan endpoint.
 type ScanService interface {
 	Predict(ctx context.Context, image []byte, fileName string) (*Prediction, error)
-	SubmitScan(ctx context.Context, actorID string, image []byte, fileName, qrToken, boxID, batchID, items string, holdingTempC, releaseTempC *float64, persist bool, rating int, feedback string) (*models.ScanResult, error)
+	SubmitScan(ctx context.Context, in ScanSubmission) (*models.ScanResult, error)
 	ListRecent(ctx context.Context, limit int) ([]models.ScanLog, error)
 	UpdateFeedback(ctx context.Context, id string, rating int, feedback string, tempC *float64) error
 	DeleteScan(ctx context.Context, actorID, id string) error
@@ -134,17 +159,11 @@ func (s *scanService) Predict(ctx context.Context, image []byte, fileName string
 
 // SubmitScan runs the two-stage verification (QR + visual AI), persists scan_logs,
 // enriches the decision card with macros from the nutrition dataset, and returns it.
-func (s *scanService) SubmitScan(
-	ctx context.Context,
-	actorID string,
-	image []byte,
-	fileName, qrToken, boxID, batchID, items string,
-	holdingTempC, releaseTempC *float64,
-	persist bool,
-	rating int,
-	feedback string,
-) (*models.ScanResult, error) {
-	qrToken = strings.TrimSpace(qrToken)
+func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*models.ScanResult, error) {
+	actorID := in.ActorID
+	image := in.Image
+	fileName := in.FileName
+	qrToken := strings.TrimSpace(in.QRToken)
 	if len(image) == 0 {
 		return nil, ErrImageRequired
 	}
@@ -185,23 +204,23 @@ func (s *scanService) SubmitScan(
 	}
 
 	// 2. Suhu lepas dapur (opsional).
-	if releaseTempC != nil {
-		ok := *releaseTempC >= minReleaseTempC
-		note := fmt.Sprintf("%.1f°C — di atas ambang %.0f°C", *releaseTempC, minReleaseTempC)
+	if in.ReleaseTempC != nil {
+		ok := *in.ReleaseTempC >= minReleaseTempC
+		note := fmt.Sprintf("%.1f°C — di atas ambang %.0f°C", *in.ReleaseTempC, minReleaseTempC)
 		if !ok {
-			note = fmt.Sprintf("%.1f°C — di bawah ambang %.0f°C", *releaseTempC, minReleaseTempC)
-			reasons = append(reasons, fmt.Sprintf("suhu lepas dapur %.1f°C di bawah %.0f°C", *releaseTempC, minReleaseTempC))
+			note = fmt.Sprintf("%.1f°C — di bawah ambang %.0f°C", *in.ReleaseTempC, minReleaseTempC)
+			reasons = append(reasons, fmt.Sprintf("suhu lepas dapur %.1f°C di bawah %.0f°C", *in.ReleaseTempC, minReleaseTempC))
 		}
 		checks = append(checks, models.ScanCheck{Label: "Suhu masak inti saat lepas dapur", OK: ok, Note: note})
 	}
 
 	// 3. Suhu holding (opsional).
-	if holdingTempC != nil {
-		ok := *holdingTempC >= minHoldingTempC
-		note := fmt.Sprintf("%.1f°C — di atas ambang %.0f°C", *holdingTempC, minHoldingTempC)
+	if in.HoldingTempC != nil {
+		ok := *in.HoldingTempC >= minHoldingTempC
+		note := fmt.Sprintf("%.1f°C — di atas ambang %.0f°C", *in.HoldingTempC, minHoldingTempC)
 		if !ok {
-			note = fmt.Sprintf("%.1f°C — di bawah ambang %.0f°C", *holdingTempC, minHoldingTempC)
-			reasons = append(reasons, fmt.Sprintf("suhu holding %.1f°C di bawah %.0f°C", *holdingTempC, minHoldingTempC))
+			note = fmt.Sprintf("%.1f°C — di bawah ambang %.0f°C", *in.HoldingTempC, minHoldingTempC)
+			reasons = append(reasons, fmt.Sprintf("suhu holding %.1f°C di bawah %.0f°C", *in.HoldingTempC, minHoldingTempC))
 		}
 		checks = append(checks, models.ScanCheck{Label: "Suhu holding boks", OK: ok, Note: note})
 	}
@@ -247,7 +266,8 @@ func (s *scanService) SubmitScan(
 	note := strings.Join(reasons, "; ")
 
 	// Identitas boks: dari client, atau diturunkan dari token QR.
-	if boxID = strings.TrimSpace(boxID); boxID == "" && qrToken != "" {
+	boxID := strings.TrimSpace(in.BoxID)
+	if boxID == "" && qrToken != "" {
 		segments := strings.Split(qrToken, "-")
 		boxID = "BOK-" + segments[len(segments)-1]
 	}
@@ -259,7 +279,8 @@ func (s *scanService) SubmitScan(
 	scanID := "TEMP-PREVIEW"
 	savedFileName := ""
 
-	if persist {
+	batchID := strings.TrimSpace(in.BatchID)
+	if in.Persist {
 		var err error
 		scanID, err = s.nextScanID(ctx)
 		if err != nil {
@@ -277,19 +298,20 @@ func (s *scanService) SubmitScan(
 			ID:           scanID,
 			BoxID:        boxID,
 			QRToken:      qrToken,
-			BatchID:      strings.TrimSpace(batchID),
+			BatchID:      batchID,
 			ImageRef:     savedFileName,
 			AIClass:      pred.ClassName,
 			AIConfidence: pred.Confidence,
 			VisualScore:  score,
-			HoldingTempC: holdingTempC,
-			ReleaseTempC: releaseTempC,
+			HoldingTempC: in.HoldingTempC,
+			ReleaseTempC: in.ReleaseTempC,
+			DurationMS:   in.DurationMS,
 			Verdict:      verdict,
 			Reason:       note,
 			ActorID:      actorID,
 			CreatedAt:    now,
-			Rating:       rating,
-			Feedback:     feedback,
+			Rating:       in.Rating,
+			Feedback:     in.Feedback,
 		}
 		if err := s.repo.InsertScan(ctx, entry); err != nil {
 			return nil, fmt.Errorf("menyimpan scan log: %w", err)
@@ -305,8 +327,8 @@ func (s *scanService) SubmitScan(
 		Score:        score,
 		Verdict:      verdict,
 		VerdictLabel: verdictLabel,
-		ReleaseTemp:  derefFloat(releaseTempC),
-		HoldTemp:     derefFloat(holdingTempC),
+		ReleaseTemp:  derefFloat(in.ReleaseTempC),
+		HoldTemp:     derefFloat(in.HoldingTempC),
 		Checks:       checks,
 		Note:         note,
 		AIClass:      pred.ClassName,
@@ -316,8 +338,8 @@ func (s *scanService) SubmitScan(
 
 	// Makronutrien dari dataset gizi (opsional): bila client mengirim `items`
 	// dan bahan cocok, macros terisi; jika tidak, tetap nil → frontend fallback.
-	if s.nutrition != nil && strings.TrimSpace(items) != "" {
-		matches, macros, nutritionNote, matchErr := s.nutrition.MatchItems(ctx, ParseItems(items))
+	if s.nutrition != nil && strings.TrimSpace(in.Items) != "" {
+		matches, macros, nutritionNote, matchErr := s.nutrition.MatchItems(ctx, ParseItems(in.Items))
 		if matchErr != nil {
 			return nil, matchErr
 		}
@@ -328,7 +350,7 @@ func (s *scanService) SubmitScan(
 		}
 	}
 
-	if persist {
+	if in.Persist {
 		setCachedScan(dedupKey, result)
 	}
 	return result, nil

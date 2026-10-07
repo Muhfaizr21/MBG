@@ -25,13 +25,25 @@ import {
 import { SchoolsCharts } from './SchoolsCharts'
 import { AVAILABLE_SPPG_ALTERNATIVES, NUTRITION_STANDARDS } from '../../data/schoolsData'
 import { Figure, RowAction, StatusDot } from './tableKit'
+import { createSchool, reassignSchoolSPPG, updateSchoolContacts, toggleSchoolStatus } from '../../lib/api'
+import { toSchoolView } from './schoolView'
 
 export function SchoolsPanel({
   schoolsList = [],
   onSuperadminAction = () => {},
-  showToast = () => {}
+  showToast = () => {},
+  onReload = () => {}
 }) {
   const [schools, setSchools] = useState(schoolsList)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Sync state whenever parent schoolsList finishes async load
+  useEffect(() => {
+    if (Array.isArray(schoolsList) && schoolsList.length > 0) {
+      setSchools(schoolsList)
+    }
+  }, [schoolsList])
+
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState('all') // 'all' | 'SD' | 'MI' | 'SMP' | 'MTs'
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'active' | 'radius_warning' | 'temp_inactive'
@@ -192,7 +204,7 @@ export function SchoolsPanel({
   }
 
   // Handle Onboarding New School
-  const handleOnboardSubmit = (e) => {
+  const handleOnboardSubmit = async (e) => {
     e.preventDefault()
     if (onSuperadminAction?.('ONBOARD_SCHOOL')?.allowed === false) return
     if (!newSchoolForm.npsn || !newSchoolForm.name) {
@@ -200,75 +212,49 @@ export function SchoolsPanel({
       return
     }
 
-    const assignedSppg = AVAILABLE_SPPG_ALTERNATIVES.find((s) => s.id === newSchoolForm.sppgId) || AVAILABLE_SPPG_ALTERNATIVES[0]
     const lower = Number(newSchoolForm.lowerGrade) || 0
     const upper = Number(newSchoolForm.upperGrade) || 0
     const smp = Number(newSchoolForm.smpGrade) || 0
-    const total = lower + upper + smp
-    const totalCal = (lower * 480) + (upper * 550) + (smp * 650)
+    const assignedSppg = AVAILABLE_SPPG_ALTERNATIVES.find((s) => s.id === newSchoolForm.sppgId) || AVAILABLE_SPPG_ALTERNATIVES[0]
 
-    const newSchoolItem = {
-      id: `SCH-NEW-${Date.now().toString().slice(-4)}`,
-      npsn: newSchoolForm.npsn,
-      name: newSchoolForm.name,
-      level: newSchoolForm.level,
-      status: 'active',
-      statusLabel: 'Aktif Penuh',
-      statusReason: 'Sekolah baru berhasil terdaftar di klaster distribusi MBG.',
-      address: newSchoolForm.address || 'Alamat operasional sekolah binaan',
-      city: newSchoolForm.city,
+    const payload = {
+      npsn: newSchoolForm.npsn.trim(),
+      name: newSchoolForm.name.trim(),
+      level: newSchoolForm.level || 'SD',
+      city: newSchoolForm.city || 'Jakarta Pusat',
       district: 'Kecamatan Terpadu',
-      coordinates: {
-        lat: parseFloat(newSchoolForm.lat) || -6.2,
-        lng: parseFloat(newSchoolForm.lng) || 106.8
-      },
-      principal: {
-        name: newSchoolForm.principalName || 'Kepala Sekolah Terdaftar',
-        nip: '19750101 200001 1 001',
-        phone: newSchoolForm.principalPhone || '0812-0000-0000',
-        email: `info@${newSchoolForm.npsn}.sch.id`
-      },
-      demographics: {
-        lowerGrade: lower,
-        upperGrade: upper,
-        smpGrade: smp,
-        totalStudents: total,
-        totalCalorieTarget: totalCal,
-        avgCaloriePerPortion: total ? Math.round(totalCal / total) : 550,
-        allergiesCount: 0,
-        dietaryNotes: 'Verifikasi lanjutan saat skrining awal'
-      },
-      sppgSupplier: {
-        id: assignedSppg.id,
-        name: assignedSppg.name,
-        type: 'Dapur Sentral Terpilih',
-        address: assignedSppg.address,
-        distanceKm: 4.5,
-        transitMinutes: 22,
-        transitStatus: 'safe',
-        corridorRoute: `Koridor Distribusi Klaster ${newSchoolForm.city}`
-      },
-      emergencyContacts: {
-        principalPhone: newSchoolForm.principalPhone || '0812-0000-0000',
-        uksCoordinatorName: newSchoolForm.uksName || 'Koordinator UKS',
-        uksPhone: newSchoolForm.uksPhone || '0813-0000-0000',
-        referralClinic: newSchoolForm.clinicName || `Puskesmas ${newSchoolForm.city}`,
-        clinicAddress: `Wilayah Binaan ${newSchoolForm.city}`,
-        clinicPhone: newSchoolForm.clinicPhone || '021-1234567',
-        ambulanceHotline: '119'
-      },
-      lastAuditDate: 'Hari Ini',
-      acceptanceRate: 100,
-      avgArrivalTime: '07:00 WIB'
+      address: newSchoolForm.address || 'Alamat operasional sekolah binaan',
+      lat: parseFloat(newSchoolForm.lat) || -6.2,
+      lng: parseFloat(newSchoolForm.lng) || 106.8,
+      principalName: newSchoolForm.principalName || 'Kepala Sekolah Terdaftar',
+      principalPhone: newSchoolForm.principalPhone || '0812-0000-0000',
+      uksName: newSchoolForm.uksName || 'Koordinator UKS',
+      uksPhone: newSchoolForm.uksPhone || '0813-0000-0000',
+      clinicName: newSchoolForm.clinicName || `Puskesmas ${newSchoolForm.city || 'Kecamatan'}`,
+      clinicPhone: newSchoolForm.clinicPhone || '021-1234567',
+      lowerGrade: lower,
+      upperGrade: upper,
+      smpGrade: smp,
+      sppgId: assignedSppg.id || 'SPPG-01',
     }
 
-    setSchools([newSchoolItem, ...schools])
-    setOnboardModalOpen(false)
-    showToast(`Sekolah ${newSchoolItem.name} (NPSN: ${newSchoolItem.npsn}) berhasil didaftarkan ke jaringan MBG!`)
+    setIsSubmitting(true)
+    try {
+      const created = await createSchool(payload)
+      const mapped = toSchoolView(created)
+      setSchools((prev) => [mapped, ...prev.filter((s) => s.npsn !== mapped.npsn)])
+      setOnboardModalOpen(false)
+      showToast(`Sekolah ${mapped.name} (NPSN: ${mapped.npsn}) berhasil didaftarkan ke jaringan MBG!`)
+      onReload?.()
+    } catch (err) {
+      showToast(`Gagal mendaftarkan sekolah: ${err.message || 'Kesalahan server'}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Handle Reassign SPPG
-  const handleReassignSubmit = (e) => {
+  const handleReassignSubmit = async (e) => {
     if (onSuperadminAction?.('REASSIGN_SPPG')?.allowed === false) return
     e.preventDefault()
     if (!reassignModalData) return
@@ -276,110 +262,101 @@ export function SchoolsPanel({
     const { school, targetSppgId, reason } = reassignModalData
     const selectedSppgObj = AVAILABLE_SPPG_ALTERNATIVES.find((s) => s.id === targetSppgId)
 
-    if (!selectedSppgObj) {
+    if (!selectedSppgObj && !targetSppgId) {
       showToast('Pilih Dapur SPPG pengganti!')
       return
     }
 
-    setSchools((prev) =>
-      prev.map((s) => {
-        if (s.id === school.id) {
-          return {
-            ...s,
-            status: 'active',
-            statusLabel: 'Aktif Penuh',
-            statusReason: `Dialihkan ke ${selectedSppgObj.name} karena: ${reason}`,
-            sppgSupplier: {
-              ...s.sppgSupplier,
-              id: selectedSppgObj.id,
-              name: selectedSppgObj.name,
-              distanceKm: 4.8,
-              transitMinutes: 20,
-              transitStatus: 'safe',
-              corridorRoute: `Koridor Baru via ${selectedSppgObj.city}`
-            }
-          }
-        }
-        return s
+    setIsSubmitting(true)
+    try {
+      const chosenId = targetSppgId || selectedSppgObj?.id || 'SPPG-01'
+      const updated = await reassignSchoolSPPG(school.npsn, {
+        targetSppgId: chosenId,
+        reason: reason || 'Optimalisasi rute distribusi last-mile MBG',
       })
-    )
-
-    setReassignModalData(null)
-    showToast(`Alokasi dapur penyuplai untuk ${school.name} berhasil dipindahkan ke ${selectedSppgObj.name}!`)
+      const mapped = toSchoolView(updated)
+      setSchools((prev) => prev.map((s) => (s.npsn === school.npsn ? mapped : s)))
+      if (selectedSchool && selectedSchool.npsn === school.npsn) {
+        setSelectedSchool(mapped)
+      }
+      setReassignModalData(null)
+      showToast(`Alokasi dapur penyuplai untuk ${school.name} berhasil dipindahkan ke ${mapped.sppgSupplier?.name || chosenId}!`)
+      onReload?.()
+    } catch (err) {
+      showToast(`Gagal memindahkan dapur SPPG: ${err.message || 'Kesalahan server'}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Handle Update Emergency Contacts
-  const handleUpdateContactSubmit = (e) => {
+  const handleUpdateContactSubmit = async (e) => {
     if (onSuperadminAction?.('UPDATE_EMERGENCY_CONTACTS')?.allowed === false) return
     e.preventDefault()
     if (!contactModalData) return
 
     const { school, formData } = contactModalData
 
-    setSchools((prev) =>
-      prev.map((s) => {
-        if (s.id === school.id) {
-          return {
-            ...s,
-            principal: {
-              ...s.principal,
-              name: formData.principalName,
-              phone: formData.principalPhone
-            },
-            emergencyContacts: {
-              ...s.emergencyContacts,
-              principalPhone: formData.principalPhone,
-              uksCoordinatorName: formData.uksCoordinatorName,
-              uksPhone: formData.uksPhone,
-              referralClinic: formData.referralClinic,
-              clinicPhone: formData.clinicPhone,
-              clinicAddress: formData.clinicAddress,
-              ambulanceHotline: formData.ambulanceHotline
-            }
-          }
-        }
-        return s
-      })
-    )
+    const payload = {
+      principalName: formData.principalName || school.principal?.name || 'Kepala Sekolah',
+      principalPhone: formData.principalPhone || school.principal?.phone || '0812-0000-0000',
+      uksCoordinatorName: formData.uksCoordinatorName || school.emergencyContacts?.uksCoordinatorName || 'Koordinator UKS',
+      uksPhone: formData.uksPhone || school.emergencyContacts?.uksPhone || '0813-0000-0000',
+      referralClinic: formData.referralClinic || school.emergencyContacts?.referralClinic || 'Puskesmas Kecamatan Binaan',
+      clinicAddress: formData.clinicAddress || school.emergencyContacts?.clinicAddress || school.city || '',
+      clinicPhone: formData.clinicPhone || school.emergencyContacts?.clinicPhone || '021-1234567',
+      ambulanceHotline: formData.ambulanceHotline || school.emergencyContacts?.ambulanceHotline || '119',
+    }
 
-    setContactModalData(null)
-    showToast(`Data kontak darurat dan Puskesmas rujukan untuk ${school.name} berhasil diperbarui!`)
+    setIsSubmitting(true)
+    try {
+      const updated = await updateSchoolContacts(school.npsn, payload)
+      const mapped = toSchoolView(updated)
+      setSchools((prev) => prev.map((s) => (s.npsn === school.npsn ? mapped : s)))
+      if (selectedSchool && selectedSchool.npsn === school.npsn) {
+        setSelectedSchool(mapped)
+      }
+      setContactModalData(null)
+      showToast(`Data kontak darurat dan Puskesmas rujukan untuk ${school.name} berhasil diperbarui!`)
+      onReload?.()
+    } catch (err) {
+      showToast(`Gagal memperbarui kontak: ${err.message || 'Kesalahan server'}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Handle Temporarily Suspend / Reactivate School
-  const handleSuspendSubmit = (e) => {
+  const handleSuspendSubmit = async (e) => {
     if (onSuperadminAction?.('TOGGLE_SCHOOL_STATUS')?.allowed === false) return
     e.preventDefault()
     if (!suspendModalData) return
 
     const { school, isDeactivating, reason, returnDate } = suspendModalData
+    const newStatus = isDeactivating ? 'temp_inactive' : 'active'
+    const statusReason = reason || (isDeactivating ? 'Distribusi dinonaktifkan sementara' : 'Operasional alokasi porsi diaktifkan kembali.')
 
-    setSchools((prev) =>
-      prev.map((s) => {
-        if (s.id === school.id) {
-          if (isDeactivating) {
-            return {
-              ...s,
-              status: 'temp_inactive',
-              statusLabel: 'Nonaktif Sementara',
-              statusReason: `Distribusi dihentikan sementara: ${reason}. Estimasi aktif kembali: ${returnDate || 'Selesai masa libur'}.`
-            }
-          } else {
-            return {
-              ...s,
-              status: 'active',
-              statusLabel: 'Aktif Penuh',
-              statusReason: 'Operasional alokasi porsi diaktifkan kembali.'
-            }
-          }
-        }
-        return s
+    setIsSubmitting(true)
+    try {
+      const updated = await toggleSchoolStatus(school.npsn, {
+        status: newStatus,
+        statusReason,
+        returnDate: returnDate || '',
       })
-    )
-
-    setSuspendModalData(null)
-    const actText = isDeactivating ? 'dinonaktifkan sementara' : 'diaktifkan kembali'
-    showToast(`Status alokasi distribusi untuk ${school.name} berhasil ${actText}!`)
+      const mapped = toSchoolView(updated)
+      setSchools((prev) => prev.map((s) => (s.npsn === school.npsn ? mapped : s)))
+      if (selectedSchool && selectedSchool.npsn === school.npsn) {
+        setSelectedSchool(mapped)
+      }
+      setSuspendModalData(null)
+      const actText = isDeactivating ? 'dinonaktifkan sementara' : 'diaktifkan kembali'
+      showToast(`Status alokasi distribusi untuk ${school.name} berhasil ${actText}!`)
+      onReload?.()
+    } catch (err) {
+      showToast(`Gagal mengubah status sekolah: ${err.message || 'Kesalahan server'}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -596,9 +573,9 @@ export function SchoolsPanel({
             </span>
             {[
               { id: 'all', label: 'Semua Jenjang' },
-              { id: 'SD', label: 'SD (7Ã¢â‚¬â€œ12 Thn)' },
-              { id: 'MI', label: 'MI (7Ã¢â‚¬â€œ12 Thn)' },
-              { id: 'SMP', label: 'SMP (13Ã¢â‚¬â€œ15 Thn)' }
+              { id: 'SD', label: 'SD (7-12 Thn)' },
+              { id: 'MI', label: 'MI (7-12 Thn)' },
+              { id: 'SMP', label: 'SMP (13-15 Thn)' }
             ].map((chip) => (
               <button
                 key={chip.id}
@@ -1023,7 +1000,7 @@ export function SchoolsPanel({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[11px] text-slate-600 font-medium mb-1">
-                      SD Bawah (7Ã¢â‚¬â€œ9 thn / 480 kkal)
+                      SD Bawah (7-9 thn / 480 kkal)
                     </label>
                     <input
                       type="number"
@@ -1035,7 +1012,7 @@ export function SchoolsPanel({
                   </div>
                   <div>
                     <label className="block text-[11px] text-slate-600 font-medium mb-1">
-                      SD Atas (10Ã¢â‚¬â€œ12 thn / 550 kkal)
+                      SD Atas (10-12 thn / 550 kkal)
                     </label>
                     <input
                       type="number"
@@ -1047,7 +1024,7 @@ export function SchoolsPanel({
                   </div>
                   <div>
                     <label className="block text-[11px] text-slate-600 font-medium mb-1">
-                      SMP (13Ã¢â‚¬â€œ15 thn / 650 kkal)
+                      SMP (13-15 thn / 650 kkal)
                     </label>
                     <input
                       type="number"
@@ -1111,7 +1088,7 @@ export function SchoolsPanel({
               {/* Row 7: Alokasi Dapur SPPG Penyuplai */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Alokasi Dapur SPPG Penyuplai (Radius Aman &le; 30Ã¢â‚¬â€œ45 Menit)
+                  Alokasi Dapur SPPG Penyuplai (Radius Aman &le; 30-45 Menit)
                 </label>
                 <select
                   value={newSchoolForm.sppgId}
@@ -1136,10 +1113,11 @@ export function SchoolsPanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Check className="h-4 w-4" />
-                  <span>Daftarkan Sekolah</span>
+                  <span>{isSubmitting ? 'Mendaftarkan...' : 'Daftarkan Sekolah'}</span>
                 </button>
               </div>
             </form>
@@ -1235,10 +1213,11 @@ export function SchoolsPanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Navigation className="h-4 w-4" />
-                  <span>Otorisasi Pemindahan Dapur</span>
+                  <span>{isSubmitting ? 'Memproses...' : 'Otorisasi Pemindahan Dapur'}</span>
                 </button>
               </div>
             </form>
@@ -1396,10 +1375,11 @@ export function SchoolsPanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Check className="h-4 w-4" />
-                  <span>Simpan Perubahan Kontak</span>
+                  <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan Kontak'}</span>
                 </button>
               </div>
             </form>
@@ -1512,7 +1492,8 @@ export function SchoolsPanel({
                 </button>
                 <button
                   type="submit"
-                  className={`px-5 py-2 rounded-xl text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5 ${
+                  disabled={isSubmitting}
+                  className={`px-5 py-2 rounded-xl text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 ${
                     suspendModalData.isDeactivating
                       ? 'bg-rose-600 hover:bg-rose-700'
                       : 'bg-emerald-600 hover:bg-emerald-700'
@@ -1521,12 +1502,12 @@ export function SchoolsPanel({
                   {suspendModalData.isDeactivating ? (
                     <>
                       <XCircle className="h-4 w-4" />
-                      <span>Hentikan Distribusi Sementara</span>
+                      <span>{isSubmitting ? 'Memproses...' : 'Hentikan Distribusi Sementara'}</span>
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="h-4 w-4" />
-                      <span>Aktifkan Kembali Distribusi</span>
+                      <span>{isSubmitting ? 'Memproses...' : 'Aktifkan Kembali Distribusi'}</span>
                     </>
                   )}
                 </button>
@@ -1681,21 +1662,21 @@ export function SchoolsPanel({
 
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100">
-                        <span className="text-[10px] text-emerald-800 font-bold block">SD Bawah (7Ã¢â‚¬â€œ9 thn)</span>
+                        <span className="text-[10px] text-emerald-800 font-bold block">SD Bawah (7-9 thn)</span>
                         <span className="text-base font-bold font-mono text-emerald-900">
                           {selectedSchool.demographics.lowerGrade}
                         </span>
                         <span className="text-[10px] text-emerald-700 block mt-0.5">480 kkal/porsi</span>
                       </div>
                       <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
-                        <span className="text-[10px] text-blue-800 font-bold block">SD Atas (10Ã¢â‚¬â€œ12 thn)</span>
+                        <span className="text-[10px] text-blue-800 font-bold block">SD Atas (10-12 thn)</span>
                         <span className="text-base font-bold font-mono text-blue-900">
                           {selectedSchool.demographics.upperGrade}
                         </span>
                         <span className="text-[10px] text-blue-700 block mt-0.5">550 kkal/porsi</span>
                       </div>
                       <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
-                        <span className="text-[10px] text-blue-800 font-bold block">SMP (13Ã¢â‚¬â€œ15 thn)</span>
+                        <span className="text-[10px] text-blue-800 font-bold block">SMP (13-15 thn)</span>
                         <span className="text-base font-bold font-mono text-blue-900">
                           {selectedSchool.demographics.smpGrade}
                         </span>

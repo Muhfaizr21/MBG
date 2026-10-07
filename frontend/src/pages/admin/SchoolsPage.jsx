@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { useAuth } from '../../context/AuthContext'
 import { guardAdminAction } from '../../lib/adminActions'
 import { SchoolsPanel } from '../../components/dashboard/SchoolsPanel'
 import { INITIAL_SCHOOLS_LIST } from '../../data/schoolsData'
 import { fetchSchools } from '../../lib/api'
+import { toSchoolView } from '../../components/dashboard/schoolView'
 
 /**
  * ==============================================================================
@@ -18,49 +19,25 @@ import { fetchSchools } from '../../lib/api'
 export function SchoolsPage() {
   const { user } = useAuth()
   const [toast, setToast] = useState(null)
-  const [schools, setSchools] = useState(INITIAL_SCHOOLS_LIST)
+  const [schools, setSchools] = useState(() => INITIAL_SCHOOLS_LIST.map(toSchoolView))
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let isMounted = true
-    fetchSchools()
-      .then((data) => {
-        if (isMounted && Array.isArray(data) && data.length > 0) {
-          const mapped = data.map((s) => ({
-            ...s,
-            id: s.id || `SCH-${s.npsn}`,
-            coordinates: { lat: s.lat || -6.198, lng: s.lng || 106.832 },
-            principal: {
-              name: s.principalName || 'Kepala Sekolah',
-              nip: s.principalNip || '-',
-              phone: s.principalPhone || '-',
-              email: s.principalEmail || '-',
-            },
-            demographics: {
-              totalStudents: s.totalStudents || 450,
-              totalCalorieTarget: s.totalCalorieTarget || 232800,
-              dietaryNotes: s.dietaryNotes || 'Standar gizi terpenuhi',
-            },
-            sppgSupplier: {
-              id: s.sppgId || 'SPPG-01',
-              name: s.sppgId === 'SPPG-04' ? 'SPPG Sentral Sukajadi Bandung' : 'SPPG Sentral Menteng 01',
-              transitStatus: 'safe',
-            },
-          }))
-          setSchools(mapped)
-        }
-      })
-      .catch((err) => {
-        console.warn('Menggunakan data awal sekolah:', err)
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false)
-      })
-
-    return () => {
-      isMounted = false
+  const loadSchools = useCallback(async () => {
+    try {
+      const data = await fetchSchools()
+      if (Array.isArray(data) && data.length > 0) {
+        setSchools(data.map(toSchoolView))
+      }
+    } catch (err) {
+      console.warn('Menggunakan data awal sekolah (fallback):', err)
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    loadSchools()
+  }, [loadSchools])
 
   useEffect(() => {
     if (!toast) return
@@ -96,6 +73,7 @@ export function SchoolsPage() {
         schoolsList={schools}
         onSuperadminAction={handleSuperadminAction}
         showToast={setToast}
+        onReload={loadSchools}
       />
     </AdminLayout>
   )

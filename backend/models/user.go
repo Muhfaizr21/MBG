@@ -63,12 +63,17 @@ const (
 	PermSppgManage       = "sppg.manage"
 	PermDeliveriesRead   = "deliveries.read"
 	PermAttendanceRead   = "attendance.read"
+	PermAttendanceManage = "attendance.manage"
 	PermSchoolsRead      = "schools.read"
+	PermSchoolsManage    = "schools.manage"
 	PermScheduleRead     = "schedule.read"
+	PermScheduleManage   = "schedule.manage"
 	PermNoticesRead      = "notices.read"
 	PermNoticesPublish   = "notices.publish"
 	PermCalendarRead     = "calendar.read"
+	PermCalendarManage   = "calendar.manage"
 	PermReportsDownload  = "reports.download"
+	PermReportsManage    = "reports.manage"
 	PermFeedbackTriage   = "feedback.triage"
 	PermAiOverride       = "ai.override"
 	PermPaymentClearance = "payment.clearance"
@@ -85,9 +90,9 @@ const (
 var rolePermissions = map[string][]string{
 	RoleSuperadmin: {
 		PermDashboardRead, PermValidatorsRead, PermValidatorsManage,
-		PermSppgRead, PermSppgManage, PermDeliveriesRead, PermAttendanceRead,
-		PermSchoolsRead, PermScheduleRead, PermNoticesRead, PermNoticesPublish,
-		PermCalendarRead, PermReportsDownload, PermFeedbackTriage,
+		PermSppgRead, PermSppgManage, PermDeliveriesRead, PermAttendanceRead, PermAttendanceManage,
+		PermSchoolsRead, PermSchoolsManage, PermScheduleRead, PermScheduleManage, PermNoticesRead, PermNoticesPublish,
+		PermCalendarRead, PermCalendarManage, PermReportsDownload, PermReportsManage, PermFeedbackTriage,
 		PermAiOverride, PermPaymentClearance, PermKillswitch,
 		PermHandoverBast, PermIncidentSubmit, PermKitchenOps, PermUsersCreate,
 	},

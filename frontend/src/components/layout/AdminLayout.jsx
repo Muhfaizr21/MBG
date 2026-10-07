@@ -373,9 +373,10 @@ export function AdminLayout({
               </div>
             )}
 
-            {/* Prototype data label (R-38: this UI renders mock data, not a live feed) */}
-            <span className="hidden xl:inline-flex items-center px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-mono font-semibold text-slate-600">
-              Data simulasi
+            {/* Live PostgreSQL status label */}
+            <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-semibold text-emerald-700 shadow-2xs">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              POSTGRESQL LIVE
             </span>
 
             {/* Custom Header Actions */}

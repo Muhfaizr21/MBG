@@ -1,16 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { useAuth } from '../../context/AuthContext'
 import { guardAdminAction } from '../../lib/adminActions'
 import { NoticesPanel } from '../../components/dashboard/NoticesPanel'
 import { INITIAL_NOTICES_LIST } from '../../data/noticesData'
-import { fetchNotices } from '../../lib/api'
+import { toNoticeView } from '../../components/dashboard/noticeView'
+import {
+  fetchNotices,
+  createNotice,
+  broadcastFlashAlert,
+  toggleArchiveNotice,
+  deleteNotice
+} from '../../lib/api'
 
 /**
  * ==============================================================================
  * HALAMAN SUPERADMIN: PAPAN PENGUMUMAN & EDARAN DARURAT SATGAS MBG
  * URL: /admin/notices
- * Arsitektur: Clean Code (AdminLayout + NoticesPanel)
+ * Arsitektur: Clean Code (AdminLayout + NoticesPanel + Adapter toNoticeView)
  * Sumber Data: Database PostgreSQL via REST API Gateway Golang
  * ==============================================================================
  */
@@ -18,56 +25,29 @@ import { fetchNotices } from '../../lib/api'
 export function NoticesPage() {
   const { user } = useAuth()
   const [toast, setToast] = useState(null)
-  const [noticesList, setNoticesList] = useState(INITIAL_NOTICES_LIST)
+  const [noticesList, setNoticesList] = useState(() =>
+    INITIAL_NOTICES_LIST.map((n) => toNoticeView(n))
+  )
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let isMounted = true
-    fetchNotices()
-      .then((data) => {
-        if (isMounted && Array.isArray(data) && data.length > 0) {
-          const mapped = data.map((n) => ({
-            ...n,
-            id: n.id,
-            refNumber: n.refNumber || 'BGN/SE/084/X/2026',
-            title: n.title,
-            category: n.category || 'seasonal',
-            categoryLabel: n.category === 'system' ? 'Pembaruan Sistem & AI' : 'Peringatan Higienitas Musiman',
-            urgency: n.urgency || 'important',
-            urgencyLabel: n.urgency === 'critical' ? 'Panggilan Darurat (Flash Alert)' : 'Penting',
-            targetAudience: n.targetAudience || 'all',
-            targetAudienceLabel: n.targetAudience === 'validators' ? 'Hanya Guru Validator Sekolah' : 'Semua Pihak (Nasional)',
-            scopeRegion: n.scopeRegion || 'Nasional',
-            publishedAt: n.publishedAt || '07 Okt 2026, 06:00 WIB',
-            effectiveDate: n.effectiveDate || 'Berlaku Selama Oktober 2026',
-            author: {
-              name: n.authorName || 'Dr. Hendra Gunawan, M.Epid',
-              role: n.authorRole || 'Direktur Kepatuhan Mutu BGN',
-            },
-            content: n.content,
-            isFlashAlert: n.isFlashAlert || false,
-            requiresAcknowledgement: n.requiresAcknowledgement || false,
-            acknowledgementStats: {
-              totalRecipients: 420,
-              acknowledgedCount: 398,
-              complianceRate: 94.8,
-            },
-            attachments: Array.isArray(n.attachments) ? n.attachments : [],
-          }))
-          setNoticesList(mapped)
-        }
-      })
-      .catch((err) => {
-        console.warn('Menggunakan data awal notices:', err)
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false)
-      })
-
-    return () => {
-      isMounted = false
+  const loadNotices = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await fetchNotices()
+      if (Array.isArray(data) && data.length > 0) {
+        const mapped = data.map((n) => toNoticeView(n)).filter(Boolean)
+        setNoticesList(mapped)
+      }
+    } catch (err) {
+      console.warn('Menggunakan data awal notices:', err)
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    loadNotices()
+  }, [loadNotices])
 
   useEffect(() => {
     if (!toast) return
@@ -78,6 +58,31 @@ export function NoticesPage() {
   const handleSuperadminAction = (action, payload) => {
     const res = guardAdminAction(user, 'Notices', action, payload)
     if (!res.allowed) setToast(res.message)
+    return res
+  }
+
+  // Superadmin action handlers calling real backend endpoints
+  const handleCreateNotice = async (formData) => {
+    const res = await createNotice(formData)
+    await loadNotices()
+    return res
+  }
+
+  const handleBroadcastFlashAlert = async (id) => {
+    const res = await broadcastFlashAlert(id)
+    await loadNotices()
+    return res
+  }
+
+  const handleToggleArchive = async (id, isArchiving) => {
+    const res = await toggleArchiveNotice(id, isArchiving)
+    await loadNotices()
+    return res
+  }
+
+  const handleDeleteNotice = async (id) => {
+    const res = await deleteNotice(id)
+    await loadNotices()
     return res
   }
 
@@ -103,6 +108,11 @@ export function NoticesPage() {
         noticesList={noticesList}
         onSuperadminAction={handleSuperadminAction}
         showToast={setToast}
+        onCreateNotice={handleCreateNotice}
+        onBroadcastFlashAlert={handleBroadcastFlashAlert}
+        onToggleArchive={handleToggleArchive}
+        onDeleteNotice={handleDeleteNotice}
+        onReload={loadNotices}
       />
     </AdminLayout>
   )

@@ -1,101 +1,131 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { useAuth } from '../../context/AuthContext'
 import { guardAdminAction } from '../../lib/adminActions'
 import { SppgPanel } from '../../components/dashboard/SppgPanel'
-import { INITIAL_SPPG_LIST } from '../../data/sppgData'
-import { fetchSppgList } from '../../lib/api'
+import { toSppgViews } from '../../components/dashboard/sppgView'
+import {
+  fetchSppgList,
+  issueSppgWarning,
+  recordSppgRecipeAudit,
+  reinstateSppgKitchen,
+  suspendSppgKitchen,
+  updateSppgQuota,
+} from '../../lib/api'
 
 /**
  * ==============================================================================
  * HALAMAN SUPERADMIN: DAPUR SPPG (SENTRAL & REKANAN PRODUKSI)
  * URL: /admin/sppg
- * Arsitektur: Clean Code (AdminLayout + SppgPanel)
- * Sumber Data: Database PostgreSQL via REST API Gateway Golang
+ *
+ * Data berasal dari API Go: profil dapur, sekolahrecipient (schools.sppg_id),
+ * tren kepatuhan 7 hari (dihitung dari deliveries), dan riwayat surat
+ * teguran. Tidak ada angka fallback karangan — kalau backend tidak punya data,
+ * panel menampilkannya sebagai belum tercatat.
  * ==============================================================================
  */
 
+// Aksi pada panel → endpoint + permission. Surat teguran & pembekuan hanya
+// superadmin; kuota & audit resep memakai sppg.manage.
+const SPPG_ACTIONS = {
+  issue_warning: { permission: 'sppg.manage', superadminOnly: true, run: (k, p) => issueSppgWarning(k.id, p) },
+  suspend_kitchen: { permission: 'sppg.manage', superadminOnly: true, run: (k, p) => suspendSppgKitchen(k.id, p) },
+  reinstate_kitchen: { permission: 'sppg.manage', superadminOnly: true, run: (k, p) => reinstateSppgKitchen(k.id, p) },
+  update_quota: { permission: 'sppg.manage', run: (k, p) => updateSppgQuota(k.id, p.quota, p.reason) },
+  audit_recipe: { permission: 'sppg.manage', run: (k, p) => recordSppgRecipeAudit(k.id, p) },
+}
+
 export function SppgPage() {
   const { user } = useAuth()
-  const [toast, setToast] = useState(null)
-  const [sppgList, setSppgList] = useState(INITIAL_SPPG_LIST)
+  const [kitchens, setKitchens] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [toast, setToast] = useState(null)
+  const [toastTone, setToastTone] = useState('info')
+
+  const notify = useCallback((message, tone = 'info') => {
+    setToast(message)
+    setToastTone(tone)
+  }, [])
 
   useEffect(() => {
-    let isMounted = true
+    let active = true
     fetchSppgList()
       .then((data) => {
-        if (isMounted && Array.isArray(data) && data.length > 0) {
-          const mapped = data.map((s) => ({
-            ...s,
-            id: s.id,
-            code: s.code || 'BGN-SPPG-001',
-            name: s.name,
-            legalEntity: s.legalEntity,
-            type: s.type || 'sentral',
-            typeLabel: s.typeLabel || 'Dapur Sentral BGN',
-            address: s.address,
-            subdistrict: s.subdistrict,
-            city: s.city,
-            province: s.province,
-            cluster: s.cluster,
-            coordinates: s.coordinates,
-            manager: s.managerName,
-            managerNip: s.managerNip,
-            managerPhone: s.managerPhone,
-            nutritionist: s.nutritionistName,
-            nutritionistStr: s.nutritionistStr,
-            staffCount: s.staffCount,
-            kitchenArea: s.kitchenArea,
-            fleetCount: s.fleetCount,
-            fleetType: s.fleetType,
-            capacity: {
-              maxDailyPortions: s.maxDailyPortions || 3500,
-              activeQuota: s.activeQuota || 2800,
-              requestedQuota: s.activeQuota || 2800,
-              utilizationPct: Math.round(((s.activeQuota || 2800) / (s.maxDailyPortions || 3500)) * 100),
-              safetyBufferPct: 20,
-            },
-            scorecard: {
-              safetyScore: s.safetyScore || 99.4,
-              coldChainScore: s.coldChainScore || 98.7,
-              timelinessScore: s.timelinessScore || 99.6,
-              compositeScore: s.compositeScore || 99.2,
-              grade: s.grade || 'A+',
-              compliance7Days: [99.2, 98.9, 99.5, 99.1, 99.6, 99.3, 99.2],
-              weeklyTrend: '+0.4%',
-            },
-            assignedSchools: [
-              { id: 'sch-1', name: 'SDN 01 Menteng Pagi', npsn: '33.210.130', portions: 480, distanceKm: 1.2, estMinutes: 12, dropTargetTime: '06:45 WIB' },
-              { id: 'sch-2', name: 'SDN Gondangdia 01', npsn: '20101456', portions: 430, distanceKm: 2.8, estMinutes: 18, dropTargetTime: '07:15 WIB' },
-            ],
-          }))
-          setSppgList(mapped)
-        }
+        if (active) setKitchens(Array.isArray(data) ? data : [])
       })
       .catch((err) => {
-        console.warn('Menggunakan data awal sppg:', err)
+        if (active) setLoadError(err.message || 'Gagal memuat direktori dapur.')
       })
       .finally(() => {
-        if (isMounted) setLoading(false)
+        if (active) setLoading(false)
       })
-
     return () => {
-      isMounted = false
+      active = false
     }
   }, [])
 
   useEffect(() => {
     if (!toast) return
-    const timer = setTimeout(() => setToast(null), 4000)
+    const timer = setTimeout(() => setToast(null), 5000)
     return () => clearTimeout(timer)
   }, [toast])
 
-  const handleSuperadminAction = (action, payload) => {
-    const res = guardAdminAction(user, 'SPPG', action, payload)
-    if (!res.allowed) setToast(res.message)
-    return res
-  }
+  /**
+   * Menjalankan aksi terhadap satu dapur.
+   *
+   * Cek izin dulu supaya role read-only mendapat pesan jelas tanpa round-trip;
+   * backend tetap penentu dan mengembalikan profil terbaru yang dipakai UI.
+   *
+   * @returns {Promise<{ok: boolean, profile?: object, message?: string}>}
+   */
+  const runAction = useCallback(
+    async (action, kitchen, payload) => {
+      const config = SPPG_ACTIONS[action]
+      if (!config) return { ok: false, message: `Aksi "${action}" tidak dikenal.` }
+
+      // Tindakan disipliner hanya boleh oleh superadmin, meski role itu punya
+      // izin sppg.manage untuk mengisi data dapurnya sendiri.
+      const guard = guardAdminAction(
+        user,
+        'SPPG',
+        action,
+        kitchen,
+        config.superadminOnly ? [] : [config.permission]
+      )
+      if (!guard.allowed) {
+        notify(guard.message, 'error')
+        return { ok: false, message: guard.message }
+      }
+
+      try {
+        const profile = await config.run(kitchen, payload)
+        if (profile) {
+          setKitchens((prev) => prev.map((k) => (k.id === profile.id ? profile : k)))
+        }
+        notify(`[SUKSES] ${kitchen.name}: ${action} berhasil dieksekusi dan tercatat pada audit log.`, 'success')
+        return { ok: true, profile }
+      } catch (err) {
+        const message = err.message || `Aksi "${action}" gagal.`
+        notify(`[GAGAL] ${kitchen.name}: ${message}`, 'error')
+        return { ok: false, message }
+      }
+    },
+    [user, notify]
+  )
+
+  // Pemeriksaan izin sinkron untuk menonaktifkan tombol tanpa menunggu jaringan.
+  const canAct = useCallback(
+    (action) => {
+      const config = SPPG_ACTIONS[action]
+      if (!config) return false
+      if (config.superadminOnly) return user?.role === 'superadmin'
+      return guardAdminAction(user, 'SPPG', action, null, [config.permission]).allowed
+    },
+    [user]
+  )
+
+  const sppgList = useMemo(() => toSppgViews(kitchens), [kitchens])
 
   return (
     <AdminLayout
@@ -108,17 +138,33 @@ export function SppgPage() {
         <div
           role="status"
           aria-live="polite"
-          className="mb-4 flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs text-orange-900 animate-in fade-in"
+          className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-xs ${
+            toastTone === 'error'
+              ? 'border-rose-200 bg-rose-50 text-rose-900'
+              : toastTone === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                : 'border-orange-200 bg-orange-50 text-orange-900'
+          }`}
         >
-          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
+          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-60" />
           <p className="leading-relaxed font-medium">{toast}</p>
+        </div>
+      )}
+
+      {loadError && (
+        <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900">
+          <p className="font-semibold">Direktori dapur tidak dapat dimuat.</p>
+          <p className="mt-1 leading-relaxed">{loadError}</p>
         </div>
       )}
 
       <SppgPanel
         sppgList={sppgList}
-        onSuperadminAction={handleSuperadminAction}
-        showToast={setToast}
+        loading={loading}
+        onAction={runAction}
+        canManage={canAct('update_quota')}
+        canDiscipline={canAct('issue_warning')}
+        showToast={notify}
       />
     </AdminLayout>
   )

@@ -24,6 +24,144 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/auth/login": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Authenticate user and issue tokens",
+                "parameters": [
+                    {
+                        "description": "credentials",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.AuthResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/logout": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Revoke the current refresh token",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/me": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Return the authenticated user profile and permissions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.AuthResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/refresh": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Rotate refresh token and issue a new access token",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.AuthResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/register": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Create a new validator/siswa account",
+                "parameters": [
+                    {
+                        "description": "registration data",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.RegisterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/health": {
             "get": {
                 "description": "Returns status and timestamp of the backend service",
@@ -256,6 +394,772 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/api/nutrition/items": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Search nutrition items from the cuisine dataset",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "kata kunci nama bahan",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "batas hasil (default 20, maks 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/scans": {
+            "post": {
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Submit a box scan (QR token + food photo) for AI quality analysis",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "foto isi boks (jpg/png, maks 8MB)",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "token QR boks berformat MBG-...",
+                        "name": "qrToken",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "id boks (diturunkan dari token QR bila kosong)",
+                        "name": "boxId",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "id batch",
+                        "name": "batchId",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "number",
+                        "description": "suhu holding boks (°C)",
+                        "name": "holdingTempC",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "number",
+                        "description": "suhu masak inti saat lepas dapur (°C)",
+                        "name": "releaseTempC",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "lama inspeksi visual dalam milidetik (audit ketelitian Pasal 14)",
+                        "name": "durationMs",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "daftar bahan menu (format 'Nama:gram' dipisah koma, mis. 'Nasi:120,Ayam goreng paha:60')",
+                        "name": "items",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ScanResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/scans/recent": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "List the most recent scan logs",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sppg": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sppg"
+                ],
+                "summary": "Direktori dapur SPPG",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/models.SPPGKitchen"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sppg/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sppg"
+                ],
+                "summary": "Detail satu dapur SPPG",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "SPPG-01",
+                        "description": "SPPG ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.SPPGKitchen"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sppg/{id}/quota": {
+            "put": {
+                "description": "Superadmin saja. Kuota tidak boleh melebihi maxDailyPortions.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sppg"
+                ],
+                "summary": "Perbarui kuota produksi",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "SPPG ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Kuota baru + alasan",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.UpdateQuotaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.SPPGKitchen"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sppg/{id}/recipe-audit": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sppg"
+                ],
+                "summary": "Audit gramatur resep TKPI",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "SPPG ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Hasil audit",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.RecordRecipeAuditRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.SPPGKitchen"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sppg/{id}/reinstate": {
+            "post": {
+                "description": "Superadmin saja. Mengembalikan status dapur menjadi active dan menetapkan kuota awal.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sppg"
+                ],
+                "summary": "Pulihkan hak operasional dapur SPPG",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "SPPG ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Alasan pemulihan + kuota awal",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ReinstateKitchenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.SPPGKitchen"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sppg/{id}/suspension": {
+            "post": {
+                "description": "Superadmin saja. Wajib menunjuk dapur alternatif yang aktif dan mampu.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sppg"
+                ],
+                "summary": "Bekukan dapur SPPG",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "SPPG ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Alasan + dapur alternatif",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SuspendKitchenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.SPPGKitchen"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sppg/{id}/warnings": {
+            "post": {
+                "description": "Superadmin saja. SP-2 hanya sah bila SP-1 sebelumnya sudah terbit.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sppg"
+                ],
+                "summary": "Terbitkan surat peringatan SP-1/SP-2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "SPPG ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Jenis, nomor, alasan, tenggat",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.IssueWarningRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.SPPGKitchen"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/validators/{id}/backup": {
+            "put": {
+                "description": "Cadangan wajib validator aktif pada sekolah yang sama.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Tugaskan guru piket cadangan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "VAL-001",
+                        "description": "Validator ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "ID cadangan + alasan",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.AssignBackupValidatorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.ValidatorProfile"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/validators/{id}/device/reset": {
+            "post": {
+                "description": "Memutus tautan kriptografis perangkat; validator wajib registrasi ulang.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Reset device binding validator",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "VAL-001",
+                        "description": "Validator ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Alasan reset",
+                        "name": "payload",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/models.ResetValidatorDeviceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.ValidatorProfile"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/validators/{id}/status": {
+            "patch": {
+                "description": "Superadmin saja. Menyelaraskan validator_profiles.status dengan users.status dan mencatat audit.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Ubah status validator lapangan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "VAL-001",
+                        "description": "Validator ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status baru + alasan",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SetValidatorStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.ValidatorProfile"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/validators/{id}/warnings": {
+            "post": {
+                "description": "Menandai profil sebagai flagged dan menambah hitungan peringatan.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "validators"
+                ],
+                "summary": "Kirim surat peringatan digital",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "VAL-001",
+                        "description": "Validator ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Isi surat peringatan",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.WarnValidatorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/models.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.ValidatorProfile"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/models.APIResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -271,6 +1175,37 @@ const docTemplate = `{
                 },
                 "success": {
                     "type": "boolean"
+                }
+            }
+        },
+        "models.AssignBackupValidatorRequest": {
+            "type": "object",
+            "properties": {
+                "backupValidatorId": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.AuthResponse": {
+            "type": "object",
+            "properties": {
+                "accessToken": {
+                    "type": "string"
+                },
+                "expiresIn": {
+                    "type": "integer"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "user": {
+                    "$ref": "#/definitions/models.User"
                 }
             }
         },
@@ -305,6 +1240,23 @@ const docTemplate = `{
                 }
             }
         },
+        "models.IssueWarningRequest": {
+            "type": "object",
+            "properties": {
+                "deadlineLabel": {
+                    "type": "string"
+                },
+                "letterNumber": {
+                    "type": "string"
+                },
+                "letterType": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
         "models.Item": {
             "type": "object",
             "properties": {
@@ -324,6 +1276,603 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.LoginRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Macros": {
+            "type": "object",
+            "properties": {
+                "carbs": {
+                    "type": "number"
+                },
+                "energy": {
+                    "type": "number"
+                },
+                "fat": {
+                    "type": "number"
+                },
+                "fiber": {
+                    "type": "number"
+                },
+                "protein": {
+                    "type": "number"
+                }
+            }
+        },
+        "models.NutritionMatch": {
+            "type": "object",
+            "properties": {
+                "carbs": {
+                    "type": "number"
+                },
+                "energy": {
+                    "type": "number"
+                },
+                "fat": {
+                    "type": "number"
+                },
+                "matchedTo": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "protein": {
+                    "type": "number"
+                },
+                "weightG": {
+                    "type": "number"
+                }
+            }
+        },
+        "models.RecordRecipeAuditRequest": {
+            "type": "object",
+            "properties": {
+                "auditor": {
+                    "type": "string"
+                },
+                "avgDeviationPct": {
+                    "type": "number"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "tkpiStatus": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.RegisterRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "fullName": {
+                    "type": "string"
+                },
+                "npsn": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "schoolName": {
+                    "type": "string"
+                },
+                "sppgId": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ReinstateKitchenRequest": {
+            "type": "object",
+            "properties": {
+                "initialQuota": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ResetValidatorDeviceRequest": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SPPGKitchen": {
+            "type": "object",
+            "properties": {
+                "activeQuota": {
+                    "type": "integer"
+                },
+                "address": {
+                    "type": "string"
+                },
+                "assignedSchools": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SppgAssignedSchool"
+                    }
+                },
+                "avgDeviationPct": {
+                    "type": "number"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "cluster": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "coldChainScore": {
+                    "type": "number"
+                },
+                "complianceTrend": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "compositeScore": {
+                    "type": "number"
+                },
+                "coordinates": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "fleetCount": {
+                    "type": "integer"
+                },
+                "fleetType": {
+                    "type": "string"
+                },
+                "grade": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kitchenArea": {
+                    "type": "string"
+                },
+                "legalEntity": {
+                    "type": "string"
+                },
+                "managerName": {
+                    "type": "string"
+                },
+                "managerNip": {
+                    "type": "string"
+                },
+                "managerPhone": {
+                    "type": "string"
+                },
+                "maxDailyPortions": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nutritionistName": {
+                    "type": "string"
+                },
+                "nutritionistStr": {
+                    "type": "string"
+                },
+                "province": {
+                    "type": "string"
+                },
+                "quotaUpdatedAt": {
+                    "type": "string"
+                },
+                "quotaUpdatedBy": {
+                    "type": "string"
+                },
+                "recipeAuditedAt": {
+                    "type": "string"
+                },
+                "recipeAuditor": {
+                    "type": "string"
+                },
+                "safetyScore": {
+                    "type": "number"
+                },
+                "staffCount": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "subdistrict": {
+                    "type": "string"
+                },
+                "suspendedAt": {
+                    "type": "string"
+                },
+                "suspendedReason": {
+                    "type": "string"
+                },
+                "timelinessScore": {
+                    "type": "number"
+                },
+                "tkpiStatus": {
+                    "description": "Status audit \u0026 teguran; kolom nullable di DB, dinormalkan di sini.",
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "typeLabel": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "warningLetters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SppgWarningLetter"
+                    }
+                }
+            }
+        },
+        "models.ScanCheck": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "ok": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.ScanLog": {
+            "type": "object",
+            "properties": {
+                "actorId": {
+                    "type": "string"
+                },
+                "aiClass": {
+                    "type": "string"
+                },
+                "aiConfidence": {
+                    "type": "number"
+                },
+                "batchId": {
+                    "type": "string"
+                },
+                "boxId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "durationMs": {
+                    "type": "integer"
+                },
+                "holdingTempC": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imageRef": {
+                    "type": "string"
+                },
+                "qrToken": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "releaseTempC": {
+                    "type": "number"
+                },
+                "verdict": {
+                    "type": "string"
+                },
+                "visualScore": {
+                    "type": "number"
+                }
+            }
+        },
+        "models.ScanResult": {
+            "type": "object",
+            "properties": {
+                "aiClass": {
+                    "type": "string"
+                },
+                "aiConfidence": {
+                    "type": "number"
+                },
+                "aiLatencyMs": {
+                    "type": "number"
+                },
+                "batchId": {
+                    "type": "string"
+                },
+                "boxId": {
+                    "type": "string"
+                },
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ScanCheck"
+                    }
+                },
+                "holdTemp": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "macros": {
+                    "$ref": "#/definitions/models.Macros"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "nutrition": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.NutritionMatch"
+                    }
+                },
+                "nutritionNote": {
+                    "type": "string"
+                },
+                "qrToken": {
+                    "type": "string"
+                },
+                "releaseTemp": {
+                    "type": "number"
+                },
+                "scannedAt": {
+                    "type": "string"
+                },
+                "score": {
+                    "type": "number"
+                },
+                "verdict": {
+                    "type": "string"
+                },
+                "verdictLabel": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SetValidatorStatusRequest": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SppgAssignedSchool": {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "npsn": {
+                    "type": "string"
+                },
+                "portionsToday": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.SppgWarningLetter": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "deadlineLabel": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issuedBy": {
+                    "type": "string"
+                },
+                "letterNumber": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "sppgId": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SuspendKitchenRequest": {
+            "type": "object",
+            "properties": {
+                "alternativeSppgId": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UpdateQuotaRequest": {
+            "type": "object",
+            "properties": {
+                "quota": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.User": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "fullName": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "npsn": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "schoolName": {
+                    "type": "string"
+                },
+                "sppgId": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ValidatorProfile": {
+            "type": "object",
+            "properties": {
+                "anomalies": {
+                    "type": "integer"
+                },
+                "avgDurationSec": {
+                    "type": "number"
+                },
+                "backupValidatorId": {
+                    "type": "string"
+                },
+                "backupValidatorName": {
+                    "type": "string"
+                },
+                "certification": {
+                    "type": "string"
+                },
+                "device": {
+                    "type": "string"
+                },
+                "deviceBound": {
+                    "type": "boolean"
+                },
+                "deviceId": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lastScanAt": {
+                    "type": "string"
+                },
+                "lastWarningAt": {
+                    "type": "string"
+                },
+                "lastWarningNote": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nip": {
+                    "type": "string"
+                },
+                "npsn": {
+                    "type": "string"
+                },
+                "quotaToday": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "satgasId": {
+                    "type": "string"
+                },
+                "scanLogs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ScanLog"
+                    }
+                },
+                "scansToday": {
+                    "type": "integer"
+                },
+                "schoolCity": {
+                    "type": "string"
+                },
+                "schoolName": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "warningCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.WarnValidatorRequest": {
+            "type": "object",
+            "properties": {
+                "note": {
                     "type": "string"
                 }
             }

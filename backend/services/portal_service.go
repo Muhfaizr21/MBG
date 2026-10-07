@@ -11,8 +11,6 @@ import (
 type PortalService interface {
 	GetSchools(ctx context.Context) ([]models.School, error)
 	GetSchool(ctx context.Context, npsn string) (*models.School, error)
-	GetSPPGs(ctx context.Context) ([]models.SPPGKitchen, error)
-	GetSPPG(ctx context.Context, id string) (*models.SPPGKitchen, error)
 	GetMenuPackages(ctx context.Context) ([]models.MenuPackage, error)
 	GetCalendarDays(ctx context.Context) ([]models.CalendarDay, error)
 	GetDeliveries(ctx context.Context) ([]models.Delivery, error)
@@ -22,7 +20,6 @@ type PortalService interface {
 	GetFeedbacks(ctx context.Context) ([]models.Feedback, error)
 	SubmitFeedback(ctx context.Context, fb *models.Feedback) error
 	GetReports(ctx context.Context) ([]models.Report, error)
-	GetValidators(ctx context.Context) ([]models.ValidatorProfile, error)
 	GetAdminMetrics(ctx context.Context) (*models.AdminDashboardMetrics, error)
 }
 
@@ -40,14 +37,6 @@ func (s *portalService) GetSchools(ctx context.Context) ([]models.School, error)
 
 func (s *portalService) GetSchool(ctx context.Context, npsn string) (*models.School, error) {
 	return s.repo.GetSchoolByNPSN(ctx, npsn)
-}
-
-func (s *portalService) GetSPPGs(ctx context.Context) ([]models.SPPGKitchen, error) {
-	return s.repo.GetAllSPPGs(ctx)
-}
-
-func (s *portalService) GetSPPG(ctx context.Context, id string) (*models.SPPGKitchen, error) {
-	return s.repo.GetSPPGByID(ctx, id)
 }
 
 func (s *portalService) GetMenuPackages(ctx context.Context) ([]models.MenuPackage, error) {
@@ -96,10 +85,6 @@ func (s *portalService) SubmitFeedback(ctx context.Context, fb *models.Feedback)
 
 func (s *portalService) GetReports(ctx context.Context) ([]models.Report, error) {
 	return s.repo.GetAllReports(ctx)
-}
-
-func (s *portalService) GetValidators(ctx context.Context) ([]models.ValidatorProfile, error) {
-	return s.repo.GetAllValidators(ctx)
 }
 
 func (s *portalService) GetAdminMetrics(ctx context.Context) (*models.AdminDashboardMetrics, error) {

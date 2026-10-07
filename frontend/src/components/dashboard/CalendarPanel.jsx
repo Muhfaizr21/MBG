@@ -32,61 +32,64 @@ import {
   DAY_TYPE_OPTIONS,
   MENU_STATUS_OPTIONS
 } from '../../data/calendarData'
-import { fetchCalendarDays, fetchMenuPackages } from '../../lib/api'
+import {
+  fetchCalendarDays,
+  fetchMenuPackages,
+  fetchSubstitutions,
+  lockMonthCycle,
+  toggleDayLock,
+  setBlackoutDate,
+  createSubstitution,
+  reviewSubstitution,
+  scheduleInspection
+} from '../../lib/api'
+import {
+  mapCalendarDayFromApi,
+  mapMenuPackageFromApi,
+  mapSubstitutionFromApi
+} from './calendarView'
 
 export function CalendarPanel({
   onSuperadminAction = () => {},
   showToast = () => {}
 }) {
   // Main Data States
-  const [calendarDays, setCalendarDays] = useState(INITIAL_CALENDAR_DAYS)
-  const [substitutions, setSubstitutions] = useState(INITIAL_SUBSTITUTIONS)
-  const [menuPackages, setMenuPackages] = useState(MENU_PACKAGES)
+  const [calendarDays, setCalendarDays] = useState([])
+  const [substitutions, setSubstitutions] = useState([])
+  const [menuPackages, setMenuPackages] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const loadData = async () => {
+    try {
+      const [days, packages, subs] = await Promise.all([
+        fetchCalendarDays(),
+        fetchMenuPackages(),
+        fetchSubstitutions()
+      ])
+      if (Array.isArray(packages) && packages.length > 0) {
+        setMenuPackages(packages.map(mapMenuPackageFromApi))
+      } else {
+        setMenuPackages(MENU_PACKAGES.map(mapMenuPackageFromApi))
+      }
+      if (Array.isArray(days) && days.length > 0) {
+        setCalendarDays(days.map(mapCalendarDayFromApi))
+      } else {
+        setCalendarDays(INITIAL_CALENDAR_DAYS.map(mapCalendarDayFromApi))
+      }
+      if (Array.isArray(subs) && subs.length > 0) {
+        setSubstitutions(subs.map(mapSubstitutionFromApi))
+      } else {
+        setSubstitutions(INITIAL_SUBSTITUTIONS.map(mapSubstitutionFromApi))
+      }
+    } catch (err) {
+      console.warn('Calendar fetch error:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    let isMounted = true
-    Promise.all([fetchCalendarDays(), fetchMenuPackages()])
-      .then(([days, packages]) => {
-        if (!isMounted) return
-        if (Array.isArray(packages) && packages.length > 0) {
-          const mappedPackages = packages.map(p => ({
-            ...p,
-            id: p.id,
-            cycleCode: p.cycleCode,
-            name: p.name,
-            calories: p.calories,
-            protein: p.protein,
-            carbs: p.carbs,
-            fat: p.fat,
-            calcium: p.calcium,
-            iron: p.iron,
-            zinc: p.zinc,
-            costPerServing: p.costPerServing,
-            allergens: p.allergens ? [p.allergens] : [],
-            description: p.description,
-          }))
-          setMenuPackages(mappedPackages)
-        }
-        if (Array.isArray(days) && days.length > 0) {
-          const mappedDays = days.map(d => ({
-            ...d,
-            date: d.date,
-            packageId: d.packageId,
-            dayName: d.dayName,
-            status: d.status || 'approved',
-            dayType: d.dayType || 'regular',
-            theme: d.theme,
-            targetPortions: d.targetPortions,
-            locked: d.status === 'locked',
-          }))
-          setCalendarDays(mappedDays)
-        }
-      })
-      .catch(err => console.warn('Calendar fallback:', err))
-
-    return () => {
-      isMounted = false
-    }
+    loadData()
   }, [])
 
   // Navigation & Filtering
@@ -159,9 +162,11 @@ export function CalendarPanel({
       const matchSearch =
         d.date.includes(search) ||
         d.dayName.toLowerCase().includes(search.toLowerCase()) ||
-        d.title.toLowerCase().includes(search.toLowerCase()) ||
+        (d.title && d.title.toLowerCase().includes(search.toLowerCase())) ||
+        (d.package?.name && d.package.name.toLowerCase().includes(search.toLowerCase())) ||
+        (d.package?.cycleCode && d.package.cycleCode.toLowerCase().includes(search.toLowerCase())) ||
         (d.blackoutReason && d.blackoutReason.toLowerCase().includes(search.toLowerCase())) ||
-        (d.inspectionDetail && d.inspectionDetail.targetSppgName.toLowerCase().includes(search.toLowerCase()))
+        (d.inspectionDetail && d.inspectionDetail.targetSppgName && d.inspectionDetail.targetSppgName.toLowerCase().includes(search.toLowerCase()))
 
       const matchType =
         dayTypeFilter === 'all'
@@ -239,185 +244,99 @@ export function CalendarPanel({
   }
 
   // Handle Lock Entire Month
-  const handleLockEntireMonth = () => {
+  const handleLockEntireMonth = async () => {
     if (onSuperadminAction?.('LOCK_MONTH_CYCLE')?.allowed === false) return
-    setCalendarDays((prev) =>
-      prev.map((d) => {
-        if (d.dayType === 'school_day' || d.dayType === 'exam_day') {
-          return {
-            ...d,
-            menuStatus: 'locked',
-            menuStatusLabel: 'Menu Terkunci & Valid'
-          }
-        }
-        return d
-      })
-    )
-    setLockMonthModalOpen(false)
-    showToast(`Seluruh siklus menu untuk periode ${selectedMonth} telah DIKUNCI secara nasional!`)
+    try {
+      await lockMonthCycle(selectedMonth)
+      await loadData()
+      setLockMonthModalOpen(false)
+      showToast(`Seluruh siklus menu untuk periode ${selectedMonth} telah DIKUNCI secara nasional!`)
+    } catch (err) {
+      showToast(`Gagal mengunci siklus menu: ${err.message}`)
+    }
   }
 
   // Handle Toggle Single Day Lock
-  const handleToggleDayLock = (targetDate) => {
+  const handleToggleDayLock = async (targetDate) => {
     if (onSuperadminAction?.('TOGGLE_DAY_LOCK')?.allowed === false) return
-    setCalendarDays((prev) =>
-      prev.map((d) => {
-        if (d.date === targetDate) {
-          const isCurrentlyLocked = d.menuStatus === 'locked'
-          const newStatus = isCurrentlyLocked ? 'draft' : 'locked'
-          const newStatusLabel = isCurrentlyLocked ? 'Draft Penyusunan' : 'Menu Terkunci & Valid'
-          return {
-            ...d,
-            menuStatus: newStatus,
-            menuStatusLabel: newStatusLabel
-          }
-        }
-        return d
-      })
-    )
-    setOpenMenuDate(null)
-    showToast(`Status penguncian menu tanggal ${targetDate} berhasil diperbarui!`)
+    try {
+      await toggleDayLock(targetDate)
+      await loadData()
+      setOpenMenuDate(null)
+      showToast(`Status penguncian menu tanggal ${targetDate} berhasil diperbarui!`)
+    } catch (err) {
+      showToast(`Gagal mengubah status penguncian: ${err.message}`)
+    }
   }
 
   // Handle Submit Operational Blackout (Set / Release)
-  const handleSubmitBlackout = (e) => {
+  const handleSubmitBlackout = async (e) => {
     if (onSuperadminAction?.('SET_BLACKOUT_DATE')?.allowed === false) return
     e.preventDefault()
     if (!blackoutModalData) return
 
     const { date, isSettingBlackout } = blackoutModalData
 
-    setCalendarDays((prev) =>
-      prev.map((d) => {
-        if (d.date === date) {
-          if (isSettingBlackout) {
-            return {
-              ...d,
-              dayType: 'holiday',
-              dayTypeLabel: 'Libur Nasional / Blackout',
-              title: blackoutForm.title || 'Libur Operasional Khusus',
-              menuStatus: 'blackout',
-              menuStatusLabel: 'Libur Operasional Terkunci',
-              isOperationalBlackout: true,
-              blackoutReason: blackoutForm.reason || 'Libur Operasional Ditetapkan Superadmin MBG',
-              targetPortions: 0,
-              activeKitchens: 0
-            }
-          } else {
-            return {
-              ...d,
-              dayType: 'school_day',
-              dayTypeLabel: 'Hari Operasional Reguler',
-              title: 'Siklus Menu Normal',
-              menuStatus: 'locked',
-              menuStatusLabel: 'Menu Terkunci & Valid',
-              isOperationalBlackout: false,
-              blackoutReason: null,
-              targetPortions: 251000,
-              activeKitchens: 180
-            }
-          }
-        }
-        return d
+    try {
+      await setBlackoutDate(date, {
+        title: blackoutForm.title,
+        reason: blackoutForm.reason,
+        isSettingBlackout
       })
-    )
-
-    setBlackoutModalData(null)
-    const act = isSettingBlackout ? 'ditetapkan sebagai Libur Blackout (Pemesanan Dikunci)' : 'dibuka kembali untuk operasional katering'
-    showToast(`Tanggal ${date} berhasil ${act}!`)
+      await loadData()
+      setBlackoutModalData(null)
+      const act = isSettingBlackout ? 'ditetapkan sebagai Libur Blackout (Pemesanan Dikunci)' : 'dibuka kembali untuk operasional katering'
+      showToast(`Tanggal ${date} berhasil ${act}!`)
+    } catch (err) {
+      showToast(`Gagal mengatur status blackout: ${err.message}`)
+    }
   }
 
   // Handle Substitution Approval / Creation
-  const handleSubmitSubstitution = (e) => {
+  const handleSubmitSubstitution = async (e) => {
     if (onSuperadminAction?.('CREATE_SUBSTITUTION')?.allowed === false) return
     if (onSuperadminAction?.('REVIEW_SUBSTITUTION')?.allowed === false) return
     e.preventDefault()
     if (!substitutionModalData) return
 
-    if (substitutionModalData.mode === 'create') {
-      const newSub = {
-        id: `SUB-2026-${Date.now().toString().slice(-3)}`,
-        date: substitutionForm.date,
-        cycleCode: substitutionForm.cycleCode,
-        region: substitutionForm.region,
-        originalIngredient: substitutionForm.originalIngredient || 'Daging Ayam Broiler Segar (85g)',
-        substituteIngredient: substitutionForm.substituteIngredient || 'Ikan Kembung Segar Banjar (90g)',
-        reason: substitutionForm.reason || 'Kenaikan harga atau kelangkaan bahan baku lokal regional.',
-        nutritionComparison: {
-          proteinOriginal: '28.5g',
-          proteinSubstitute: substitutionForm.proteinCompare,
-          caloriesOriginal: '580 kkal',
-          caloriesSubstitute: substitutionForm.calorieCompare,
-          costOriginal: 'Rp 14.850',
-          costSubstitute: substitutionForm.costCompare
-        },
-        nutritionistReview: substitutionForm.nutritionistReview,
-        status: 'approved',
-        statusLabel: 'Disetujui Superadmin BGN',
-        approvedAt: `${new Date().toISOString().slice(0, 10)} 10:00 WIB`,
-        approvedBy: 'Bambang Soediro (Superadmin Satgas MBG)'
+    try {
+      if (substitutionModalData.mode === 'create') {
+        const payload = {
+          date: substitutionForm.date,
+          cycleCode: substitutionForm.cycleCode,
+          region: substitutionForm.region,
+          originalIngredient: substitutionForm.originalIngredient || 'Daging Ayam Broiler Segar (85g)',
+          substituteIngredient: substitutionForm.substituteIngredient || 'Ikan Kembung Segar Banjar (90g)',
+          reason: substitutionForm.reason || 'Kenaikan harga atau kelangkaan bahan baku lokal regional.',
+          nutritionComparison: {
+            proteinOriginal: '28.5g',
+            proteinSubstitute: substitutionForm.proteinCompare,
+            caloriesOriginal: '580 kkal',
+            caloriesSubstitute: substitutionForm.calorieCompare,
+            costOriginal: 'Rp 14.850',
+            costSubstitute: substitutionForm.costCompare
+          },
+          nutritionistReview: substitutionForm.nutritionistReview
+        }
+
+        await createSubstitution(payload)
+        await loadData()
+        showToast(`Penggantian menu darurat untuk ${payload.date} (${payload.cycleCode}) berhasil disetujui & dipublikasikan!`)
+      } else if (substitutionModalData.mode === 'review') {
+        const subItem = substitutionModalData.item
+        const action = substitutionModalData.action || 'approve'
+        await reviewSubstitution(subItem.id, action)
+        await loadData()
+        showToast(`Pengajuan substitusi ${subItem.id} berhasil ${action === 'approve' ? 'DISETUJUI' : 'DITOLAK'}!`)
       }
-
-      setSubstitutions([newSub, ...substitutions])
-
-      // Update calendar day status
-      setCalendarDays((prev) =>
-        prev.map((d) => {
-          if (d.date === substitutionForm.date) {
-            return {
-              ...d,
-              menuStatus: 'substitution_approved',
-              menuStatusLabel: 'Substitusi Disetujui BGN',
-              hasSubstitution: true,
-              substitutionId: newSub.id
-            }
-          }
-          return d
-        })
-      )
-
-      showToast(`Penggantian menu darurat untuk ${newSub.date} (${newSub.cycleCode}) berhasil disetujui & dipublikasikan!`)
-    } else if (substitutionModalData.mode === 'review') {
-      const subItem = substitutionModalData.item
-      const isApproved = substitutionModalData.action === 'approve'
-
-      setSubstitutions((prev) =>
-        prev.map((s) => {
-          if (s.id === subItem.id) {
-            return {
-              ...s,
-              status: isApproved ? 'approved' : 'rejected',
-              statusLabel: isApproved ? 'Disetujui Superadmin BGN' : 'Ditolak (Tetap Menu Asli)',
-              approvedAt: `${new Date().toISOString().slice(0, 10)} 10:00 WIB`,
-              approvedBy: 'Bambang Soediro (Superadmin Satgas MBG)'
-            }
-          }
-          return s
-        })
-      )
-
-      // Update day status
-      setCalendarDays((prev) =>
-        prev.map((d) => {
-          if (d.date === subItem.date) {
-            return {
-              ...d,
-              menuStatus: isApproved ? 'substitution_approved' : 'locked',
-              menuStatusLabel: isApproved ? 'Substitusi Disetujui BGN' : 'Menu Terkunci (Substitusi Ditolak)'
-            }
-          }
-          return d
-        })
-      )
-
-      showToast(`Pengajuan substitusi ${subItem.id} berhasil ${isApproved ? 'DISETUJUI' : 'DITOLAK'}!`)
+      setSubstitutionModalData(null)
+    } catch (err) {
+      showToast(`Gagal memproses substitusi: ${err.message}`)
     }
-
-    setSubstitutionModalData(null)
   }
 
   // Handle Schedule Inspection (Sidak)
-  const handleScheduleInspection = (e) => {
+  const handleScheduleInspection = async (e) => {
     if (onSuperadminAction?.('SCHEDULE_INSPECTION')?.allowed === false) return
     e.preventDefault()
     if (!inspectionForm.targetSppgName || !inspectionForm.date) {
@@ -425,32 +344,21 @@ export function CalendarPanel({
       return
     }
 
-    const newInspection = {
-      id: `SDK-2026-${Date.now().toString().slice(-3)}`,
-      leadInspector: inspectionForm.leadInspector,
-      team: inspectionForm.team,
-      targetSppgName: inspectionForm.targetSppgName,
-      sppgId: inspectionForm.sppgId,
-      auditTime: inspectionForm.auditTime,
-      auditFocus: inspectionForm.auditFocus,
-      result: 'Terjadwal Rahasia (Siap Inspeksi)'
-    }
-
-    setCalendarDays((prev) =>
-      prev.map((d) => {
-        if (d.date === inspectionForm.date) {
-          return {
-            ...d,
-            hasInspection: true,
-            inspectionDetail: newInspection
-          }
-        }
-        return d
+    try {
+      await scheduleInspection(inspectionForm.date, {
+        leadInspector: inspectionForm.leadInspector,
+        team: inspectionForm.team,
+        targetSppgName: inspectionForm.targetSppgName,
+        sppgId: inspectionForm.sppgId,
+        auditTime: inspectionForm.auditTime,
+        auditFocus: inspectionForm.auditFocus
       })
-    )
-
-    setInspectionModalOpen(false)
-    showToast(`Jadwal sidak mendadak ke ${inspectionForm.targetSppgName} berhasil didaftarkan secara rahasia!`)
+      await loadData()
+      setInspectionModalOpen(false)
+      showToast(`Jadwal sidak mendadak ke ${inspectionForm.targetSppgName} berhasil didaftarkan secara rahasia!`)
+    } catch (err) {
+      showToast(`Gagal menjadwalkan sidak: ${err.message}`)
+    }
   }
 
   return (
@@ -607,7 +515,7 @@ export function CalendarPanel({
       {/* ====================================================================
           3. VISUALIZATIONS & CHARTS
           ==================================================================== */}
-      <CalendarCharts calendarDays={calendarDays} />
+      <CalendarCharts calendarDays={calendarDays} menuPackages={menuPackages} />
 
       {/* ====================================================================
           4. MAIN VIEW TABS & FILTER BAR
@@ -869,7 +777,7 @@ export function CalendarPanel({
                           </p>
                           <div className="flex items-center gap-2 text-[11px] text-slate-500">
                             <span>{pkg.calories} kkal</span>
-                            <span>Ã¢â‚¬Â¢</span>
+                            <span>•</span>
                             <span className="font-semibold text-emerald-700">{pkg.protein}g Prot</span>
                           </div>
                         </div>
@@ -981,7 +889,7 @@ export function CalendarPanel({
                                 </span>
                               </div>
                               <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                                {pkg.proteinMain} Ã¢â‚¬Â¢ {pkg.fruit}
+                                {pkg.proteinMain} • {pkg.fruit}
                               </p>
                             </div>
                           ) : (
@@ -1338,7 +1246,7 @@ export function CalendarPanel({
                         {sub.cycleCode}
                       </span>
                       <span className="font-extrabold text-slate-900 text-xs">
-                        {sub.id} Ã¢â‚¬Â¢ Tanggal: {sub.date}
+                        {sub.id} • Tanggal: {sub.date}
                       </span>
                       <span className="text-xs text-slate-500 font-medium">({sub.region})</span>
                     </div>
@@ -1372,9 +1280,9 @@ export function CalendarPanel({
                       </strong>
                       <div className="flex items-center gap-3 text-[11px] text-slate-600">
                         <span>Protein: {sub.nutritionComparison.proteinOriginal}</span>
-                        <span>Ã¢â‚¬Â¢</span>
+                        <span>•</span>
                         <span>Kalori: {sub.nutritionComparison.caloriesOriginal}</span>
-                        <span>Ã¢â‚¬Â¢</span>
+                        <span>•</span>
                         <span>Biaya: {sub.nutritionComparison.costOriginal}</span>
                       </div>
                     </div>
@@ -1390,9 +1298,9 @@ export function CalendarPanel({
                         <span className="font-semibold text-emerald-700">
                           {sub.nutritionComparison.proteinSubstitute}
                         </span>
-                        <span>Ã¢â‚¬Â¢</span>
+                        <span>•</span>
                         <span>{sub.nutritionComparison.caloriesSubstitute}</span>
-                        <span>Ã¢â‚¬Â¢</span>
+                        <span>•</span>
                         <span className="font-semibold text-emerald-700">
                           {sub.nutritionComparison.costSubstitute}
                         </span>
@@ -1456,8 +1364,8 @@ export function CalendarPanel({
           MODAL 1: KUNCI SIKLUS MENU 1 BULAN (LOCK MONTH CYCLE)
           ==================================================================== */}
       {lockMonthModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div onClick={() => setLockMonthModalOpen(false)} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3 text-slate-900">
               <div className="p-2.5 rounded-xl bg-blue-50 text-blue-800 border border-blue-100">
                 <Lock className="h-5 w-5" />
@@ -1522,8 +1430,8 @@ export function CalendarPanel({
           MODAL 2: FORM PENGGANTIAN MENU DARURAT (SUBSTITUTION MODAL)
           ==================================================================== */}
       {substitutionModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div onClick={() => setSubstitutionModalData(null)} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-amber-50 text-amber-800 border border-amber-100">
@@ -1726,8 +1634,8 @@ export function CalendarPanel({
           MODAL 3: PENETAPAN HARI LIBUR OPERASIONAL (OPERATIONAL BLACKOUT DATE)
           ==================================================================== */}
       {blackoutModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div onClick={() => setBlackoutModalData(null)} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3">
               <div
                 className={`p-2.5 rounded-xl border ${
@@ -1830,8 +1738,8 @@ export function CalendarPanel({
           MODAL 4: JADWALKAN SIDAK & AUDIT MENDADAK (INSPECTION MODAL)
           ==================================================================== */}
       {inspectionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div onClick={() => setInspectionModalOpen(false)} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-slate-100 text-slate-600 border border-slate-200">
@@ -1943,8 +1851,8 @@ export function CalendarPanel({
           MODAL 5: DETAIL HARI OPERASIONAL & MENU
           ==================================================================== */}
       {selectedDayDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div onClick={() => setSelectedDayDetail(null)} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <div className="flex items-center gap-2">
@@ -1981,7 +1889,7 @@ export function CalendarPanel({
                   {selectedDayDetail.blackoutReason || 'Hari libur resmi. Sistem pemesanan katering dikunci total untuk menjamin efisiensi APBN dan zero food waste.'}
                 </p>
                 <p className="text-[11px] text-rose-700 pt-2 border-t border-rose-200">
-                  Target Porsi: <strong>0 Porsi</strong> Ã¢â‚¬Â¢ Dapur SPPG Aktif: <strong>0 Dapur</strong>
+                  Target Porsi: <strong>0 Porsi</strong> • Dapur SPPG Aktif: <strong>0 Dapur</strong>
                 </p>
               </div>
             ) : (
@@ -2115,8 +2023,8 @@ export function CalendarPanel({
           MODAL 6: DETAIL RESEP PAKET LENGKAP (PACKAGE RECIPE MODAL)
           ==================================================================== */}
       {selectedPackageDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div onClick={() => setSelectedPackageDetail(null)} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <span className="px-3 py-1 rounded-xl text-xs font-black bg-blue-600 text-white shadow-2xs">

@@ -23,7 +23,7 @@ const STATUS_COLORS = {
   weekend: NEUTRAL.idle,
 }
 
-export function CalendarCharts({ calendarDays = [] }) {
+export function CalendarCharts({ calendarDays = [], menuPackages = [] }) {
   // 1. Data Komposisi Hari Operasional
   const dayTypeCounts = calendarDays.reduce((acc, d) => {
     if (d.dayType === 'holiday') acc.holiday = (acc.holiday || 0) + 1
@@ -70,12 +70,13 @@ export function CalendarCharts({ calendarDays = [] }) {
   ].filter((i) => i.count > 0)
 
   // 2. Data Rata-Rata Nutrisi Siklus 10-Hari vs Standar AKG
+  const activePackages = menuPackages.length > 0 ? menuPackages : MENU_PACKAGES
   const avgNutrition = {
-    calories: Math.round(MENU_PACKAGES.reduce((sum, p) => sum + p.calories, 0) / MENU_PACKAGES.length),
-    protein: +(MENU_PACKAGES.reduce((sum, p) => sum + p.protein, 0) / MENU_PACKAGES.length).toFixed(1),
-    calcium: Math.round(MENU_PACKAGES.reduce((sum, p) => sum + p.calcium, 0) / MENU_PACKAGES.length),
-    iron: +(MENU_PACKAGES.reduce((sum, p) => sum + p.iron, 0) / MENU_PACKAGES.length).toFixed(1),
-    zinc: +(MENU_PACKAGES.reduce((sum, p) => sum + p.zinc, 0) / MENU_PACKAGES.length).toFixed(1)
+    calories: Math.round(activePackages.reduce((sum, p) => sum + (Number(p.calories) || 0), 0) / activePackages.length),
+    protein: +(activePackages.reduce((sum, p) => sum + (Number(p.protein) || 0), 0) / activePackages.length).toFixed(1),
+    calcium: Math.round(activePackages.reduce((sum, p) => sum + (Number(p.calcium) || 0), 0) / activePackages.length),
+    iron: +(activePackages.reduce((sum, p) => sum + (Number(p.iron) || 0), 0) / activePackages.length).toFixed(1),
+    zinc: +(activePackages.reduce((sum, p) => sum + (Number(p.zinc) || 0), 0) / activePackages.length).toFixed(1)
   }
 
   // Normalisasi ke % Pencapaian AKG Nasional

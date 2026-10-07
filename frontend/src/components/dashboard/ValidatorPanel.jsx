@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { AlertTriangle, CheckCircle2, X, ShieldCheck, Clock, Lock, Users, AlertOctagon, Smartphone, Download, Printer } from 'lucide-react'
 import { ValidatorCharts } from './ValidatorCharts'
+import { MIN_INSPECTION_SEC, toValidatorViews } from './validatorView'
 
 
 /**
@@ -13,11 +14,24 @@ import { ValidatorCharts } from './ValidatorCharts'
  */
 
 export function ValidatorPanel({
-  validators: initialValidators,
-  onSuperadminAction,
+  validators = [],
+  loading = false,
+  // onAction(action, validator, payload) -> Promise<{ok, profile?, message?}>.
+  // Panel hanya menunggu; panel tidak mengubah state sendiri karena
+  // kebenaran data ada di server.
+  onAction,
+  canManage = true,
   showToast,
 }) {
-  const [validatorsList, setValidatorsList] = useState(initialValidators || [])
+  // Roster adalah data turunan dari props, bukan state lokal: setiap aksi
+  // menulis ke server lalu parent memperbarui props, jadi tidak perlu salinan
+  // state lokal yang bisa basi.
+  const validatorsList = useMemo(() => toValidatorViews(validators), [validators])
+
+  // Anomali hanya sah bila ada buktinya: validator tanpa pindai hari ini
+  // belum tentu tidak teliti, jadi tidak boleh dihitung sebagai "kilat".
+  const isFastInspection = (v) => v.scansToday > 0 && v.avgDuration < MIN_INSPECTION_SEC
+
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'flagged' | 'active' | 'certified' | 'inactive'
   const [cityFilter, setCityFilter] = useState('all')
@@ -28,7 +42,20 @@ export function ValidatorPanel({
   const [selectedValidator, setSelectedValidator] = useState(null)
   const [drawerTab, setDrawerTab] = useState('credentials') // 'credentials' | 'telemetry' | 'scans' | 'actions'
   const [openMenuId, setOpenMenuId] = useState(null)
-  const [confirmAction, setConfirmAction] = useState(null) // { type, validator, title, desc, riskLevel, btnText, btnClass }
+  const [confirmAction, setConfirmAction] = useState(null) // { type, validator, payload, title, desc, ... }
+  const [warnNote, setWarnNote] = useState('')
+  const [backupChoice, setBackupChoice] = useState('')
+
+  // Guru piket cadangan hanya bisa milik sekolah yang sama dan harus aktif.
+  const eligibleBackups = useMemo(() => {
+    if (!confirmAction) return []
+    return validatorsList.filter(
+      (v) =>
+        v.id !== confirmAction.validator.id &&
+        v.status === 'active' &&
+        v.school === confirmAction.validator.school
+    )
+  }, [validatorsList, confirmAction])
 
   const dropdownRef = useRef(null)
 
@@ -78,7 +105,7 @@ export function ValidatorPanel({
         (v.device && v.device.toLowerCase().includes(q))
 
       let matchStatus = true
-      if (statusFilter === 'flagged') matchStatus = v.status === 'flagged' || v.avgDuration < 0.2
+      if (statusFilter === 'flagged') matchStatus = v.status === 'flagged' || isFastInspection(v)
       else if (statusFilter === 'active') matchStatus = v.status === 'active'
       else if (statusFilter === 'certified') matchStatus = v.certification.includes('Lanjutan')
       else if (statusFilter === 'inactive') matchStatus = v.status === 'inactive'
@@ -86,8 +113,7 @@ export function ValidatorPanel({
       const matchCity = cityFilter === 'all' || v.city === cityFilter
 
       let matchHardware = true
-      if (hardwareFilter === 'ios') matchHardware = v.device.toLowerCase().includes('iphone')
-      else if (hardwareFilter === 'android') matchHardware = v.device.toLowerCase().includes('pixel') || v.device.toLowerCase().includes('android')
+      if (hardwareFilter !== 'all') matchHardware = v.hardware === hardwareFilter
 
       return matchSearch && matchStatus && matchCity && matchHardware
     })
@@ -97,7 +123,7 @@ export function ValidatorPanel({
   const stats = useMemo(() => {
     const total = validatorsList.length
     const active = validatorsList.filter((v) => v.status === 'active').length
-    const flagged = validatorsList.filter((v) => v.status === 'flagged' || v.avgDuration < 0.2).length
+    const flagged = validatorsList.filter((v) => v.status === 'flagged' || isFastInspection(v)).length
     const inactive = validatorsList.filter((v) => v.status === 'inactive').length
     const totalScans = validatorsList.reduce((acc, v) => acc + (v.scansToday || 0), 0)
     const targetScans = validatorsList.reduce((acc, v) => acc + (v.quotaToday || 45), 0)
@@ -107,11 +133,13 @@ export function ValidatorPanel({
         : '0.00'
 
     // Compliance Rate: % of scans meeting >= 0.5s requirement
-    const compliantCount = validatorsList.filter((v) => v.avgDuration >= 0.5).length
-    const complianceRate = total > 0 ? Math.round((compliantCount / total) * 100) : 100
+    // Yang pernah memindai saja yang bisa dinilai patuh; tanpa pindai tidak dihitung.
+  const scannable = validatorsList.filter((v) => v.scansToday > 0)
+  const compliantCount = scannable.filter((v) => v.avgDuration >= 0.5).length
+    const complianceRate = scannable.length > 0 ? Math.round((compliantCount / scannable.length) * 100) : 100
 
     const flaggedList = validatorsList
-      .filter((v) => v.status === 'flagged' || v.avgDuration < 0.2)
+      .filter((v) => v.status === 'flagged' || isFastInspection(v))
       .sort((a, b) => a.avgDuration - b.avgDuration)
 
     return { total, active, flagged, inactive, totalScans, targetScans, avgDuration, complianceRate, flaggedList }
@@ -193,37 +221,45 @@ export function ValidatorPanel({
       },
     }
 
-    setConfirmAction({
-      type,
-      validator,
-      ...actionConfigs[type],
-    })
+    // Isi surat peringatan disusun dari angka yang benar-benar tercatat di
+    // scan_logs, bukan kalimat generik. Anomali per-boks didahulukan karena
+    // itu sebab sebenarnya — rata-rata bisa tetap di atas ambang.
+    const noScans = validator.scansToday === 0
+    const avgBelowThreshold = !noScans && validator.avgDuration < MIN_INSPECTION_SEC
+    const finding = noScans
+      ? 'Belum ada riwayat pindai hari ini, sehingga kepatuhan Pasal 14 belum dapat dinilai.'
+      : validator.anomalies > 0
+        ? `${validator.anomalies} dari ${validator.scansToday} pindai tercatat di bawah ambang 0,20 detik per porsi${avgBelowThreshold ? ` (rata-rata ${validator.avgDuration}s)` : ''}.`
+        : `Rata-rata durasi inspeksi ${validator.avgDuration}s dari ${validator.scansToday} pindai hari ini.`
+
+    setWarnNote(
+      `Teguran resmi Pasal 14 Juknis MBG. ${finding} Temuan perlu verifikasi lapangan. Mohon validator menjalankan inspeksi visual penuh pada setiap porsi dan mencatat suhu holding boks.`
+    )
+    setBackupChoice('')
+    setConfirmAction({ type, validator, ...actionConfigs[type] })
   }
 
-  const executeConfirmedAction = () => {
+  const [pendingAction, setPendingAction] = useState(null) // {type, validatorId}
+
+  const executeConfirmedAction = async () => {
     if (!confirmAction) return
     const { type, validator } = confirmAction
 
-    const guard = onSuperadminAction?.(type, validator)
-    if (guard && guard.allowed === false) {
-      setConfirmAction(null)
+    // Aksi yang butuh input pengguna refuses jalan bila inputnya kosong —
+    // lebih baik gagal di depan daripada mengirim permintaan tidak lengkap.
+    const payload = type === 'warn' ? warnNote.trim() : type === 'assignBackup' ? backupChoice : undefined
+    if (type === 'warn' && !payload) {
+      showToast?.('Isi isi surat peringatan sebelum dikirim.')
+      return
+    }
+    if (type === 'assignBackup' && !payload) {
+      showToast?.('Pilih guru piket cadangan terlebih dahulu.')
       return
     }
 
-    // Apply state updates locally
-    setValidatorsList((prev) =>
-      prev.map((v) => {
-        if (v.id === validator.id) {
-          if (type === 'activate') return { ...v, status: 'active' }
-          if (type === 'deactivate') return { ...v, status: 'inactive' }
-          if (type === 'resetDevice') return { ...v, device: 'Belum Terikat', deviceId: 'unbound', attestationStatus: 'Menunggu Registrasi Ulang' }
-          if (type === 'warn') return { ...v, warned: true, status: 'flagged' }
-        }
-        return v
-      })
-    )
-
-    showToast?.(`[SUKSES AUDIT] ${confirmAction.title} berhasil dieksekusi pada ${validator.name}.`)
+    setPendingAction({ type, validatorId: validator.id })
+    await onAction?.(type, validator, payload)
+    setPendingAction(null)
     setConfirmAction(null)
   }
 
@@ -651,7 +687,7 @@ export function ValidatorPanel({
 
             <tbody className="divide-y divide-slate-100">
               {filtered.map((v) => {
-                const isAnomaly = v.avgDuration < 0.2 || v.status === 'flagged'
+                const isAnomaly = isFastInspection(v) || v.status === 'flagged'
                 const isMenuOpen = openMenuId === v.id
                 const paddingY = density === 'compact' ? 'py-2.5' : 'py-3.5'
                 const certLevel = v.certification.includes('Lanjutan')
@@ -866,7 +902,7 @@ export function ValidatorPanel({
                           Detail
                         </button>
 
-                        {isAnomaly && (
+                        {isAnomaly && canManage && (
                           <button
                             onClick={() => promptAction('warn', v)}
                             className="px-3 py-1.5 text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 rounded-lg transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600"
@@ -875,6 +911,7 @@ export function ValidatorPanel({
                           </button>
                         )}
 
+                        {canManage && (
                         <div className="relative">
                           <button
                             onClick={(e) => {
@@ -960,6 +997,7 @@ export function ValidatorPanel({
                             </div>
                           )}
                         </div>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -969,11 +1007,16 @@ export function ValidatorPanel({
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-5 py-12 text-center">
-                    {validatorsList.length === 0 ? (
+                    {loading ? (
+                      <>
+                        <p className="font-bold text-slate-900 text-sm">Memuat roster validator…</p>
+                        <p className="text-xs text-slate-600 mt-1">Mengambil data dari API Gateway.</p>
+                      </>
+                    ) : validatorsList.length === 0 ? (
                       <>
                         <p className="font-bold text-slate-900 text-sm">Belum ada petugas di roster ini.</p>
                         <p className="text-xs text-slate-600 mt-1">
-                          Roster akan terisi saat data petugas lapangan ditambahkan.
+                          Backend mengembalikan roster kosong; tidak ada data petugas lapangan yang tercatat.
                         </p>
                       </>
                     ) : (
@@ -1326,6 +1369,13 @@ export function ValidatorPanel({
                       Intervensi Disipliner & Protokol Darurat
                     </h4>
 
+                    {!canManage && (
+                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                        Role Anda hanya memiliki izin baca. Tindakan di bawah memerlukan izin{' '}
+                        <code className="font-mono">validators.manage</code>.
+                      </p>
+                    )}
+
                     {/* Action 1: Kirim Peringatan SOP */}
                     <div className="p-4 rounded-2xl border border-amber-200 bg-amber-50/50 flex items-start justify-between gap-4">
                       <div>
@@ -1336,7 +1386,8 @@ export function ValidatorPanel({
                       </div>
                       <button
                         onClick={() => promptAction('warn', selectedValidator)}
-                        className="px-3 py-1.5 text-xs font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 rounded-xl transition shrink-0 cursor-pointer"
+                        disabled={!canManage}
+                        className="px-3 py-1.5 text-xs font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 rounded-xl transition shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Terbitkan Teguran
                       </button>
@@ -1352,7 +1403,8 @@ export function ValidatorPanel({
                       </div>
                       <button
                         onClick={() => promptAction('resetDevice', selectedValidator)}
-                        className="px-3 py-1.5 text-xs font-bold text-blue-900 bg-blue-200 hover:bg-blue-300 rounded-xl transition shrink-0 cursor-pointer"
+                        disabled={!canManage}
+                        className="px-3 py-1.5 text-xs font-bold text-blue-900 bg-blue-200 hover:bg-blue-300 rounded-xl transition shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Reset Token
                       </button>
@@ -1370,6 +1422,7 @@ export function ValidatorPanel({
                       </div>
                       <button
                         onClick={() => promptAction(selectedValidator.status === 'active' ? 'deactivate' : 'activate', selectedValidator)}
+                        disabled={!canManage}
                         className={`px-3 py-1.5 text-xs font-bold text-white rounded-xl transition shrink-0 cursor-pointer ${
                           selectedValidator.status === 'active' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'
                         }`}
@@ -1388,6 +1441,7 @@ export function ValidatorPanel({
                       </div>
                       <button
                         onClick={() => promptAction('assignBackup', selectedValidator)}
+                        disabled={!canManage}
                         className="px-3 py-1.5 text-xs font-bold text-blue-900 bg-blue-200 hover:bg-blue-300 rounded-xl transition shrink-0 cursor-pointer"
                       >
                         Tugaskan Cadangan
@@ -1438,18 +1492,64 @@ export function ValidatorPanel({
               <span className="font-semibold text-slate-700">Subjek Tindakan:</span> {confirmAction.validator.name} ({confirmAction.validator.satgasId}) &bull; {confirmAction.validator.school}
             </div>
 
+            {confirmAction.type === 'warn' && (
+              <div className="space-y-1.5">
+                <label htmlFor="warn-note" className="block text-[11px] font-semibold text-slate-700">
+                  Isi Surat Peringatan <span className="text-rose-600">*</span>
+                </label>
+                <textarea
+                  id="warn-note"
+                  rows={4}
+                  value={warnNote}
+                  onChange={(e) => setWarnNote(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:border-amber-500 focus:outline-none"
+                />
+                <p className="text-[10px] text-slate-500">
+                  Minimal 10 karakter. Dikirim ke ponsel validator dengan tembusan ke Kepala Sekolah &amp; Satgas Wilayah.
+                </p>
+              </div>
+            )}
+
+            {confirmAction.type === 'assignBackup' && (
+              <div className="space-y-1.5">
+                <label htmlFor="backup-choice" className="block text-[11px] font-semibold text-slate-700">
+                  Guru Piket Cadangan <span className="text-rose-600">*</span>
+                </label>
+                <select
+                  id="backup-choice"
+                  value={backupChoice}
+                  onChange={(e) => setBackupChoice(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">— Pilih validator aktif di sekolah yang sama —</option>
+                  {eligibleBackups.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.satgasId})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500">
+                  {eligibleBackups.length === 0
+                    ? 'Belum ada validator aktif lain di sekolah ini yang dapat ditunjuk.'
+                    : 'Hanya validator aktif pada sekolah yang sama yang dapat ditunjuk.'}
+                </p>
+              </div>
+            )}
+
             <div className="pt-3 flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setConfirmAction(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                disabled={Boolean(pendingAction)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Batalkan
               </button>
               <button
                 onClick={executeConfirmedAction}
-                className={`px-4 py-2 text-xs font-bold text-white rounded-xl transition shadow-sm cursor-pointer ${confirmAction.btnClass}`}
+                disabled={Boolean(pendingAction)}
+                className={`px-4 py-2 text-xs font-bold text-white rounded-xl transition shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${confirmAction.btnClass}`}
               >
-                {confirmAction.btnText}
+                {pendingAction ? 'Memproses…' : confirmAction.btnText}
               </button>
             </div>
           </div>

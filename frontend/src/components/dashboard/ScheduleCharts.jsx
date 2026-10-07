@@ -33,21 +33,22 @@ export function ScheduleCharts({ schedules = [] }) {
   }
 
   const etaComparisonData = schedules.map((s) => {
-    const targetMin = timeToMinutesFrom6Am(s.timestamps.targetArrival)
-    const etaMin = timeToMinutesFrom6Am(s.timestamps.currentEta)
+    const targetMin = timeToMinutesFrom6Am(s?.timestamps?.targetArrival)
+    const etaMin = timeToMinutesFrom6Am(s?.timestamps?.currentEta)
     const isLate = etaMin > 90 // Later than 07:30 WIB
+    const sName = s?.schoolName || 'Sekolah'
     return {
-      schoolName: s.schoolName.length > 18 ? s.schoolName.substring(0, 16) + '..' : s.schoolName,
-      fullName: s.schoolName,
-      plateNumber: s.fleet.plateNumber,
-      driverName: s.fleet.driverName,
-      targetTime: s.timestamps.targetArrival,
-      etaTime: s.timestamps.currentEta,
+      schoolName: sName.length > 18 ? sName.substring(0, 16) + '..' : sName,
+      fullName: sName,
+      plateNumber: s?.fleet?.plateNumber || '-',
+      driverName: s?.fleet?.driverName || '-',
+      targetTime: s?.timestamps?.targetArrival || '-',
+      etaTime: s?.timestamps?.currentEta || '-',
       targetMin,
       etaMin,
       isLate,
-      status: s.status,
-      delayMinutes: s.timestamps.delayMinutes
+      status: s?.status || 'on_time',
+      delayMinutes: s?.timestamps?.delayMinutes || 0
     }
   })
 

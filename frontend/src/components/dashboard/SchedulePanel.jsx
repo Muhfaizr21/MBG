@@ -25,17 +25,27 @@ import {
 import { ScheduleCharts } from './ScheduleCharts'
 import { AVAILABLE_BACKUP_FLEETS } from '../../data/scheduleData'
 import { StatusDot } from './tableKit'
+import { toScheduleView } from './scheduleView'
+import { rescheduleDelivery, sendDelayAlert, rerouteBackupFleet } from '../../lib/api'
 
 export function SchedulePanel({
   schedulesList = [],
   onSuperadminAction = () => {},
-  showToast = () => {}
+  showToast = () => {},
+  onReload = () => {}
 }) {
   const [schedules, setSchedules] = useState(schedulesList)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'on_time' | 'arrived' | 'delayed_traffic' | 'fleet_breakdown' | 'rescheduled'
   const [cityFilter, setCityFilter] = useState('all')
   const [density, setDensity] = useState('normal') // 'normal' | 'compact'
+
+  useEffect(() => {
+    if (Array.isArray(schedulesList) && schedulesList.length > 0) {
+      setSchedules(schedulesList)
+    }
+  }, [schedulesList])
 
   // Modals & Drawer State
   const [selectedSchedule, setSelectedSchedule] = useState(null)
@@ -124,7 +134,7 @@ export function SchedulePanel({
       'Jam Berangkat',
       'Target Kedatangan',
       'Live ETA',
-      'Suhu Kargo (Ã‚Â°C)',
+      'Suhu Kargo (°C)',
       'Status Operasional',
       'Keterangan Kendala'
     ]
@@ -160,92 +170,134 @@ export function SchedulePanel({
   }
 
   // Handle Reschedule Submit
-  const handleRescheduleSubmit = (e) => {
+  const handleRescheduleSubmit = async (e) => {
     if (onSuperadminAction?.('RESCHEDULE_DELIVERY')?.allowed === false) return
     e.preventDefault()
-    if (!rescheduleModalData) return
+    if (!rescheduleModalData || isSubmitting) return
 
     const { schedule, newTime, reason, effectiveDate } = rescheduleModalData
 
-    setSchedules((prev) =>
-      prev.map((s) => {
-        if (s.id === schedule.id) {
-          return {
-            ...s,
-            status: 'rescheduled',
-            statusLabel: `Jadwal Khusus (${newTime})`,
-            statusReason: `Disetujui jadwal baru pukul ${newTime} (${reason}) efektif per ${effectiveDate}.`,
-            timestamps: {
-              ...s.timestamps,
-              targetArrival: `${newTime} WIB`,
-              currentEta: `${newTime} WIB`,
-              delayMinutes: 0,
-              rescheduledReason: reason
+    try {
+      setIsSubmitting(true)
+      const res = await rescheduleDelivery(schedule.id, { newTime, reason, effectiveDate })
+      if (res) {
+        setSchedules((prev) =>
+          prev.map((s) => (s.id === schedule.id ? toScheduleView(res) : s))
+        )
+        onReload?.()
+      } else {
+        setSchedules((prev) =>
+          prev.map((s) => {
+            if (s.id === schedule.id) {
+              return {
+                ...s,
+                status: 'rescheduled',
+                statusLabel: `Jadwal Khusus (${newTime})`,
+                statusReason: `Disetujui jadwal baru pukul ${newTime} (${reason}) efektif per ${effectiveDate}.`,
+                timestamps: {
+                  ...s.timestamps,
+                  targetArrival: `${newTime} WIB`,
+                  currentEta: `${newTime} WIB`,
+                  delayMinutes: 0,
+                  rescheduledReason: reason
+                }
+              }
             }
-          }
-        }
-        return s
-      })
-    )
-
-    setRescheduleModalData(null)
-    showToast(`Jadwal pengiriman untuk ${schedule.schoolName} berhasil diubah ke ${newTime} WIB!`)
+            return s
+          })
+        )
+      }
+      setRescheduleModalData(null)
+      showToast(`Jadwal pengiriman untuk ${schedule.schoolName} berhasil disesuaikan ke ${newTime} WIB!`)
+    } catch (err) {
+      showToast(`Gagal menyesuaikan jadwal: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Handle Delay Alert Submit
-  const handleDelayAlertSubmit = (e) => {
+  const handleDelayAlertSubmit = async (e) => {
     e.preventDefault()
-    if (!delayAlertModalData) return
+    if (!delayAlertModalData || isSubmitting) return
 
     const { schedule, delayMinutes, customMessage } = delayAlertModalData
     if (onSuperadminAction?.('SEND_DELAY_ALERT', { scheduleId: schedule.id, delayMinutes, customMessage })?.allowed === false) return
 
-    setDelayAlertModalData(null)
-    showToast(`Peringatan keterlambatan (+${delayMinutes}m) berhasil disiarkan ke WhatsApp Kepala Sekolah & Guru Validator ${schedule.schoolName}!`)
+    try {
+      setIsSubmitting(true)
+      const res = await sendDelayAlert(schedule.id, { delayMinutes, customMessage })
+      if (res) {
+        setSchedules((prev) =>
+          prev.map((s) => (s.id === schedule.id ? toScheduleView(res) : s))
+        )
+        onReload?.()
+      }
+      setDelayAlertModalData(null)
+      showToast(`Peringatan keterlambatan (+${delayMinutes}m) berhasil disiarkan ke WhatsApp Kepala Sekolah & Guru Validator ${schedule.schoolName}!`)
+    } catch (err) {
+      showToast(`Gagal menyiarkan alert: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Handle Reroute Submit
-  const handleRerouteSubmit = (e) => {
+  const handleRerouteSubmit = async (e) => {
     if (onSuperadminAction?.('DISPATCH_BACKUP_FLEET')?.allowed === false) return
     e.preventDefault()
-    if (!rerouteModalData) return
+    if (!rerouteModalData || isSubmitting) return
 
     const { schedule, backupFleetId, notes } = rerouteModalData
     const backupObj = AVAILABLE_BACKUP_FLEETS.find((b) => b.vehicleId === backupFleetId) || AVAILABLE_BACKUP_FLEETS[0]
 
-    setSchedules((prev) =>
-      prev.map((s) => {
-        if (s.id === schedule.id) {
-          return {
-            ...s,
-            status: 'on_time',
-            statusLabel: 'Armada Pengganti Diterjunkan',
-            statusReason: `Armada cadangan ${backupObj.plateNumber} mengambil alih muatan dari ${s.fleet.plateNumber}. Catatan: ${notes}`,
-            fleet: {
-              ...s.fleet,
-              vehicleId: backupObj.vehicleId,
-              plateNumber: backupObj.plateNumber,
-              driverName: backupObj.driverName,
-              driverPhone: backupObj.phone,
-              status: 'moving',
-              currentSpeed: '42 km/h (Mendekat)',
-              cargoTempCelsius: 64.0,
-              lastGpsPing: 'Baru saja',
-              gpsLocation: `Menuju lokasi evakuasi di ${s.fleet.gpsLocation}`
-            },
-            timestamps: {
-              ...s.timestamps,
-              currentEta: '07:28 WIB (Estimasi Cadangan)',
-              delayMinutes: 15
+    try {
+      setIsSubmitting(true)
+      const res = await rerouteBackupFleet(schedule.id, { backupFleetId, notes })
+      if (res) {
+        setSchedules((prev) =>
+          prev.map((s) => (s.id === schedule.id ? toScheduleView(res) : s))
+        )
+        onReload?.()
+      } else {
+        setSchedules((prev) =>
+          prev.map((s) => {
+            if (s.id === schedule.id) {
+              return {
+                ...s,
+                status: 'on_time',
+                statusLabel: 'Armada Pengganti Diterjunkan',
+                statusReason: `Armada cadangan ${backupObj.plateNumber} mengambil alih muatan dari ${s.fleet?.plateNumber}. Catatan: ${notes}`,
+                fleet: {
+                  ...s.fleet,
+                  vehicleId: backupObj.vehicleId,
+                  plateNumber: backupObj.plateNumber,
+                  driverName: backupObj.driverName,
+                  driverPhone: backupObj.phone,
+                  status: 'moving',
+                  currentSpeed: '42 km/h (Mendekat)',
+                  cargoTempCelsius: 64.0,
+                  lastGpsPing: 'Baru saja',
+                  gpsLocation: `Menuju lokasi evakuasi di ${s.fleet?.gpsLocation || 'titik insiden'}`
+                },
+                timestamps: {
+                  ...s.timestamps,
+                  currentEta: '07:28 WIB (Estimasi Cadangan)',
+                  delayMinutes: 15
+                }
+              }
             }
-          }
-        }
-        return s
-      })
-    )
-
-    setRerouteModalData(null)
-    showToast(`Armada cadangan ${backupObj.plateNumber} (${backupObj.driverName}) berhasil ditugaskan untuk re-routing!`)
+            return s
+          })
+        )
+      }
+      setRerouteModalData(null)
+      showToast(`Armada cadangan ${backupObj.plateNumber} (${backupObj.driverName}) berhasil ditugaskan untuk re-routing!`)
+    } catch (err) {
+      showToast(`Gagal menugaskan armada cadangan: ${err.message}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -608,7 +660,7 @@ export function SchedulePanel({
                           <div className="flex items-center gap-1.5">
                             <Thermometer className="h-3.5 w-3.5 text-rose-500 shrink-0" />
                             <span className="font-mono font-bold text-slate-900 text-xs">
-                              {item.fleet.cargoTempCelsius}Ã‚Â°C
+                              {item.fleet.cargoTempCelsius}°C
                             </span>
                             <span className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-1 rounded">
                               Aman Termal
@@ -741,7 +793,7 @@ export function SchedulePanel({
             <strong className="text-slate-900">{schedules.length}</strong> jadwal armada logistik
           </span>
           <span className="font-mono text-[11px] text-slate-500">
-            JENDELA KEDATANGAN WAJIB: 06:45 Ã¢â‚¬â€œ 07:30 WIB
+            JENDELA KEDATANGAN WAJIB: 06:45 – 07:30 WIB
           </span>
         </div>
       </div>
@@ -858,10 +910,11 @@ export function SchedulePanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Check className="h-4 w-4" />
-                  <span>Simpan Perubahan Jadwal</span>
+                  <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan Jadwal'}</span>
                 </button>
               </div>
             </form>
@@ -964,10 +1017,11 @@ export function SchedulePanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
                 >
                   <Send className="h-4 w-4" />
-                  <span>Kirimkan Notifikasi Darurat</span>
+                  <span>{isSubmitting ? 'Menyiarkan...' : 'Kirimkan Notifikasi Darurat'}</span>
                 </button>
               </div>
             </form>
@@ -1052,7 +1106,7 @@ export function SchedulePanel({
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
                 <span className="font-bold text-slate-800">Protokol Pemindahan Makanan (*Cold-Chain Safety*):</span>
                 <p>
-                  Pindahkan boks tertutup tanpa membuka segel termal untuk menjaga suhu makanan tetap di atas 60Ã‚Â°C sampai tiba di sekolah.
+                  Pindahkan boks tertutup tanpa membuka segel termal untuk menjaga suhu makanan tetap di atas 60°C sampai tiba di sekolah.
                 </p>
               </div>
 
@@ -1066,10 +1120,11 @@ export function SchedulePanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
                 >
                   <RotateCcw className="h-4 w-4" />
-                  <span>Otorisasi Penugasan Cadangan</span>
+                  <span>{isSubmitting ? 'Mengalihkan...' : 'Otorisasi Penugasan Cadangan'}</span>
                 </button>
               </div>
             </form>
@@ -1170,9 +1225,9 @@ export function SchedulePanel({
                       <span className="text-slate-500 text-[10px] uppercase tracking-wider block">Suhu Kargo Termal</span>
                       <div className="flex items-center gap-1.5 mt-1">
                         <Thermometer className="h-4 w-4 text-rose-500" />
-                        <span className="text-lg font-bold font-mono text-slate-900">{selectedSchedule.fleet.cargoTempCelsius}Ã‚Â°C</span>
+                        <span className="text-lg font-bold font-mono text-slate-900">{selectedSchedule.fleet.cargoTempCelsius}°C</span>
                       </div>
-                      <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">Higienis &gt; 60Ã‚Â°C</span>
+                      <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">Higienis &gt; 60°C</span>
                     </div>
 
                     <div className="p-3.5 rounded-xl border border-slate-200 bg-white">

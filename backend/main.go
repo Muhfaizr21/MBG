@@ -34,8 +34,11 @@ import (
 // @host      localhost:8080
 // @BasePath  /
 func main() {
-	// 1. Load Configurations
+	// 1. Load Configurations & Validate Security Posture
 	cfg := config.LoadConfig()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("Security posture validation failed: %v\n", err)
+	}
 
 	bootCtx, bootCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer bootCancel()
@@ -61,6 +64,9 @@ func main() {
 	if err := database.SeedNutrition(bootCtx, cfg.NutritionDataPath); err != nil {
 		log.Fatalf("Seed nutrition failed: %v\n", err)
 	}
+	if err := database.SeedValidatorDemo(bootCtx); err != nil {
+		log.Fatalf("Seed validator demo failed: %v\n", err)
+	}
 
 	// 3. Initialize Repositories (Data Access Layer)
 	itemRepo := repositories.NewInMemoryItemRepository()
@@ -68,6 +74,17 @@ func main() {
 	scanRepo := repositories.NewScanRepository()
 	nutritionRepo := repositories.NewNutritionRepository()
 	portalRepo := repositories.NewPortalRepository()
+	validatorRepo := repositories.NewValidatorRepository()
+	sppgRepo := repositories.NewSppgRepository()
+	deliveryRepo := repositories.NewDeliveryRepository()
+	attendanceRepo := repositories.NewAttendanceRepository(database.Pool())
+	schoolRepo := repositories.NewSchoolRepository(database.Pool())
+	scheduleRepo := repositories.NewScheduleRepository(database.Pool())
+	noticeRepo := repositories.NewNoticeRepository(database.Pool())
+	calendarRepo := repositories.NewCalendarRepository(database.Pool())
+	reportRepo := repositories.NewReportRepository(database.Pool())
+	feedbackRepo := repositories.NewPostgresFeedbackRepository(database.Pool())
+	dashboardRepo := repositories.NewDashboardRepository(database.Pool())
 
 	// 4. Initialize Services (Business Logic Layer - Dependency Inversion)
 	itemService := services.NewItemService(itemRepo)
@@ -80,6 +97,17 @@ func main() {
 	nutritionService := services.NewNutritionService(nutritionRepo)
 	scanService := services.NewScanService(scanRepo, cfg.AIBackendURL, nutritionService)
 	portalService := services.NewPortalService(portalRepo)
+	validatorService := services.NewValidatorService(validatorRepo)
+	sppgService := services.NewSppgService(sppgRepo)
+	deliveryService := services.NewDeliveryService(deliveryRepo)
+	attendanceService := services.NewAttendanceService(attendanceRepo)
+	schoolService := services.NewSchoolService(schoolRepo)
+	scheduleService := services.NewScheduleService(scheduleRepo)
+	noticeService := services.NewNoticeService(noticeRepo)
+	calendarService := services.NewCalendarService(calendarRepo)
+	reportService := services.NewReportService(reportRepo)
+	feedbackService := services.NewFeedbackService(feedbackRepo)
+	dashboardService := services.NewDashboardService(dashboardRepo)
 
 	// 5. Initialize Controllers (Presentation / HTTP Layer)
 	healthCtrl := controllers.NewHealthController()
@@ -88,17 +116,40 @@ func main() {
 	scanCtrl := controllers.NewScanController(scanService)
 	nutritionCtrl := controllers.NewNutritionController(nutritionService)
 	portalCtrl := controllers.NewPortalController(portalService)
+	validatorCtrl := controllers.NewValidatorController(validatorService)
+	sppgCtrl := controllers.NewSppgController(sppgService)
+	deliveryCtrl := controllers.NewDeliveryController(deliveryService)
+	attendanceCtrl := controllers.NewAttendanceController(attendanceService)
+	schoolCtrl := controllers.NewSchoolController(schoolService)
+	scheduleCtrl := controllers.NewScheduleController(scheduleService)
+	noticeCtrl := controllers.NewNoticeController(noticeService)
+	calendarCtrl := controllers.NewCalendarController(calendarService)
+	reportCtrl := controllers.NewReportController(reportService)
+	feedbackCtrl := controllers.NewFeedbackController(feedbackService)
+	dashboardCtrl := controllers.NewDashboardController(dashboardService)
 
 	// 6. Initialize Routes & Middlewares
 	routerDeps := routes.RouterDependencies{
-		HealthCtrl:    healthCtrl,
-		ItemCtrl:      itemCtrl,
-		AuthCtrl:      authCtrl,
-		ScanCtrl:      scanCtrl,
-		NutritionCtrl: nutritionCtrl,
-		PortalCtrl:    portalCtrl,
-		AuthMW:        middlewares.Auth(authService),
-		CORSOrigins:   cfg.CORSOrigins,
+		HealthCtrl:     healthCtrl,
+		ItemCtrl:       itemCtrl,
+		AuthCtrl:       authCtrl,
+		ScanCtrl:       scanCtrl,
+		NutritionCtrl:  nutritionCtrl,
+		PortalCtrl:     portalCtrl,
+		ValidatorCtrl:  validatorCtrl,
+		SppgCtrl:       sppgCtrl,
+		DeliveryCtrl:   deliveryCtrl,
+		AttendanceCtrl: attendanceCtrl,
+		SchoolCtrl:     schoolCtrl,
+		ScheduleCtrl:   scheduleCtrl,
+		NoticeCtrl:     noticeCtrl,
+		CalendarCtrl:   calendarCtrl,
+		ReportCtrl:     reportCtrl,
+		FeedbackCtrl:   feedbackCtrl,
+		DashboardCtrl:  dashboardCtrl,
+		AuthMW:         middlewares.Auth(authService),
+		CORSOrigins:    cfg.CORSOrigins,
+		AppEnv:         cfg.AppEnv,
 	}
 	handler := routes.SetupRoutes(routerDeps)
 

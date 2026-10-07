@@ -1,16 +1,27 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
 import { useAuth } from '../../context/AuthContext'
 import { guardAdminAction } from '../../lib/adminActions'
 import { ReportsPanel } from '../../components/dashboard/ReportsPanel'
-import { OFFICIAL_REPORTS_LIST } from '../../data/reportsData'
-import { fetchReports } from '../../lib/api'
+import { fetchReportsBundle } from '../../lib/api'
+import {
+  mapReportFromApi,
+  mapBastFromApi,
+  mapInvoiceFromApi,
+  mapForensicFromApi
+} from '../../components/dashboard/reportView'
+import {
+  OFFICIAL_REPORTS_LIST,
+  DIGITAL_BAST_LIST,
+  VENDOR_INVOICES_LIST,
+  FORENSIC_AUDIT_FINDINGS
+} from '../../data/reportsData'
 
 /**
  * ==============================================================================
  * HALAMAN SUPERADMIN: UNDUH LAPORAN RESMI & DOKUMEN BAST BGN
  * URL: /admin/reports
- * Arsitektur: Clean Code (AdminLayout + ReportsPanel)
+ * Arsitektur: Clean Architecture (AdminLayout + ReportsPanel + PostgreSQL Live)
  * Sumber Data: Database PostgreSQL via REST API Gateway Golang
  * ==============================================================================
  */
@@ -18,47 +29,44 @@ import { fetchReports } from '../../lib/api'
 export function ReportsPage() {
   const { user } = useAuth()
   const [toast, setToast] = useState(null)
-  const [reportsList, setReportsList] = useState(OFFICIAL_REPORTS_LIST)
+  const [reports, setReports] = useState(OFFICIAL_REPORTS_LIST)
+  const [bastList, setBastList] = useState(DIGITAL_BAST_LIST)
+  const [invoices, setInvoices] = useState(VENDOR_INVOICES_LIST)
+  const [forensicFindings, setForensicFindings] = useState(FORENSIC_AUDIT_FINDINGS)
+  const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let isMounted = true
-    fetchReports()
-      .then((data) => {
-        if (isMounted && Array.isArray(data) && data.length > 0) {
-          const mapped = data.map((r) => ({
-            ...r,
-            id: r.id,
-            reportNumber: r.reportCode || 'BAST/BGN/OKT/2026/01',
-            title: r.title,
-            period: r.period,
-            category: r.category,
-            categoryLabel: r.category,
-            author: {
-              name: r.authorName || 'Badan Gizi Nasional RI',
-              role: 'Satgas Pusat MBG',
-            },
-            status: r.status || 'verified',
-            statusLabel: 'Terverifikasi Digital',
-            fileSize: r.fileSize || '2.4 MB',
-            format: r.fileFormat || 'PDF',
-            downloadCount: 142,
-            summaryMetrics: typeof r.kpiMetrics === 'object' && r.kpiMetrics !== null ? r.kpiMetrics : {},
-          }))
-          setReportsList(mapped)
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const data = await fetchReportsBundle()
+      if (data) {
+        if (Array.isArray(data.reports) && data.reports.length > 0) {
+          setReports(data.reports.map(mapReportFromApi))
         }
-      })
-      .catch((err) => {
-        console.warn('Menggunakan data awal reports:', err)
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false)
-      })
-
-    return () => {
-      isMounted = false
+        if (Array.isArray(data.bastList) && data.bastList.length > 0) {
+          setBastList(data.bastList.map(mapBastFromApi))
+        }
+        if (Array.isArray(data.invoices) && data.invoices.length > 0) {
+          setInvoices(data.invoices.map(mapInvoiceFromApi))
+        }
+        if (Array.isArray(data.forensicFindings) && data.forensicFindings.length > 0) {
+          setForensicFindings(data.forensicFindings.map(mapForensicFromApi))
+        }
+        if (data.stats) {
+          setStats(data.stats)
+        }
+      }
+    } catch (err) {
+      console.warn('Gagal memuat bundel laporan PostgreSQL, menggunakan data cadangan:', err)
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   useEffect(() => {
     if (!toast) return
@@ -91,9 +99,14 @@ export function ReportsPage() {
       )}
 
       <ReportsPanel
-        reportsList={reportsList}
+        initialReports={reports}
+        initialBastList={bastList}
+        initialInvoices={invoices}
+        initialForensicFindings={forensicFindings}
+        initialStats={stats}
         onSuperadminAction={handleSuperadminAction}
         showToast={setToast}
+        onRefresh={loadData}
       />
     </AdminLayout>
   )

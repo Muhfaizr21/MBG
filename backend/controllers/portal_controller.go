@@ -5,6 +5,7 @@ import (
 	"backend/services"
 	"backend/utils"
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -19,7 +20,8 @@ func NewPortalController(svc services.PortalService) *PortalController {
 func (c *PortalController) GetSchools(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetSchools(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat data sekolah: "+err.Error())
+		log.Printf("[ERROR] Portal GetSchools failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat data sekolah")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Daftar sekolah binaan berhasil dimuat", list)
@@ -35,29 +37,11 @@ func (c *PortalController) GetSchoolByNPSN(w http.ResponseWriter, r *http.Reques
 	utils.Success(w, http.StatusOK, "Data sekolah berhasil dimuat", school)
 }
 
-func (c *PortalController) GetSPPGs(w http.ResponseWriter, r *http.Request) {
-	list, err := c.svc.GetSPPGs(r.Context())
-	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat data dapur SPPG: "+err.Error())
-		return
-	}
-	utils.Success(w, http.StatusOK, "Daftar dapur SPPG berhasil dimuat", list)
-}
-
-func (c *PortalController) GetSPPGByID(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	sppg, err := c.svc.GetSPPG(r.Context(), id)
-	if err != nil {
-		utils.Error(w, http.StatusNotFound, "Dapur SPPG tidak ditemukan")
-		return
-	}
-	utils.Success(w, http.StatusOK, "Data dapur SPPG berhasil dimuat", sppg)
-}
-
 func (c *PortalController) GetMenuPackages(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetMenuPackages(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat paket menu: "+err.Error())
+		log.Printf("[ERROR] Portal GetMenuPackages failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat paket menu")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Daftar paket menu nasional berhasil dimuat", list)
@@ -66,7 +50,8 @@ func (c *PortalController) GetMenuPackages(w http.ResponseWriter, r *http.Reques
 func (c *PortalController) GetCalendarDays(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetCalendarDays(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat kalender MBG: "+err.Error())
+		log.Printf("[ERROR] Portal GetCalendarDays failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat kalender MBG")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Kalender operasional MBG berhasil dimuat", list)
@@ -75,7 +60,8 @@ func (c *PortalController) GetCalendarDays(w http.ResponseWriter, r *http.Reques
 func (c *PortalController) GetDeliveries(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetDeliveries(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat riwayat pengiriman: "+err.Error())
+		log.Printf("[ERROR] Portal GetDeliveries failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat riwayat pengiriman")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Data hasil pengiriman berhasil dimuat", list)
@@ -84,7 +70,8 @@ func (c *PortalController) GetDeliveries(w http.ResponseWriter, r *http.Request)
 func (c *PortalController) GetSchedules(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetSchedules(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat jadwal distribusi: "+err.Error())
+		log.Printf("[ERROR] Portal GetSchedules failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat jadwal distribusi")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Jadwal distribusi berhasil dimuat", list)
@@ -93,7 +80,8 @@ func (c *PortalController) GetSchedules(w http.ResponseWriter, r *http.Request) 
 func (c *PortalController) GetAttendances(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetAttendances(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat data penerimaan siswa: "+err.Error())
+		log.Printf("[ERROR] Portal GetAttendances failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat data penerimaan siswa")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Data penerimaan siswa berhasil dimuat", list)
@@ -102,7 +90,8 @@ func (c *PortalController) GetAttendances(w http.ResponseWriter, r *http.Request
 func (c *PortalController) GetNotices(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetNotices(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat papan pengumuman: "+err.Error())
+		log.Printf("[ERROR] Portal GetNotices failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat papan pengumuman")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Daftar pengumuman berhasil dimuat", list)
@@ -111,7 +100,8 @@ func (c *PortalController) GetNotices(w http.ResponseWriter, r *http.Request) {
 func (c *PortalController) GetFeedbacks(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetFeedbacks(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat aduan & feedback: "+err.Error())
+		log.Printf("[ERROR] Portal GetFeedbacks failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat aduan & feedback")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Daftar aduan berhasil dimuat", list)
@@ -124,7 +114,8 @@ func (c *PortalController) CreateFeedback(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := c.svc.SubmitFeedback(r.Context(), &fb); err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal menyimpan aduan: "+err.Error())
+		log.Printf("[ERROR] Portal SubmitFeedback failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal menyimpan aduan")
 		return
 	}
 	utils.Success(w, http.StatusCreated, "Aduan berhasil dilaporkan dan masuk ke pusat triage", fb)
@@ -133,25 +124,18 @@ func (c *PortalController) CreateFeedback(w http.ResponseWriter, r *http.Request
 func (c *PortalController) GetReports(w http.ResponseWriter, r *http.Request) {
 	list, err := c.svc.GetReports(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat arsip laporan: "+err.Error())
+		log.Printf("[ERROR] Portal GetReports failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat arsip laporan")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Daftar laporan BAST & audit berhasil dimuat", list)
 }
 
-func (c *PortalController) GetValidators(w http.ResponseWriter, r *http.Request) {
-	list, err := c.svc.GetValidators(r.Context())
-	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat data validator: "+err.Error())
-		return
-	}
-	utils.Success(w, http.StatusOK, "Daftar validator lapangan berhasil dimuat", list)
-}
-
 func (c *PortalController) GetAdminMetrics(w http.ResponseWriter, r *http.Request) {
 	metrics, err := c.svc.GetAdminMetrics(r.Context())
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Gagal memuat KPI metrik: "+err.Error())
+		log.Printf("[ERROR] Portal GetAdminMetrics failed: %v", err)
+		utils.Error(w, http.StatusInternalServerError, "Gagal memuat KPI metrik")
 		return
 	}
 	utils.Success(w, http.StatusOK, "Metrik dashboard eksekutif berhasil dimuat", metrics)

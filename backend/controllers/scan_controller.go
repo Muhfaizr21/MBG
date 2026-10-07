@@ -35,6 +35,7 @@ func NewScanController(scanSvc services.ScanService) *ScanController {
 // @Param batchId formData string false "id batch"
 // @Param holdingTempC formData number false "suhu holding boks (°C)"
 // @Param releaseTempC formData number false "suhu masak inti saat lepas dapur (°C)"
+// @Param durationMs formData int false "lama inspeksi visual dalam milidetik (audit ketelitian Pasal 14)"
 // @Param items formData string false "daftar bahan menu (format 'Nama:gram' dipisah koma, mis. 'Nasi:120,Ayam goreng paha:60')"
 // @Success 200 {object} models.ScanResult
 // @Failure 400 {object} models.APIResponse
@@ -78,25 +79,31 @@ func (c *ScanController) Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	durationMS, err := parseOptionalInt(r.FormValue("durationMs"))
+	if err != nil {
+		utils.Error(w, http.StatusBadRequest, "durationMs harus berupa bilangan bulat")
+		return
+	}
+
 	persist := r.FormValue("persist") != "false" && r.FormValue("preview") != "true"
 	rating, _ := strconv.Atoi(r.FormValue("rating"))
 	feedback := r.FormValue("feedback")
 
-	result, err := c.scanSvc.SubmitScan(
-		r.Context(),
-		middlewares.UserID(r.Context()),
-		image,
-		header.Filename,
-		r.FormValue("qrToken"),
-		r.FormValue("boxId"),
-		r.FormValue("batchId"),
-		r.FormValue("items"),
-		holdingTempC,
-		releaseTempC,
-		persist,
-		rating,
-		feedback,
-	)
+	result, err := c.scanSvc.SubmitScan(r.Context(), services.ScanSubmission{
+		ActorID:      middlewares.UserID(r.Context()),
+		Image:        image,
+		FileName:     header.Filename,
+		QRToken:      r.FormValue("qrToken"),
+		BoxID:        r.FormValue("boxId"),
+		BatchID:      r.FormValue("batchId"),
+		Items:        r.FormValue("items"),
+		HoldingTempC: holdingTempC,
+		ReleaseTempC: releaseTempC,
+		DurationMS:   durationMS,
+		Persist:      persist,
+		Rating:       rating,
+		Feedback:     feedback,
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, services.ErrImageRequired):
@@ -193,6 +200,19 @@ func parseOptionalFloat(value string) (*float64, error) {
 		return nil, nil
 	}
 	parsed, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
+}
+
+// parseOptionalInt parses a form value into *int; empty input yields nil.
+func parseOptionalInt(value string) (*int, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil, nil
+	}
+	parsed, err := strconv.Atoi(trimmed)
 	if err != nil {
 		return nil, err
 	}

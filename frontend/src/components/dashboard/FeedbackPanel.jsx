@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   MessageSquare,
   AlertTriangle,
@@ -18,6 +18,12 @@ import {
 } from 'lucide-react'
 import { FeedbackCharts } from './FeedbackCharts'
 import {
+  executeEmergencyKillSwitch,
+  escalateMedicalClinic,
+  closeFeedbackTicket,
+  createFeedbackTicket
+} from '../../lib/api'
+import {
   INITIAL_FEEDBACK_TICKETS,
   EMERGENCY_HEALTH_CENTERS,
   SEVERITY_LEVEL_OPTIONS,
@@ -25,12 +31,28 @@ import {
 } from '../../data/feedbackData'
 
 export function FeedbackPanel({
+  initialTickets = INITIAL_FEEDBACK_TICKETS,
+  initialHealthCenters = EMERGENCY_HEALTH_CENTERS,
+  initialKpi = null,
   onSuperadminAction = () => {},
-  showToast = () => {}
+  showToast = () => {},
+  onRefresh = () => {}
 }) {
   // Main Data States
-  const [tickets, setTickets] = useState(INITIAL_FEEDBACK_TICKETS)
-  const [healthCenters] = useState(EMERGENCY_HEALTH_CENTERS)
+  const [tickets, setTickets] = useState(initialTickets)
+  const [healthCenters, setHealthCenters] = useState(initialHealthCenters)
+
+  useEffect(() => {
+    if (Array.isArray(initialTickets) && initialTickets.length > 0) {
+      setTickets(initialTickets)
+    }
+  }, [initialTickets])
+
+  useEffect(() => {
+    if (Array.isArray(initialHealthCenters) && initialHealthCenters.length > 0) {
+      setHealthCenters(initialHealthCenters)
+    }
+  }, [initialHealthCenters])
 
   // Navigation & Filters
   const [activeTab, setActiveTab] = useState('triage') // 'triage' | 'killswitch' | 'medical' | 'audit'
@@ -97,11 +119,14 @@ export function FeedbackPanel({
 
   // KPIs
   const kpiData = useMemo(() => {
+    if (initialKpi && typeof initialKpi === 'object') {
+      return initialKpi
+    }
     const totalActive = tickets.filter((t) => t.status !== 'resolved').length
     const level1Critical = tickets.filter((t) => t.severity === 'level1').length
     const frozenCount = frozenBatches.length
     const totalProtectedPortions = frozenBatches.reduce(
-      (sum, t) => sum + t.killSwitchDetails.haltedPortionsTotal,
+      (sum, t) => sum + (Number(t.killSwitchDetails?.haltedPortionsTotal) || 0),
       0
     )
 
@@ -111,7 +136,7 @@ export function FeedbackPanel({
       frozenCount,
       totalProtectedPortions
     }
-  }, [tickets, frozenBatches])
+  }, [initialKpi, tickets, frozenBatches])
 
   // Export CSV
   const exportCsv = () => {
@@ -155,39 +180,89 @@ export function FeedbackPanel({
   }
 
   // Handle Execute Emergency Kill-Switch
-  const handleExecuteKillSwitch = (ticket) => {
+  const handleExecuteKillSwitch = async (ticket) => {
     if (onSuperadminAction?.('EXECUTE_KILL_SWITCH')?.allowed === false) return
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id === ticket.id) {
-          return {
-            ...t,
-            isKillSwitchExecuted: true,
-            status: 'in_progress',
-            statusLabel: 'DIBEKUKAN (Kill-Switch Aktif)',
-            killSwitchDetails: {
-              executedAt: `${new Date().toISOString().slice(0, 10)} ${new Date().toLocaleTimeString('id-ID').slice(0, 5)} WIB`,
-              executedBy: 'Bambang Soediro (Superadmin Satgas MBG)',
-              haltedSchoolsCount: 3,
-              haltedPortionsTotal: 1250,
-              haltedSchools: [
-                `${t.schoolName} (${t.affectedPortions} porsi)`,
-                'SDN Sukagalih 02 (400 porsi)',
-                'SMPN 11 Bandung (430 porsi)'
-              ]
+    try {
+      await executeEmergencyKillSwitch(ticket.id, {
+        halted_schools: [ticket.schoolName],
+        halted_schools_count: 3,
+        halted_portions_total: 1250
+      })
+      setTickets((prev) =>
+        prev.map((t) => {
+          if (t.id === ticket.id) {
+            return {
+              ...t,
+              isKillSwitchExecuted: true,
+              status: 'in_progress',
+              statusLabel: 'DIBEKUKAN (Kill-Switch Aktif)',
+              killSwitchDetails: {
+                executedAt: `${new Date().toISOString().slice(0, 10)} ${new Date().toLocaleTimeString('id-ID').slice(0, 5)} WIB`,
+                executedBy: 'Bambang Soediro (Superadmin Satgas MBG)',
+                haltedSchoolsCount: 3,
+                haltedPortionsTotal: 1250,
+                haltedSchools: [
+                  `${t.schoolName} (${t.affectedPortions} porsi)`,
+                  'SDN Sukagalih 02 (400 porsi)',
+                  'SMPN 11 Bandung (430 porsi)'
+                ]
+              }
             }
           }
-        }
-        return t
-      })
-    )
+          return t
+        })
+      )
 
-    setKillSwitchModalData(null)
-    showToast(`EMERGENCY KILL-SWITCH DIAKTIFKAN! Seluruh sekolah penerima batch ${ticket.batchId} DILARANG MEMBAGIKAN PORSI!`)
+      setKillSwitchModalData(null)
+      showToast(`EMERGENCY KILL-SWITCH DIAKTIFKAN! Seluruh sekolah penerima batch ${ticket.batchId} DILARANG MEMBAGIKAN PORSI!`)
+      onRefresh?.()
+    } catch (err) {
+      console.error('Gagal execute kill switch:', err)
+      showToast(`Gagal mengaktifkan kill switch di server: ${err.message || 'Error'}`)
+    }
+  }
+
+  // Handle Escalate Medical
+  const handleEscalateMedical = async (ticket) => {
+    if (onSuperadminAction?.('ESCALATE_MEDICAL')?.allowed === false) return
+    try {
+      const hcName = ticket.medicalEscalation?.healthCenter || 'Puskesmas Sukajadi Kota Bandung'
+      const docName = ticket.medicalEscalation?.doctorInCharge || 'dr. Nabila Hapsari'
+      const docPhone = ticket.medicalEscalation?.doctorPhone || '(022) 203-1188'
+      await escalateMedicalClinic(ticket.id, {
+        health_center: hcName,
+        doctor_in_charge: docName,
+        doctor_phone: docPhone
+      })
+      setTickets((prev) =>
+        prev.map((t) => {
+          if (t.id === ticket.id) {
+            return {
+              ...t,
+              medicalEscalation: {
+                ...t.medicalEscalation,
+                escalated: true,
+                healthCenter: hcName,
+                doctorInCharge: docName,
+                doctorPhone: docPhone,
+                dispatchStatus: 'Puskesmas Bersiaga & Ambulans Siap'
+              }
+            }
+          }
+          return t
+        })
+      )
+      showToast(`Notifikasi darurat berhasil dikirim ke ${hcName}! Tim medis meluncur ke lokasi.`)
+      setMedicalModalData(null)
+      onRefresh?.()
+    } catch (err) {
+      console.error('Gagal eskalasi medis:', err)
+      showToast(`Gagal eskalasi medis: ${err.message || 'Error server'}`)
+    }
   }
 
   // Handle Create Ticket Submit
-  const handleCreateTicketSubmit = (e) => {
+  const handleCreateTicketSubmit = async (e) => {
     e.preventDefault()
     if (onSuperadminAction?.('CREATE_TICKET')?.allowed === false) return
     if (!newTicketForm.title || !newTicketForm.schoolName) {
@@ -202,90 +277,130 @@ export function FeedbackPanel({
         ? 'Level 2 (Sedang - Kualitas & Porsi)'
         : 'Level 3 (Rendah - Saran Rasa & Menu)'
 
-    const newTicket = {
-      id: `TKT-2026-09-${Date.now().toString().slice(-3)}`,
-      ticketNumber: `INC/BGN/${Date.now().toString().slice(-4)}`,
-      reportedAt: 'Baru saja',
-      schoolName: newTicketForm.schoolName,
-      npsn: newTicketForm.npsn || '20210099',
-      schoolAddress: newTicketForm.schoolAddress || 'Alamat Sekolah Terdaftar',
-      sppgName: newTicketForm.sppgName,
-      sppgId: newTicketForm.sppgId,
-      batchId: newTicketForm.batchId,
-      menuPackage: newTicketForm.menuPackage,
-      severity: newTicketForm.severity,
-      severityLabel: sevLabel,
-      anomalyType: newTicketForm.anomalyType,
-      anomalyLabel: newTicketForm.anomalyType === 'spoiled_food' ? 'Makanan Basi & Berbau Masam' : 'Ketidaksesuaian Gramatur',
-      affectedPortions: Number(newTicketForm.affectedPortions) || 100,
-      reporter: {
-        name: newTicketForm.reporterName || 'Validator Lapangan',
-        role: newTicketForm.reporterRole,
-        phone: newTicketForm.reporterPhone || '0812-0000-0000',
-        nip: '198501012010011002'
-      },
+    const tNum = `INC/BGN/${Date.now().toString().slice(-4)}`
+    const reqPayload = {
+      ticket_number: tNum,
+      school_name: newTicketForm.schoolName,
+      school_npsn: newTicketForm.npsn || '20210099',
+      school_address: newTicketForm.schoolAddress || 'Alamat Sekolah Terdaftar',
+      sppg_id: newTicketForm.sppgId || 'SPPG-BDG-01',
+      sppg_name: newTicketForm.sppgName || 'SPPG Sentral Sukajadi Bandung',
+      batch_id: newTicketForm.batchId || 'BATCH-BDG-0928-02',
+      menu_package: newTicketForm.menuPackage || 'Paket F (Nasi Uduk Rolade Sapi)',
+      severity: newTicketForm.severity || 'level1',
+      anomaly_type: newTicketForm.anomalyType || 'spoiled_food',
+      affected_portions: Number(newTicketForm.affectedPortions) || 100,
+      reporter_name: newTicketForm.reporterName || 'Validator Lapangan',
+      reporter_role: newTicketForm.reporterRole || 'Guru Validator Sekolah',
+      reporter_phone: newTicketForm.reporterPhone || '0812-0000-0000',
+      reporter_nip: '198501012010011002',
       title: newTicketForm.title,
-      description: newTicketForm.description,
-      evidencePhotos: [],
-      slaDeadline: '2 Jam dari Sekarang',
-      slaRemainingMinutes: 120,
-      status: 'in_progress',
-      statusLabel: 'Tiket Baru Masuk',
-      isKillSwitchExecuted: newTicketForm.severity === 'level1',
-      killSwitchDetails: newTicketForm.severity === 'level1' ? {
-        executedAt: 'Baru saja',
-        executedBy: 'Superadmin Satgas MBG',
-        haltedSchoolsCount: 1,
-        haltedPortionsTotal: Number(newTicketForm.affectedPortions) || 100,
-        haltedSchools: [`${newTicketForm.schoolName} (${newTicketForm.affectedPortions} porsi)`]
-      } : null,
-      medicalEscalation: {
-        escalated: newTicketForm.severity === 'level1',
-        healthCenter: 'Puskesmas Terdekat',
-        doctorInCharge: 'Tim Siaga Medis',
-        doctorPhone: 'Hotline 119',
-        dispatchStatus: newTicketForm.severity === 'level1' ? 'Puskesmas Bersiaga' : 'Tidak Diperlukan'
-      },
-      investigationStatus: {
-        assignedInspector: 'Satgas Mutu Pangan BGN',
-        auditTime: 'Segera',
-        focus: 'Pemeriksaan sampel makanan & kebersihan dapur SPPG',
-        labSampleTaken: false
-      },
-      resolutionNotes: null,
-      closedAt: null
+      description: newTicketForm.description
     }
 
-    setTickets([newTicket, ...tickets])
-    setCreateTicketModalOpen(false)
-    showToast(`Tiket aduan darurat ${newTicket.ticketNumber} berhasil didaftarkan ke Pusat Triage!`)
+    try {
+      const res = await createFeedbackTicket(reqPayload)
+      const newTicket = {
+        id: res?.id || `TKT-2026-09-${Date.now().toString().slice(-3)}`,
+        ticketNumber: res?.ticketNumber || tNum,
+        reportedAt: 'Baru saja',
+        schoolName: newTicketForm.schoolName,
+        npsn: newTicketForm.npsn || '20210099',
+        schoolAddress: newTicketForm.schoolAddress || 'Alamat Sekolah Terdaftar',
+        sppgName: newTicketForm.sppgName,
+        sppgId: newTicketForm.sppgId,
+        batchId: newTicketForm.batchId,
+        menuPackage: newTicketForm.menuPackage,
+        severity: newTicketForm.severity,
+        severityLabel: sevLabel,
+        anomalyType: newTicketForm.anomalyType,
+        anomalyLabel: newTicketForm.anomalyType === 'spoiled_food' ? 'Makanan Basi & Berbau Masam' : 'Ketidaksesuaian Gramatur',
+        affectedPortions: Number(newTicketForm.affectedPortions) || 100,
+        reporter: {
+          name: newTicketForm.reporterName || 'Validator Lapangan',
+          role: newTicketForm.reporterRole,
+          phone: newTicketForm.reporterPhone || '0812-0000-0000',
+          nip: '198501012010011002'
+        },
+        title: newTicketForm.title,
+        description: newTicketForm.description,
+        evidencePhotos: [],
+        slaDeadline: '2 Jam dari Sekarang',
+        slaRemainingMinutes: 120,
+        status: 'in_progress',
+        statusLabel: 'Tiket Baru Masuk',
+        isKillSwitchExecuted: newTicketForm.severity === 'level1',
+        killSwitchDetails: newTicketForm.severity === 'level1' ? {
+          executedAt: 'Baru saja',
+          executedBy: 'Superadmin Satgas MBG',
+          haltedSchoolsCount: 1,
+          haltedPortionsTotal: Number(newTicketForm.affectedPortions) || 100,
+          haltedSchools: [`${newTicketForm.schoolName} (${newTicketForm.affectedPortions} porsi)`]
+        } : null,
+        medicalEscalation: {
+          escalated: newTicketForm.severity === 'level1',
+          healthCenter: 'Puskesmas Terdekat',
+          doctorInCharge: 'Tim Siaga Medis',
+          doctorPhone: 'Hotline 119',
+          dispatchStatus: newTicketForm.severity === 'level1' ? 'Puskesmas Bersiaga' : 'Tidak Diperlukan'
+        },
+        investigationStatus: {
+          assignedInspector: 'Satgas Mutu Pangan BGN',
+          auditTime: 'Segera',
+          focus: 'Pemeriksaan sampel makanan & kebersihan dapur SPPG',
+          labSampleTaken: false
+        },
+        resolutionNotes: null,
+        closedAt: null
+      }
+
+      setTickets([newTicket, ...tickets])
+      setCreateTicketModalOpen(false)
+      showToast(`Tiket aduan darurat ${newTicket.ticketNumber} berhasil didaftarkan ke Pusat Triage!`)
+      onRefresh?.()
+    } catch (err) {
+      console.error('Gagal membuat tiket:', err)
+      showToast(`Gagal mendaftarkan tiket ke server: ${err.message || 'Error'}`)
+    }
   }
 
   // Handle Close Ticket Submit
-  const handleCloseTicketSubmit = (e) => {
+  const handleCloseTicketSubmit = async (e) => {
     if (onSuperadminAction?.('CLOSE_TICKET')?.allowed === false) return
     e.preventDefault()
     if (!closeTicketModalData) return
 
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id === closeTicketModalData.id) {
-          return {
-            ...t,
-            status: 'resolved',
-            statusLabel: 'Selesai & Ditutup',
-            resolutionNotes: closeForm.resolutionNotes,
-            closedAt: `${new Date().toISOString().slice(0, 10)} ${new Date().toLocaleTimeString('id-ID').slice(0, 5)} WIB`
-          }
-        }
-        return t
+    try {
+      await closeFeedbackTicket(closeTicketModalData.id, {
+        resolution_notes: closeForm.resolutionNotes,
+        lab_result: closeForm.labResult,
+        compensation_status: closeForm.compensationStatus
       })
-    )
+      setTickets((prev) =>
+        prev.map((t) => {
+          if (t.id === closeTicketModalData.id) {
+            return {
+              ...t,
+              status: 'resolved',
+              statusLabel: 'Selesai & Ditutup',
+              resolutionNotes: closeForm.resolutionNotes,
+              closedAt: `${new Date().toISOString().slice(0, 10)} ${new Date().toLocaleTimeString('id-ID').slice(0, 5)} WIB`
+            }
+          }
+          return t
+        })
+      )
 
-    const tNum = closeTicketModalData.ticketNumber
-    setCloseTicketModalData(null)
-    showToast(`Tiket aduan ${tNum} resmi DITUTUP setelah verifikasi kompensasi dan Berita Acara Uji Lab!`)
+      const tNum = closeTicketModalData.ticketNumber
+      setCloseTicketModalData(null)
+      showToast(`Tiket aduan ${tNum} resmi DITUTUP setelah verifikasi kompensasi dan Berita Acara Uji Lab!`)
+      onRefresh?.()
+    } catch (err) {
+      console.error('Gagal menutup tiket:', err)
+      showToast(`Gagal menutup tiket di server: ${err.message || 'Error'}`)
+    }
   }
+
 
   return (
     <div className="space-y-6">
@@ -701,7 +816,7 @@ export function FeedbackPanel({
                           <strong className="text-slate-900 text-sm font-mono">{t.batchId}</strong>
                         </div>
                         <p className="text-xs text-slate-500 mt-1">
-                          Produsen: <strong>{t.sppgName}</strong> ({t.sppgId}) Ã¢â‚¬Â¢ Menu: {t.menuPackage}
+                          Produsen: <strong>{t.sppgName}</strong> ({t.sppgId}) • Menu: {t.menuPackage}
                         </p>
                       </div>
 
@@ -841,8 +956,14 @@ export function FeedbackPanel({
           MODAL 1: EMERGENCY BATCH KILL-SWITCH EXECUTION
           ==================================================================== */}
       {killSwitchModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-rose-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          onClick={() => setKillSwitchModalData(null)}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-rose-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+          >
             <div className="flex items-center gap-3 text-rose-700">
               <div className="p-2.5 rounded-xl bg-rose-100 text-rose-700">
                 <Ban className="h-6 w-6" />
@@ -897,8 +1018,14 @@ export function FeedbackPanel({
           MODAL ESKALASI MEDIS PUSKESMAS & DINKES
           ==================================================================== */}
       {medicalModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          onClick={() => setMedicalModalData(null)}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-blue-50 text-blue-800 border border-blue-100">
@@ -927,15 +1054,15 @@ export function FeedbackPanel({
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Puskesmas Siaga:</span>
-                  <strong className="text-blue-700">{medicalModalData.medicalEscalation.healthCenter}</strong>
+                  <strong className="text-blue-700">{medicalModalData.medicalEscalation?.healthCenter || 'Puskesmas Siaga'}</strong>
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Dokter Penanggung Jawab:</span>
-                  <strong className="text-slate-900">{medicalModalData.medicalEscalation.doctorInCharge || 'Dokter Jaga UGD'}</strong>
+                  <strong className="text-slate-900">{medicalModalData.medicalEscalation?.doctorInCharge || 'Dokter Jaga UGD'}</strong>
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Kontak Dokter / Hotline:</span>
-                  <strong className="text-emerald-700 font-mono">{medicalModalData.medicalEscalation.doctorPhone || '119'}</strong>
+                  <strong className="text-emerald-700 font-mono">{medicalModalData.medicalEscalation?.doctorPhone || '119'}</strong>
                 </p>
               </div>
 
@@ -954,10 +1081,7 @@ export function FeedbackPanel({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  showToast(`Notifikasi darurat berhasil dikirim ke ${medicalModalData.medicalEscalation.healthCenter}! Tim medis meluncur ke lokasi.`)
-                  setMedicalModalData(null)
-                }}
+                onClick={() => handleEscalateMedical(medicalModalData)}
                 className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-2xs cursor-pointer flex items-center gap-1.5"
               >
                 <PhoneCall className="h-3.5 w-3.5" />
@@ -972,8 +1096,14 @@ export function FeedbackPanel({
           MODAL 2: DETAIL TIKET & LOG INVESTIGASI
           ==================================================================== */}
       {selectedTicketDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          onClick={() => setSelectedTicketDetail(null)}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <span className="font-mono text-xs text-blue-700 font-bold">
@@ -999,7 +1129,7 @@ export function FeedbackPanel({
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Pelapor:</span>
-                  <strong className="text-slate-900">{selectedTicketDetail.reporter.name} ({selectedTicketDetail.reporter.phone})</strong>
+                  <strong className="text-slate-900">{selectedTicketDetail.reporter?.name} ({selectedTicketDetail.reporter?.phone})</strong>
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Dapur SPPG:</span>
@@ -1018,10 +1148,10 @@ export function FeedbackPanel({
                 </p>
               </div>
 
-              {selectedTicketDetail.medicalEscalation.escalated && (
+              {selectedTicketDetail.medicalEscalation?.escalated && (
                 <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 space-y-1">
                   <strong className="block font-bold">Status Siaga Medis:</strong>
-                  <p>{selectedTicketDetail.medicalEscalation.healthCenter} Ã¢â‚¬Â¢ {selectedTicketDetail.medicalEscalation.doctorInCharge}</p>
+                  <p>{selectedTicketDetail.medicalEscalation.healthCenter} • {selectedTicketDetail.medicalEscalation.doctorInCharge}</p>
                   <p className="text-[11px] font-semibold text-blue-700">Status: {selectedTicketDetail.medicalEscalation.dispatchStatus}</p>
                 </div>
               )}
@@ -1052,8 +1182,14 @@ export function FeedbackPanel({
           MODAL 3: TUTUP TIKET ADUAN & KOMPENSASI
           ==================================================================== */}
       {closeTicketModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          onClick={() => setCloseTicketModalData(null)}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-100">
@@ -1133,8 +1269,14 @@ export function FeedbackPanel({
           MODAL 4: BUAT TIKET ADUAN BARU
           ==================================================================== */}
       {createTicketModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          onClick={() => setCreateTicketModalOpen(false)}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-blue-50 text-blue-800 border border-blue-100">
@@ -1271,6 +1413,7 @@ export function FeedbackPanel({
           </div>
         </div>
       )}
+
     </div>
   )
 }

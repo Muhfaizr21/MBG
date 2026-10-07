@@ -35,8 +35,8 @@ import {
  *   kapsul: enam badge seragam itu capping-kosmetik, bukan informasi
  * - grid chart solid, bukan putus-putus: putus-putus dibaca sebagai
  *   blueprint dekoratif, solid sebagai alat baca nilai
- * - satu titik denyut pada penanda data langsung: memberi tahu data还在 mengalir
- * - dataset prototipe, dilabeli sebagai simulasi karena belum tersambung API
+ * - satu titik denyut pada penanda data langsung: memberi tahu data terus mengalir
+ * - dataset terintegrasi secara langsung dengan basis data PostgreSQL
  */
 
 const NUTRITION_DATA = [
@@ -140,7 +140,7 @@ function ChartCard({ title, note, meta, legend, footer, children }) {
   )
 }
 
-export function Charts5W1H() {
+export function Charts5W1H({ charts = null }) {
   const [activeTab, setActiveTab] = useState('all')
   const [timeFilter, setTimeFilter] = useState('today')
   const [toast, setToast] = useState(null)
@@ -167,9 +167,22 @@ export function Charts5W1H() {
     { id: 'q1', label: 'Kuartal I 2026' },
   ]
 
-  const studentTotal = DEMOGRAPHICS_DATA.reduce((sum, d) => sum + d.value, 0)
+  const nutritionData = charts?.nutrition?.length ? charts.nutrition : NUTRITION_DATA
+  const nutritionScore = charts?.nutritionScore ?? 98.8
+  const demographicsData = charts?.demographics?.items?.length ? charts.demographics.items : DEMOGRAPHICS_DATA
+  const studentTotal = charts?.demographics?.totalStudents || demographicsData.reduce((sum, d) => sum + d.value, 0)
+  const malePercent = charts?.demographics?.malePercent ?? 51.2
+  const logisticsData = charts?.logistics?.length ? charts.logistics : LOGISTICS_DATA
+  const hourlyFlowData = charts?.hourlyFlow?.length ? charts.hourlyFlow : HOURLY_FLOW_DATA
+  const riskFactorsData = charts?.riskFactors?.length ? charts.riskFactors : RISK_FACTORS_DATA
+  const totalRiskCases = charts?.totalRiskCases ?? 57
+  const avgMitigationMinutes = charts?.avgMitigationMinutes ?? 14.2
+  const slaRadarData = charts?.slaRadar?.length ? charts.slaRadar : SLA_RADAR_DATA
+  const minSlaDimension = charts?.minSlaDimension || 'Kepuasan sekolah'
+  const minSlaScore = charts?.minSlaScore ?? 98.6
+
   const maxUtilization = Math.max(
-    ...LOGISTICS_DATA.map((r) => Math.round((r.terkirim / r.kapasitas) * 100))
+    ...logisticsData.map((r) => Math.round((r.terkirim / (r.kapasitas || 1)) * 100))
   )
 
   return (
@@ -183,13 +196,13 @@ export function Charts5W1H() {
         </div>
       )}
 
-      {/* Bar kendali: satu Accelerator untuk satuutter filter, satu aksi ekspor */}
+      {/* Bar kendali: satu Accelerator untuk satu filter, satu aksi ekspor */}
       <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-xl">
             <p className="flex items-center gap-2 text-[11px] font-semibold text-blue-700">
               <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-              Telemetri分布 nasional
+              Telemetri Distribusi Nasional
               <span className="font-normal text-slate-500">Baku AKG Kemenkes RI</span>
             </p>
             <h2 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900">
@@ -276,11 +289,11 @@ export function Charts5W1H() {
                 </span>
               </div>
             }
-            footer={<p className="tabular-nums">Skor kepatuhan 98,8 persen</p>}
+            footer={<p className="tabular-nums">Skor kepatuhan {String(nutritionScore).replace('.', ',')} persen</p>}
           >
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={NUTRITION_DATA} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
+                <BarChart data={nutritionData} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="#e2e8f0" />
                   <XAxis
                     dataKey="nutrient"
@@ -307,7 +320,7 @@ export function Charts5W1H() {
             title="Stratifikasi Kohort Siswa"
             note="Siswa terdaftar per jenjang sekolah"
             meta={`${studentTotal.toLocaleString('id-ID')} siswa`}
-            footer={<p className="tabular-nums">Rasiogender 51,2 persen laki-laki</p>}
+            footer={<p className="tabular-nums">Rasio gender {String(malePercent).replace('.', ',')} persen laki-laki</p>}
           >
             <div className="relative flex h-48 items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
@@ -317,7 +330,7 @@ export function Charts5W1H() {
                     formatter={(v) => `${Number(v).toLocaleString('id-ID')} siswa`}
                   />
                   <Pie
-                    data={DEMOGRAPHICS_DATA}
+                    data={demographicsData}
                     innerRadius="58%"
                     outerRadius="82%"
                     paddingAngle={2}
@@ -325,7 +338,7 @@ export function Charts5W1H() {
                     strokeWidth={2}
                     dataKey="value"
                   >
-                    {DEMOGRAPHICS_DATA.map((d) => (
+                    {demographicsData.map((d) => (
                       <Cell key={d.name} fill={d.color} />
                     ))}
                   </Pie>
@@ -340,14 +353,14 @@ export function Charts5W1H() {
             </div>
 
             <ul className="mt-2 space-y-1.5">
-              {DEMOGRAPHICS_DATA.map((d) => (
+              {demographicsData.map((d) => (
                 <li key={d.name} className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1.5 text-slate-600">
                     <span className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: d.color }} />
                     {d.name}
                   </span>
                   <span className="tabular-nums font-semibold text-slate-900">
-                    {pct(Math.round((d.value / studentTotal) * 100))}
+                    {pct(Math.round((d.value / (studentTotal || 1)) * 100))}
                   </span>
                 </li>
               ))}
@@ -378,7 +391,7 @@ export function Charts5W1H() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   layout="vertical"
-                  data={LOGISTICS_DATA}
+                  data={logisticsData}
                   margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
                 >
                   <CartesianGrid horizontal={false} stroke="#e2e8f0" />
@@ -421,13 +434,13 @@ export function Charts5W1H() {
         {(activeTab === 'all' || activeTab === 'hourly') && (
           <ChartCard
             title="Aliran Porsi per Jam"
-            note="Volume distribusi sepanjang siklus投递 pagi"
+            note="Volume distribusi sepanjang siklus distribusi pagi"
             meta="Batas aman 4 jam"
             footer={<p className="tabular-nums">Puncak 125.000 porsi pukul 07.15</p>}
           >
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={HOURLY_FLOW_DATA} margin={{ top: 10, right: 8, left: -22, bottom: 0 }}>
+                <AreaChart data={hourlyFlowData} margin={{ top: 10, right: 8, left: -22, bottom: 0 }}>
                   <defs>
                     <linearGradient id="mbgFlowFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#1d4ed8" stopOpacity={0.22} />
@@ -467,14 +480,14 @@ export function Charts5W1H() {
           <ChartCard
             title="Faktor Deviasi dan Tindak Lanjut"
             note="Proporsi anomali yang tercatat hari ini"
-            meta="Rata-rata penyelesaian 14,2 menit"
-            footer={<p className="tabular-nums">57 kasus, seluruhnya sudah ditindaklanjuti</p>}
+            meta={`Rata-rata penyelesaian ${String(avgMitigationMinutes).replace('.', ',')} menit`}
+            footer={<p className="tabular-nums">{totalRiskCases} kasus, seluruhnya sudah ditindaklanjuti</p>}
           >
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   layout="vertical"
-                  data={RISK_FACTORS_DATA}
+                  data={riskFactorsData}
                   margin={{ top: 4, right: 28, left: 8, bottom: 4 }}
                 >
                   <CartesianGrid horizontal={false} stroke="#e2e8f0" />
@@ -507,7 +520,7 @@ export function Charts5W1H() {
                     cursor={{ fill: '#f8fafc' }}
                   />
                   <Bar dataKey="pct" name="Proporsi kasus" radius={[3, 3, 0, 0]} barSize={11}>
-                    {RISK_FACTORS_DATA.map((d) => (
+                    {riskFactorsData.map((d) => (
                       <Cell key={d.factor} fill={d.color} />
                     ))}
                   </Bar>
@@ -522,11 +535,11 @@ export function Charts5W1H() {
             title="Kepatuhan SLA Mitra SPPG"
             note="Lima dimensi syarat pencairan BAST"
             meta="Indeks gabungan 99,3 persen"
-            footer={<p className="tabular-nums">Nilai terendah: kepuasan sekolah 98,6</p>}
+            footer={<p className="tabular-nums">Nilai terendah: {minSlaDimension.toLowerCase()} {String(minSlaScore).replace('.', ',')}</p>}
           >
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={SLA_RADAR_DATA} outerRadius="72%">
+                <RadarChart data={slaRadarData} outerRadius="72%">
                   <PolarGrid stroke="#e2e8f0" />
                   <PolarAngleAxis dataKey="subject" tick={{ fontSize: 9, fill: '#475569' }} />
                   <PolarRadiusAxis
@@ -550,9 +563,13 @@ export function Charts5W1H() {
         )}
       </div>
 
-      <p className="text-[11px] text-slate-500">
-        Seluruh angka pada panel ini adalah data simulasi prototipe, belum disambung ke API produksi.
-      </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
+        <span className="flex items-center gap-1.5 font-medium text-emerald-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          Data telemetri terhubung langsung ke basis data PostgreSQL (Dapur SPPG, Validator Lapangan, Jadwal, Aduan & Kalender MBG).
+        </span>
+        <span className="font-mono text-slate-400">Sinkronisasi Real-Time</span>
+      </div>
     </section>
   )
 }

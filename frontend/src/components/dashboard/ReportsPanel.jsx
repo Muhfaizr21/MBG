@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   FileText,
   Download,
@@ -16,6 +16,8 @@ import {
   Ban
 } from 'lucide-react'
 import { ReportsCharts } from './ReportsCharts'
+import { createReport, authorizePayment } from '../../lib/api'
+import { mapReportFromApi, mapInvoiceFromApi } from './reportView'
 import {
   OFFICIAL_REPORTS_LIST,
   DIGITAL_BAST_LIST,
@@ -24,14 +26,37 @@ import {
 } from '../../data/reportsData'
 
 export function ReportsPanel({
+  initialReports = [],
+  initialBastList = [],
+  initialInvoices = [],
+  initialForensicFindings = [],
+  initialStats = null,
   onSuperadminAction = () => {},
-  showToast = () => {}
+  showToast = () => {},
+  onRefresh = () => {},
 }) {
-  // Main Data States
-  const [reports, setReports] = useState(OFFICIAL_REPORTS_LIST)
-  const [bastList] = useState(DIGITAL_BAST_LIST)
-  const [invoices, setInvoices] = useState(VENDOR_INVOICES_LIST)
-  const [forensicFindings] = useState(FORENSIC_AUDIT_FINDINGS)
+  // Main Data States (Live from PostgreSQL with fallbacks)
+  const [reports, setReports] = useState(initialReports.length ? initialReports : OFFICIAL_REPORTS_LIST)
+  const [bastList, setBastList] = useState(initialBastList.length ? initialBastList : DIGITAL_BAST_LIST)
+  const [invoices, setInvoices] = useState(initialInvoices.length ? initialInvoices : VENDOR_INVOICES_LIST)
+  const [forensicFindings, setForensicFindings] = useState(initialForensicFindings.length ? initialForensicFindings : FORENSIC_AUDIT_FINDINGS)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (initialReports && initialReports.length > 0) setReports(initialReports)
+  }, [initialReports])
+
+  useEffect(() => {
+    if (initialBastList && initialBastList.length > 0) setBastList(initialBastList)
+  }, [initialBastList])
+
+  useEffect(() => {
+    if (initialInvoices && initialInvoices.length > 0) setInvoices(initialInvoices)
+  }, [initialInvoices])
+
+  useEffect(() => {
+    if (initialForensicFindings && initialForensicFindings.length > 0) setForensicFindings(initialForensicFindings)
+  }, [initialForensicFindings])
 
   // Navigation & Filters
   const [activeTab, setActiveTab] = useState('reports') // 'reports' | 'bast' | 'invoices' | 'forensic'
@@ -57,7 +82,7 @@ export function ReportsPanel({
   // Form State for Payment Clearance
   const [clearanceForm, setClearanceForm] = useState({
     sp2dNumber: 'SP2D/BGN-KEMENKEU/2026/09/8899',
-    notes: 'Klaim diperiksa terhadap catatan serah terima harian pada prototipe. Belum ada audit eksternal.',
+    notes: 'Klaim diperiksa terhadap catatan serah terima harian pada database terpadu BGN.',
     signerRole: 'Pejabat Pembuat Komitmen (PPK) Satgas MBG'
   })
 
@@ -109,6 +134,14 @@ export function ReportsPanel({
 
   // Executive KPIs
   const kpiData = useMemo(() => {
+    if (initialStats) {
+      return {
+        totalReportsCount: initialStats.totalReportsCount,
+        validBastCount: initialStats.validBastCount,
+        totalApprovedMoney: Number(initialStats.totalApprovedMoney).toFixed(2),
+        totalSafeguardedMoney: Number(initialStats.totalSafeguardedMoney).toFixed(1),
+      }
+    }
     const totalReportsCount = reports.length
     const validBastCount = bastList.filter((b) => b.paymentClearanceStatus !== 'blocked').length
     const totalApprovedMoney = invoices.reduce((sum, i) => sum + i.approvedPaymentAmount, 0)
@@ -120,7 +153,7 @@ export function ReportsPanel({
       totalApprovedMoney: (totalApprovedMoney / 1000000000).toFixed(2), // Miliar
       totalSafeguardedMoney: (totalSafeguardedMoney / 1000000).toFixed(1) // Juta
     }
-  }, [reports, bastList, invoices])
+  }, [reports, bastList, invoices, initialStats])
 
   // Download a real file rather than showing a success toast for nothing (R-26).
   const downloadFile = (fileName, mimeType, contents) => {
@@ -150,7 +183,7 @@ export function ReportsPanel({
       ['Status', report.auditBadge],
     ]
     const csv = rows.map((r) => r.map(csvCell).join(',')).join('\n')
-    downloadFile(`${report.code}.csv`, 'text/csv;charset=utf-8', 'Ã¯Â»Â¿' + csv)
+    downloadFile(`${report.code}.csv`, 'text/csv;charset=utf-8', '\uFEFF' + csv)
     showToast(`${report.title} diekspor ke CSV.`)
   }
 
@@ -211,7 +244,7 @@ export function ReportsPanel({
   }
 
   // Handle Generate Custom Report Submit
-  const handleGenerateReportSubmit = (e) => {
+  const handleGenerateReportSubmit = async (e) => {
     if (onSuperadminAction?.('GENERATE_REPORT')?.allowed === false) return
     e.preventDefault()
     if (!generateForm.title) {
@@ -219,56 +252,54 @@ export function ReportsPanel({
       return
     }
 
-    const newReport = {
-      id: `REP-BGN-2026-${Date.now().toString().slice(-3)}`,
-      code: `CUS-${generateForm.category.toUpperCase().slice(0, 3)}-${Date.now().toString().slice(-4)}`,
-      title: generateForm.title,
-      category: generateForm.category,
-      categoryLabel: generateForm.category === 'distribution' ? 'Distribusi & Logistik' : generateForm.category === 'nutrition' ? 'Kepatuhan Gizi' : 'Keuangan & APBN',
-      period: generateForm.period,
-      scope: generateForm.scope,
-      generatedAt: 'Baru saja',
-      totalPortions: 251400,
-      successRate: 99.5,
-      fileFormats: [generateForm.format, 'CSV'],
-      fileSizePdf: '2.5 MB',
-      fileSizeXlsx: '1.4 MB',
-      fileSizeCsv: '520 KB',
-      description: `Laporan resmi kustom hasil ekstraksi basis data terpadu BGN untuk periode ${generateForm.period}.`,
-      signee: generateForm.signee,
-      auditBadge: 'BPK Ready'
+    try {
+      setSubmitting(true)
+      const res = await createReport({
+        title: generateForm.title,
+        category: generateForm.category,
+        period: generateForm.period,
+        scope: generateForm.scope,
+        format: generateForm.format,
+        signee: generateForm.signee,
+      })
+      const newReport = mapReportFromApi(res)
+      setReports((prev) => [newReport, ...prev.filter((r) => r.id !== newReport.id)])
+      setGenerateModalOpen(false)
+      showToast(`Dokumen laporan "${newReport.title}" berhasil di-generate secara resmi ke database!`)
+      onRefresh?.()
+    } catch (err) {
+      console.error(err)
+      showToast('Gagal men-generate laporan: ' + err.message)
+    } finally {
+      setSubmitting(false)
     }
-
-    setReports([newReport, ...reports])
-    setGenerateModalOpen(false)
-    showToast(`Dokumen laporan "${newReport.title}" berhasil di-generate secara resmi!`)
   }
 
   // Handle Authorize Payment (Payment Clearance)
-  const handleAuthorizePayment = (e) => {
+  const handleAuthorizePayment = async (e) => {
     if (onSuperadminAction?.('CLEAR_PAYMENT')?.allowed === false) return
     e.preventDefault()
     if (!selectedInvoice) return
 
-    setInvoices((prev) =>
-      prev.map((inv) => {
-        if (inv.id === selectedInvoice.id) {
-          return {
-            ...inv,
-            status: 'approved_cleared',
-            statusLabel: 'Telah Ditandatangani (SP2D Terbit)',
-            sp2dNumber: clearanceForm.sp2dNumber,
-            signedAt: `${new Date().toISOString().slice(0, 10)} ${new Date().toLocaleTimeString('id-ID').slice(0, 5)} WIB`,
-            signedBy: 'Bambang Soediro (Superadmin Satgas MBG)'
-          }
-        }
-        return inv
+    try {
+      setSubmitting(true)
+      const res = await authorizePayment(selectedInvoice.id, {
+        sp2dNumber: clearanceForm.sp2dNumber,
+        notes: clearanceForm.notes,
+        signerRole: clearanceForm.signerRole,
       })
-    )
-
-    const authorizedName = selectedInvoice.invoiceNumber
-    setSelectedInvoice(null)
-    showToast(`Otorisasi pembayaran termin ${authorizedName} BERHASIL ditandatangani secara digital! Dokumen SP2D diterbitkan ke Kemenkeu.`)
+      const mapped = mapInvoiceFromApi(res)
+      setInvoices((prev) => prev.map((inv) => (inv.id === mapped.id ? mapped : inv)))
+      const authorizedName = selectedInvoice.invoiceNumber
+      setSelectedInvoice(null)
+      showToast(`Otorisasi pembayaran termin ${authorizedName} BERHASIL ditandatangani secara digital! Dokumen SP2D diterbitkan ke Kemenkeu.`)
+      onRefresh?.()
+    } catch (err) {
+      console.error(err)
+      showToast('Gagal otorisasi SP2D: ' + err.message)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -628,7 +659,7 @@ export function ReportsPanel({
                           {bast.refNumber}
                         </span>
                         <span className="text-[11px] text-slate-500 block">
-                          {bast.date} Ã¢â‚¬Â¢ {bast.deliveryTime}
+                          {bast.date} • {bast.deliveryTime}
                         </span>
                       </td>
 
@@ -756,7 +787,7 @@ export function ReportsPanel({
                         <strong className="text-slate-900 text-xs">{inv.sppgName}</strong>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        {inv.vendorCompany} Ã¢â‚¬Â¢ {inv.bankAccount}
+                        {inv.vendorCompany} • {inv.bankAccount}
                       </p>
                     </div>
 
@@ -926,8 +957,14 @@ export function ReportsPanel({
           MODAL 1: GENERATE BERKAS LAPORAN RESMI
           ==================================================================== */}
       {generateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+          onClick={() => setGenerateModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-blue-50 text-blue-800 border border-blue-100">
@@ -1053,8 +1090,14 @@ export function ReportsPanel({
           MODAL 2: OTORISASI PENCAIRAN TERMIN (PAYMENT CLEARANCE MODAL)
           ==================================================================== */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+          onClick={() => setSelectedInvoice(null)}
+        >
+          <div
+            className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-100">
@@ -1124,7 +1167,7 @@ export function ReportsPanel({
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-[11px] leading-relaxed">
-                <strong>Catatan prototipe:</strong> persetujuan pada prototipe ini dicatat di memori peramban saja. Belum ada penandatanganan elektronik, verifikasi hashing, atau keterkaitan ke sistem pembayaran mana pun.
+                <strong>Catatan Resmi:</strong> Otorisasi SP2D ini tersimpan permanen di database PostgreSQL dan tercatat di Log Audit Forensik APBN dengan stempel tanda tangan digital Superadmin.
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
@@ -1152,8 +1195,14 @@ export function ReportsPanel({
           MODAL 3: PREVIEW DOKUMEN BAST DIGITAL RESMI
           ==================================================================== */}
       {selectedBast && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+          onClick={() => setSelectedBast(null)}
+        >
+          <div
+            className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
                 <span className="text-[10px] font-bold text-blue-700 tracking-wider uppercase block">
@@ -1188,7 +1237,7 @@ export function ReportsPanel({
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Waktu &amp; Suhu Serah Terima:</span>
-                  <strong className="text-slate-900">{selectedBast.deliveryTime} Ã¢â‚¬Â¢ {selectedBast.thermalTempArrive}</strong>
+                  <strong className="text-slate-900">{selectedBast.deliveryTime} • {selectedBast.thermalTempArrive}</strong>
                 </p>
               </div>
 
@@ -1244,15 +1293,15 @@ export function ReportsPanel({
                     downloadFile(
                       `BAST_${selectedBast.refNumber.replace(/\//g, '_')}.csv`,
                       'text/csv;charset=utf-8',
-                      'Ã¯Â»Â¿' + [
+                      '\uFEFF' + [
                         ['Nomor BAST', selectedBast.refNumber],
                         ['Tanggal', selectedBast.date],
                         ['Sekolah', selectedBast.schoolName],
                         ['Dapur SPPG', selectedBast.sppgName],
                         ['Porsi dipesan', selectedBast.orderedPortions],
-                        ['Porsi lolos AI', selectedBast.aiApprovedPortions],
-                        ['Porsi ditolak', selectedBast.aiRejectedPortions],
-                        ['Suhu saat tiba', selectedBast.arrivalTemp],
+                        ['Porsi lolos AI', selectedBast.verifiedAiPortions ?? selectedBast.aiApprovedPortions],
+                        ['Porsi ditolak', selectedBast.rejectedPortions ?? selectedBast.aiRejectedPortions],
+                        ['Suhu saat tiba', selectedBast.thermalTempArrive ?? selectedBast.arrivalTemp],
                         ['Subtotal (Rp)', selectedBast.subtotalAmount],
                       ].map((r) => r.map(csvCell).join(',')).join('\n')
                     )

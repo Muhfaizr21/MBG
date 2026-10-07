@@ -39,35 +39,62 @@ export function SppgCharts({ sppgList = [] }) {
     })
   }, [sppgList])
 
+  // Rasio utilisasi kapasitas nasional rata-rata
+  const nationalUtilization = useMemo(() => {
+    const totalCap = capacityData.reduce((acc, c) => acc + c.KapasitasMaks, 0)
+    const totalQuota = capacityData.reduce((acc, c) => acc + c.KuotaAktif, 0)
+    return totalCap > 0 ? ((totalQuota / totalCap) * 100).toFixed(1) : '0.0'
+  }, [capacityData])
+
+  // Dapur anomali / peringatan (SP-1 / SP-2) vs dapur benchmark performa terbaik
+  const flaggedKitchen = useMemo(() => {
+    return sppgList.find((k) => k.status === 'warning' || k.status === 'suspended') ||
+      [...sppgList].sort((a, b) => a.scorecard.compositeScore - b.scorecard.compositeScore)[0] ||
+      null
+  }, [sppgList])
+
+  const topKitchen = useMemo(() => {
+    const activeKitchens = sppgList.filter((k) => k.status === 'active')
+    return [...(activeKitchens.length ? activeKitchens : sppgList)].sort(
+      (a, b) => b.scorecard.compositeScore - a.scorecard.compositeScore
+    )[0] || null
+  }, [sppgList])
+
   // 2. Tren Kepatuhan Rata-Rata 7 Hari vs Threshold 85%
   const trendData = useMemo(() => {
-    const days = ['H-6 (22 Sep)', 'H-5 (23 Sep)', 'H-4 (24 Sep)', 'H-3 (25 Sep)', 'H-2 (26 Sep)', 'H-1 (27 Sep)', 'Hari Ini (28 Sep)']
-    return days.map((dayLabel, idx) => {
+    const today = new Date()
+    return Array.from({ length: 7 }, (_, idx) => {
+      const d = new Date(today)
+      d.setDate(today.getDate() - (6 - idx))
+      const dateStr = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+      const dayLabel = idx === 6 ? 'Hari Ini' : `H-${6 - idx}`
+
       // Calculate average across active kitchens
       const activeKitchens = sppgList.filter((k) => k.status !== 'suspended')
       const totalScore = activeKitchens.reduce((acc, curr) => {
-        return acc + (curr.scorecard.compliance7Days[idx] || 90)
+        const val = curr.scorecard.compliance7Days[idx]
+        return acc + (typeof val === 'number' && val > 0 ? val : (curr.scorecard.compositeScore || 95))
       }, 0)
       const avgNational = activeKitchens.length ? +(totalScore / activeKitchens.length).toFixed(1) : 0
 
-      // Get flagged kitchen (Surya Boga) specific trend
-      const flaggedKitchen = sppgList.find((k) => k.id === 'sppg-4')
-      const flaggedScore = flaggedKitchen ? flaggedKitchen.scorecard.compliance7Days[idx] : 82.0
+      // Get flagged kitchen specific trend (kitchen with lowest score / warning)
+      const flaggedScore = flaggedKitchen?.scorecard?.compliance7Days?.[idx] ?? 82.0
 
-      // Get benchmark top kitchen (Menteng)
-      const topKitchen = sppgList.find((k) => k.id === 'sppg-1')
-      const topScore = topKitchen ? topKitchen.scorecard.compliance7Days[idx] : 99.2
+      // Get benchmark top kitchen (highest score)
+      const topScore = topKitchen?.scorecard?.compliance7Days?.[idx] ?? 99.2
 
       return {
-        day: dayLabel.split(' ')[0],
-        date: dayLabel,
+        day: dayLabel,
+        date: `${dayLabel} (${dateStr})`,
         RataNasional: avgNational,
-        SuryaBogaAnomali: flaggedScore,
-        SPPGMentengPrima: topScore,
+        FlaggedScore: flaggedScore,
+        FlaggedName: flaggedKitchen ? `${flaggedKitchen.name.replace('SPPG ', '')} (${flaggedKitchen.status.toUpperCase()})` : 'Dapur Pantauan',
+        TopScore: topScore,
+        TopName: topKitchen ? `${topKitchen.name.replace('SPPG ', '')} (Benchmark)` : 'Dapur Unggulan',
         threshold: 85
       }
     })
-  }, [sppgList])
+  }, [sppgList, flaggedKitchen, topKitchen])
 
   // 3. Distribusi Status Audit SLHS Dinkes
   const slhsDistribution = useMemo(() => {
@@ -109,7 +136,7 @@ export function SppgCharts({ sppgList = [] }) {
               Telemetri Analitik Mutu & Kapasitas Produsen
             </h2>
             <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-100 text-slate-600">
-              7 VENDOR TERPILIH
+              {sppgList.length} DAPUR TERDATA
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
@@ -197,8 +224,8 @@ export function SppgCharts({ sppgList = [] }) {
           </div>
 
           <div className="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] text-slate-500 font-mono">
-            <span>Rata-rata Utilisasi Nasional: <strong>78.4%</strong></span>
-            <span className="text-blue-700 font-semibold">Tersedia Buffer 21.6%</span>
+            <span>Rata-rata Utilisasi Nasional: <strong>{nationalUtilization}%</strong></span>
+            <span className="text-blue-700 font-semibold">Tersedia Buffer {(100 - parseFloat(nationalUtilization)).toFixed(1)}%</span>
           </div>
         </div>
 
@@ -239,20 +266,20 @@ export function SppgCharts({ sppgList = [] }) {
                       if (active && payload && payload.length) {
                         const d = payload[0].payload
                         return (
-                          <div className="rounded-xl border border-slate-200/90 bg-white p-3 text-xs shadow-xl min-w-[210px] z-50 pointer-events-none select-none">
+                          <div className="rounded-xl border border-slate-200/90 bg-white p-3 text-xs shadow-xl min-w-[220px] z-50 pointer-events-none select-none">
                             <p className="font-bold text-slate-900 border-b border-slate-100 pb-1 mb-1.5">{d.date}</p>
                             <div className="space-y-1 text-[11px]">
-                              <div className="flex justify-between gap-4 text-emerald-700">
-                                <span>Menteng 01 (Prima):</span>
-                                <span className="font-mono font-bold">{d.SPPGMentengPrima}%</span>
+                              <div className="flex justify-between gap-4 text-emerald-700 font-medium">
+                                <span>{d.TopName}:</span>
+                                <span className="font-mono font-bold">{d.TopScore}%</span>
                               </div>
-                              <div className="flex justify-between gap-4 text-blue-700">
+                              <div className="flex justify-between gap-4 text-blue-700 font-medium">
                                 <span>Rata-rata Nasional:</span>
                                 <span className="font-mono font-bold">{d.RataNasional}%</span>
                               </div>
                               <div className="flex justify-between gap-4 text-rose-700 font-bold border-t border-slate-100 pt-1">
-                                <span>Surya Boga (SP-1):</span>
-                                <span className="font-mono">{d.SuryaBogaAnomali}%</span>
+                                <span>{d.FlaggedName}:</span>
+                                <span className="font-mono">{d.FlaggedScore}%</span>
                               </div>
                             </div>
                           </div>
@@ -278,12 +305,12 @@ export function SppgCharts({ sppgList = [] }) {
                   />
                   <Area
                     type="monotone"
-                    dataKey="SuryaBogaAnomali"
+                    dataKey="FlaggedScore"
                     stroke="#b91c1c"
                     strokeWidth={2}
                     fillOpacity={1}
                     fill="url(#colorSurya)"
-                    name="Surya Boga (Anomali)"
+                    name={flaggedKitchen ? flaggedKitchen.name.replace('SPPG ', '') : 'Dapur Pantauan SP'}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -293,7 +320,7 @@ export function SppgCharts({ sppgList = [] }) {
           <div className="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px]">
             <span className="flex items-center gap-1.5 text-rose-600 font-semibold">
               <TrendingDown className="h-3.5 w-3.5 shrink-0" />
-              1 Dapur di Bawah Ambang SP-1
+              {sppgList.filter((k) => k.status === 'warning').length} Dapur di Bawah Ambang SP-1
             </span>
             <span className="font-mono text-slate-500 text-[10px]">Pemberitahuan Aktif</span>
           </div>

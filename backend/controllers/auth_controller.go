@@ -1,12 +1,15 @@
 package controllers
 
 import (
+	"backend/database"
 	"backend/middlewares"
 	"backend/models"
 	"backend/services"
 	"backend/utils"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -74,6 +77,15 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 	user, access, rawRefresh, refreshExpires, err := c.authSvc.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
+		// Log failed authentication attempt for threat monitoring
+		_ = database.RecordAuditLog(
+			r.Context(),
+			"anonymous",
+			"auth.login.failed",
+			req.Email,
+			fmt.Sprintf("ip=%s ua=%s error=%v", middlewares.ClientIP(r), r.UserAgent(), err),
+		)
+
 		switch err {
 		case services.ErrInvalidCredentials, services.ErrAccountDisabled:
 			utils.Error(w, http.StatusUnauthorized, err.Error())
@@ -85,7 +97,16 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.setRefreshCookie(w, rawRefresh, refreshExpires)
+	// Log successful authentication event
+	_ = database.RecordAuditLog(
+		r.Context(),
+		user.ID,
+		"auth.login.success",
+		user.Email,
+		fmt.Sprintf("ip=%s ua=%s role=%s", middlewares.ClientIP(r), r.UserAgent(), user.Role),
+	)
+
+	c.setRefreshCookie(w, r, rawRefresh, refreshExpires)
 	utils.Success(w, http.StatusOK, "login berhasil", models.AuthResponse{
 		AccessToken: access,
 		ExpiresIn:   int64(accessTTLSeconds),
@@ -107,21 +128,17 @@ func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, access, rawRefresh, refreshExpires, err := c.authSvc.Refresh(r.Context(), cookie.Value)
+	// authSvc.Refresh sudah mengembalikan user-nya. Jangan panggil Me() dengan
+	// UserID dari context: route ini tidak membawa access token (hanya cookie),
+	// sehingga context kosong dan refresh selalu gagal setelah token di-revoke.
+	user, access, rawRefresh, refreshExpires, err := c.authSvc.Refresh(r.Context(), cookie.Value)
 	if err != nil {
-		c.clearRefreshCookie(w)
+		c.clearRefreshCookie(w, r)
 		utils.Error(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	user, err := c.authSvc.Me(r.Context(), middlewares.UserID(r.Context()))
-	if err != nil {
-		c.clearRefreshCookie(w)
-		utils.Error(w, http.StatusUnauthorized, err.Error())
-		return
-	}
-
-	c.setRefreshCookie(w, rawRefresh, refreshExpires)
+	c.setRefreshCookie(w, r, rawRefresh, refreshExpires)
 	utils.Success(w, http.StatusOK, "sesi diperbarui", models.AuthResponse{
 		AccessToken: access,
 		ExpiresIn:   int64(accessTTLSeconds),
@@ -139,7 +156,17 @@ func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(refreshCookieName); err == nil {
 		_ = c.authSvc.Logout(r.Context(), cookie.Value)
 	}
-	c.clearRefreshCookie(w)
+	// Log user logout event
+	if uid := middlewares.UserID(r.Context()); uid != "" {
+		_ = database.RecordAuditLog(
+			r.Context(),
+			uid,
+			"auth.logout",
+			"",
+			fmt.Sprintf("ip=%s", middlewares.ClientIP(r)),
+		)
+	}
+	c.clearRefreshCookie(w, r)
 	utils.Success(w, http.StatusOK, "berhasil keluar", nil)
 }
 
@@ -163,29 +190,33 @@ func (c *AuthController) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.Success(w, http.StatusOK, "ok", models.AuthResponse{
-		User:       user,
+		User:        user,
 		Permissions: models.PermissionsFor(user.Role),
 	})
 }
 
-func (c *AuthController) setRefreshCookie(w http.ResponseWriter, value string, expires time.Time) {
+func (c *AuthController) setRefreshCookie(w http.ResponseWriter, r *http.Request, value string, expires time.Time) {
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" || os.Getenv("APP_ENV") == "production"
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookieName,
 		Value:    value,
 		Path:     "/api/auth",
 		Expires:  expires,
 		HttpOnly: true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func (c *AuthController) clearRefreshCookie(w http.ResponseWriter) {
+func (c *AuthController) clearRefreshCookie(w http.ResponseWriter, r *http.Request) {
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" || os.Getenv("APP_ENV") == "production"
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookieName,
 		Value:    "",
 		Path:     "/api/auth",
 		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }

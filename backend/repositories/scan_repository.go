@@ -28,13 +28,13 @@ func NewScanRepository() ScanRepository {
 }
 
 const scanColumns = `id, box_id, qr_token, batch_id, image_ref, ai_class, ai_confidence,
-	visual_score, holding_temp_c, release_temp_c, verdict, reason, actor_id, created_at, rating, feedback`
+	visual_score, holding_temp_c, release_temp_c, duration_ms, verdict, reason, actor_id, created_at, rating, feedback`
 
 func (r *pgScanRepository) scanLog(row pgx.Row) (*models.ScanLog, error) {
 	s := &models.ScanLog{}
 	err := row.Scan(&s.ID, &s.BoxID, &s.QRToken, &s.BatchID, &s.ImageRef,
 		&s.AIClass, &s.AIConfidence, &s.VisualScore, &s.HoldingTempC, &s.ReleaseTempC,
-		&s.Verdict, &s.Reason, &s.ActorID, &s.CreatedAt, &s.Rating, &s.Feedback)
+		&s.DurationMS, &s.Verdict, &s.Reason, &s.ActorID, &s.CreatedAt, &s.Rating, &s.Feedback)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -45,13 +45,18 @@ func (r *pgScanRepository) scanLog(row pgx.Row) (*models.ScanLog, error) {
 }
 
 func (r *pgScanRepository) InsertScan(ctx context.Context, log *models.ScanLog) error {
+	createdAt := log.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
 	_, err := database.Pool().Exec(ctx, `
 		INSERT INTO scan_logs (id, box_id, qr_token, batch_id, image_ref, ai_class,
-			ai_confidence, visual_score, holding_temp_c, release_temp_c, verdict, reason, actor_id, created_at, rating, feedback)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+			ai_confidence, visual_score, holding_temp_c, release_temp_c, duration_ms,
+			verdict, reason, actor_id, created_at, rating, feedback)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
 		log.ID, log.BoxID, log.QRToken, log.BatchID, log.ImageRef, log.AIClass,
 		log.AIConfidence, log.VisualScore, log.HoldingTempC, log.ReleaseTempC,
-		log.Verdict, log.Reason, log.ActorID, log.CreatedAt, log.Rating, log.Feedback)
+		log.DurationMS, log.Verdict, log.Reason, log.ActorID, createdAt, log.Rating, log.Feedback)
 	return err
 }
 

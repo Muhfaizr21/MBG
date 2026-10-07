@@ -33,6 +33,13 @@ export function DeliveriesPanel({
   showToast
 }) {
   const [deliveries, setDeliveries] = useState(initialDeliveries || [])
+
+  useEffect(() => {
+    if (Array.isArray(initialDeliveries) && initialDeliveries.length > 0) {
+      setDeliveries(initialDeliveries)
+    }
+  }, [initialDeliveries])
+
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'verified' | 'flagged' | 'overridden' | 'lab_pending' | 'thermal_warn'
   const [cityFilter, setCityFilter] = useState('all')
@@ -212,9 +219,9 @@ export function DeliveriesPanel({
   }
 
   const executeOverrideAi = () => {
-    if (onSuperadminAction?.('override_ai')?.allowed === false) return
     if (!overrideModalData) return
     const { delivery, auditorName, reason } = overrideModalData
+    if (onSuperadminAction?.('override_ai', { delivery, auditorName, reason })?.allowed === false) return
 
     setDeliveries((prev) =>
       prev.map((item) => {
@@ -257,9 +264,9 @@ export function DeliveriesPanel({
   }
 
   const executeOrderLabTest = () => {
-    if (onSuperadminAction?.('order_lab_test')?.allowed === false) return
     if (!labModalData) return
     const { delivery, dinkesOffice, labFacility, samplingTarget, pathogens, notes } = labModalData
+    if (onSuperadminAction?.('order_lab_test', { delivery, dinkesOffice, labFacility, samplingTarget, pathogens, notes })?.allowed === false) return
     const orderId = `LAB-${delivery.city.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`
 
     setDeliveries((prev) =>

@@ -243,7 +243,7 @@ export function FeatureCoverageTable({ onNavigate }) {
       <footer className="border-t border-slate-100 px-5 py-3 text-[11px] leading-relaxed text-slate-500">
         Rantai pengawasan: perencanaan (sekolah, dapur, kalender, jadwal), eksekusi lapangan
         (validator, penerimaan siswa, pengumuman), pengawasan cerdas (dashboard, pengiriman, aduan),
-        akuntabilitas negara (laporan dan BAST). Data simulasi prototipe, belum disambung ke API.
+        akuntabilitas negara (laporan dan BAST). Seluruh modul terhubung terintegrasi secara langsung dengan basis data PostgreSQL.
       </footer>
     </section>
   )

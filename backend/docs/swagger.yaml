@@ -10,6 +10,26 @@ definitions:
       success:
         type: boolean
     type: object
+  models.AssignBackupValidatorRequest:
+    properties:
+      backupValidatorId:
+        type: string
+      reason:
+        type: string
+    type: object
+  models.AuthResponse:
+    properties:
+      accessToken:
+        type: string
+      expiresIn:
+        type: integer
+      permissions:
+        items:
+          type: string
+        type: array
+      user:
+        $ref: '#/definitions/models.User'
+    type: object
   models.CreateItemRequest:
     properties:
       category:
@@ -30,6 +50,17 @@ definitions:
       version:
         type: string
     type: object
+  models.IssueWarningRequest:
+    properties:
+      deadlineLabel:
+        type: string
+      letterNumber:
+        type: string
+      letterType:
+        type: string
+      reason:
+        type: string
+    type: object
   models.Item:
     properties:
       category:
@@ -43,6 +74,399 @@ definitions:
       title:
         type: string
       updated_at:
+        type: string
+    type: object
+  models.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  models.Macros:
+    properties:
+      carbs:
+        type: number
+      energy:
+        type: number
+      fat:
+        type: number
+      fiber:
+        type: number
+      protein:
+        type: number
+    type: object
+  models.NutritionMatch:
+    properties:
+      carbs:
+        type: number
+      energy:
+        type: number
+      fat:
+        type: number
+      matchedTo:
+        type: string
+      name:
+        type: string
+      protein:
+        type: number
+      weightG:
+        type: number
+    type: object
+  models.RecordRecipeAuditRequest:
+    properties:
+      auditor:
+        type: string
+      avgDeviationPct:
+        type: number
+      notes:
+        type: string
+      tkpiStatus:
+        type: string
+    type: object
+  models.RegisterRequest:
+    properties:
+      email:
+        type: string
+      fullName:
+        type: string
+      npsn:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+      schoolName:
+        type: string
+      sppgId:
+        type: string
+    type: object
+  models.ReinstateKitchenRequest:
+    properties:
+      initialQuota:
+        type: integer
+      reason:
+        type: string
+    type: object
+  models.ResetValidatorDeviceRequest:
+    properties:
+      reason:
+        type: string
+    type: object
+  models.SPPGKitchen:
+    properties:
+      activeQuota:
+        type: integer
+      address:
+        type: string
+      assignedSchools:
+        items:
+          $ref: '#/definitions/models.SppgAssignedSchool'
+        type: array
+      avgDeviationPct:
+        type: number
+      city:
+        type: string
+      cluster:
+        type: string
+      code:
+        type: string
+      coldChainScore:
+        type: number
+      complianceTrend:
+        items:
+          type: number
+        type: array
+      compositeScore:
+        type: number
+      coordinates:
+        type: string
+      createdAt:
+        type: string
+      fleetCount:
+        type: integer
+      fleetType:
+        type: string
+      grade:
+        type: string
+      id:
+        type: string
+      kitchenArea:
+        type: string
+      legalEntity:
+        type: string
+      managerName:
+        type: string
+      managerNip:
+        type: string
+      managerPhone:
+        type: string
+      maxDailyPortions:
+        type: integer
+      name:
+        type: string
+      nutritionistName:
+        type: string
+      nutritionistStr:
+        type: string
+      province:
+        type: string
+      quotaUpdatedAt:
+        type: string
+      quotaUpdatedBy:
+        type: string
+      recipeAuditedAt:
+        type: string
+      recipeAuditor:
+        type: string
+      safetyScore:
+        type: number
+      staffCount:
+        type: integer
+      status:
+        type: string
+      subdistrict:
+        type: string
+      suspendedAt:
+        type: string
+      suspendedReason:
+        type: string
+      timelinessScore:
+        type: number
+      tkpiStatus:
+        description: Status audit & teguran; kolom nullable di DB, dinormalkan di
+          sini.
+        type: string
+      type:
+        type: string
+      typeLabel:
+        type: string
+      updatedAt:
+        type: string
+      warningLetters:
+        items:
+          $ref: '#/definitions/models.SppgWarningLetter'
+        type: array
+    type: object
+  models.ScanCheck:
+    properties:
+      label:
+        type: string
+      note:
+        type: string
+      ok:
+        type: boolean
+    type: object
+  models.ScanLog:
+    properties:
+      actorId:
+        type: string
+      aiClass:
+        type: string
+      aiConfidence:
+        type: number
+      batchId:
+        type: string
+      boxId:
+        type: string
+      createdAt:
+        type: string
+      durationMs:
+        type: integer
+      holdingTempC:
+        type: number
+      id:
+        type: string
+      imageRef:
+        type: string
+      qrToken:
+        type: string
+      reason:
+        type: string
+      releaseTempC:
+        type: number
+      verdict:
+        type: string
+      visualScore:
+        type: number
+    type: object
+  models.ScanResult:
+    properties:
+      aiClass:
+        type: string
+      aiConfidence:
+        type: number
+      aiLatencyMs:
+        type: number
+      batchId:
+        type: string
+      boxId:
+        type: string
+      checks:
+        items:
+          $ref: '#/definitions/models.ScanCheck'
+        type: array
+      holdTemp:
+        type: number
+      id:
+        type: string
+      macros:
+        $ref: '#/definitions/models.Macros'
+      note:
+        type: string
+      nutrition:
+        items:
+          $ref: '#/definitions/models.NutritionMatch'
+        type: array
+      nutritionNote:
+        type: string
+      qrToken:
+        type: string
+      releaseTemp:
+        type: number
+      scannedAt:
+        type: string
+      score:
+        type: number
+      verdict:
+        type: string
+      verdictLabel:
+        type: string
+    type: object
+  models.SetValidatorStatusRequest:
+    properties:
+      reason:
+        type: string
+      status:
+        type: string
+    type: object
+  models.SppgAssignedSchool:
+    properties:
+      city:
+        type: string
+      name:
+        type: string
+      npsn:
+        type: string
+      portionsToday:
+        type: integer
+    type: object
+  models.SppgWarningLetter:
+    properties:
+      createdAt:
+        type: string
+      deadlineLabel:
+        type: string
+      id:
+        type: string
+      issuedBy:
+        type: string
+      letterNumber:
+        type: string
+      reason:
+        type: string
+      sppgId:
+        type: string
+      status:
+        type: string
+      type:
+        type: string
+    type: object
+  models.SuspendKitchenRequest:
+    properties:
+      alternativeSppgId:
+        type: string
+      reason:
+        type: string
+    type: object
+  models.UpdateQuotaRequest:
+    properties:
+      quota:
+        type: integer
+      reason:
+        type: string
+    type: object
+  models.User:
+    properties:
+      createdAt:
+        type: string
+      email:
+        type: string
+      fullName:
+        type: string
+      id:
+        type: string
+      npsn:
+        type: string
+      role:
+        type: string
+      schoolName:
+        type: string
+      sppgId:
+        type: string
+      status:
+        type: string
+    type: object
+  models.ValidatorProfile:
+    properties:
+      anomalies:
+        type: integer
+      avgDurationSec:
+        type: number
+      backupValidatorId:
+        type: string
+      backupValidatorName:
+        type: string
+      certification:
+        type: string
+      device:
+        type: string
+      deviceBound:
+        type: boolean
+      deviceId:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      lastScanAt:
+        type: string
+      lastWarningAt:
+        type: string
+      lastWarningNote:
+        type: string
+      name:
+        type: string
+      nip:
+        type: string
+      npsn:
+        type: string
+      quotaToday:
+        type: integer
+      role:
+        type: string
+      satgasId:
+        type: string
+      scanLogs:
+        items:
+          $ref: '#/definitions/models.ScanLog'
+        type: array
+      scansToday:
+        type: integer
+      schoolCity:
+        type: string
+      schoolName:
+        type: string
+      status:
+        type: string
+      userId:
+        type: string
+      warningCount:
+        type: integer
+    type: object
+  models.WarnValidatorRequest:
+    properties:
+      note:
         type: string
     type: object
 host: localhost:8080
@@ -59,6 +483,94 @@ info:
   title: MBG Backend API
   version: "1.0"
 paths:
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: credentials
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Authenticate user and issue tokens
+  /api/auth/logout:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Revoke the current refresh token
+  /api/auth/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Return the authenticated user profile and permissions
+  /api/auth/refresh:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Rotate refresh token and issue a new access token
+  /api/auth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: registration data
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Create a new validator/siswa account
   /api/health:
     get:
       description: Returns status and timestamp of the backend service
@@ -201,4 +713,482 @@ paths:
       summary: Get item by ID
       tags:
       - items
+  /api/nutrition/items:
+    get:
+      parameters:
+      - description: kata kunci nama bahan
+        in: query
+        name: q
+        type: string
+      - description: batas hasil (default 20, maks 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Search nutrition items from the cuisine dataset
+  /api/scans:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: foto isi boks (jpg/png, maks 8MB)
+        in: formData
+        name: image
+        required: true
+        type: file
+      - description: token QR boks berformat MBG-...
+        in: formData
+        name: qrToken
+        type: string
+      - description: id boks (diturunkan dari token QR bila kosong)
+        in: formData
+        name: boxId
+        type: string
+      - description: id batch
+        in: formData
+        name: batchId
+        type: string
+      - description: suhu holding boks (°C)
+        in: formData
+        name: holdingTempC
+        type: number
+      - description: suhu masak inti saat lepas dapur (°C)
+        in: formData
+        name: releaseTempC
+        type: number
+      - description: lama inspeksi visual dalam milidetik (audit ketelitian Pasal
+          14)
+        in: formData
+        name: durationMs
+        type: integer
+      - description: daftar bahan menu (format 'Nama:gram' dipisah koma, mis. 'Nasi:120,Ayam
+          goreng paha:60')
+        in: formData
+        name: items
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ScanResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Submit a box scan (QR token + food photo) for AI quality analysis
+  /api/scans/recent:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: List the most recent scan logs
+  /sppg:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/models.SPPGKitchen'
+                  type: array
+              type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Direktori dapur SPPG
+      tags:
+      - sppg
+  /sppg/{id}:
+    get:
+      parameters:
+      - description: SPPG ID
+        example: SPPG-01
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SPPGKitchen'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Detail satu dapur SPPG
+      tags:
+      - sppg
+  /sppg/{id}/quota:
+    put:
+      consumes:
+      - application/json
+      description: Superadmin saja. Kuota tidak boleh melebihi maxDailyPortions.
+      parameters:
+      - description: SPPG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Kuota baru + alasan
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.UpdateQuotaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SPPGKitchen'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Perbarui kuota produksi
+      tags:
+      - sppg
+  /sppg/{id}/recipe-audit:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: SPPG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Hasil audit
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.RecordRecipeAuditRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SPPGKitchen'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Audit gramatur resep TKPI
+      tags:
+      - sppg
+  /sppg/{id}/reinstate:
+    post:
+      consumes:
+      - application/json
+      description: Superadmin saja. Mengembalikan status dapur menjadi active dan
+        menetapkan kuota awal.
+      parameters:
+      - description: SPPG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Alasan pemulihan + kuota awal
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ReinstateKitchenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SPPGKitchen'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Pulihkan hak operasional dapur SPPG
+      tags:
+      - sppg
+  /sppg/{id}/suspension:
+    post:
+      consumes:
+      - application/json
+      description: Superadmin saja. Wajib menunjuk dapur alternatif yang aktif dan
+        mampu.
+      parameters:
+      - description: SPPG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Alasan + dapur alternatif
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.SuspendKitchenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SPPGKitchen'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Bekukan dapur SPPG
+      tags:
+      - sppg
+  /sppg/{id}/warnings:
+    post:
+      consumes:
+      - application/json
+      description: Superadmin saja. SP-2 hanya sah bila SP-1 sebelumnya sudah terbit.
+      parameters:
+      - description: SPPG ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Jenis, nomor, alasan, tenggat
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.IssueWarningRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SPPGKitchen'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Terbitkan surat peringatan SP-1/SP-2
+      tags:
+      - sppg
+  /validators/{id}/backup:
+    put:
+      consumes:
+      - application/json
+      description: Cadangan wajib validator aktif pada sekolah yang sama.
+      parameters:
+      - description: Validator ID
+        example: VAL-001
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID cadangan + alasan
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.AssignBackupValidatorRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.ValidatorProfile'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Tugaskan guru piket cadangan
+      tags:
+      - validators
+  /validators/{id}/device/reset:
+    post:
+      consumes:
+      - application/json
+      description: Memutus tautan kriptografis perangkat; validator wajib registrasi
+        ulang.
+      parameters:
+      - description: Validator ID
+        example: VAL-001
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Alasan reset
+        in: body
+        name: payload
+        schema:
+          $ref: '#/definitions/models.ResetValidatorDeviceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.ValidatorProfile'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Reset device binding validator
+      tags:
+      - validators
+  /validators/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Superadmin saja. Menyelaraskan validator_profiles.status dengan
+        users.status dan mencatat audit.
+      parameters:
+      - description: Validator ID
+        example: VAL-001
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status baru + alasan
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.SetValidatorStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.ValidatorProfile'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Ubah status validator lapangan
+      tags:
+      - validators
+  /validators/{id}/warnings:
+    post:
+      consumes:
+      - application/json
+      description: Menandai profil sebagai flagged dan menambah hitungan peringatan.
+      parameters:
+      - description: Validator ID
+        example: VAL-001
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Isi surat peringatan
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.WarnValidatorRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/models.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.ValidatorProfile'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.APIResponse'
+      summary: Kirim surat peringatan digital
+      tags:
+      - validators
 swagger: "2.0"

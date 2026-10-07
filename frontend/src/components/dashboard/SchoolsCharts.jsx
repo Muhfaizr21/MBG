@@ -15,12 +15,12 @@ import { Users, Flame, Navigation, Clock, ShieldCheck, AlertTriangle } from 'luc
 
 // Color palette
 const COLORS = {
-  lowerGrade: '#047857', // emerald-500
-  upperGrade: '#1d4ed8', // blue-500
-  smpGrade: '#1d4ed8',
-  safeTransit: '#047857',
-  warningTransit: '#b45309',
-  dangerTransit: '#b91c1c'
+  lowerGrade: '#059669', // emerald-600
+  upperGrade: '#2563eb', // blue-600
+  smpGrade: '#6366f1',   // indigo-500
+  safeTransit: '#059669',
+  warningTransit: '#d97706',
+  dangerTransit: '#dc2626'
 }
 
 export function SchoolsCharts({ schools = [] }) {
@@ -146,7 +146,7 @@ export function SchoolsCharts({ schools = [] }) {
                   <span className="text-slate-600 font-medium">10–12 Thn</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-blue-500" />
+                  <span className="h-2.5 w-2.5 rounded-sm bg-indigo-500" />
                   <span className="text-slate-600 font-medium">13–15 Thn</span>
                 </div>
               </div>
@@ -236,6 +236,7 @@ export function SchoolsCharts({ schools = [] }) {
                       innerRadius={46}
                       outerRadius={68}
                       paddingAngle={4}
+                      isAnimationActive={false}
                     >
                       {ageGroupDonutData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />

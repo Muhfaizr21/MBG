@@ -101,35 +101,132 @@ func SeedExtended(ctx context.Context) error {
 	}
 
 	// 7. Seed Schedules
-	schedQuery := `INSERT INTO schedules (id, sppg_id, route_name, fleet_name, license_plate, driver_name, driver_phone, departure_time, arrival_eta, total_portions, status, target_schools, telemetry)
-	VALUES 
-	('SCHED-JKT-001', 'SPPG-01', 'Koridor Menteng - Cikini', 'Armada Chiller Box #01', 'B 9102 BGN', 'Sulaeman Fauzi', '0812-9988-7711', '06:30 WIB', '06:55 WIB', 910, 'on_time', 
-	'[{"npsn":"33.210.130","name":"SDN 01 Menteng Pagi","portions":480,"eta":"06:55 WIB"},{"npsn":"20101456","name":"SDN Gondangdia 01","portions":430,"eta":"07:15 WIB"}]',
-	'{"speedKmh":36,"tempC":22.5,"status":"normal"}'),
-	('SCHED-BDG-002', 'SPPG-04', 'Koridor Bandung Wetan - Riau', 'Armada Chiller Box #02', 'D 8044 BGN', 'Asep Saepudin', '0813-2211-4455', '06:20 WIB', '07:05 WIB', 650, 'on_time',
-	'[{"npsn":"20219876","name":"SMPN 2 Bandung Wetan","portions":650,"eta":"07:05 WIB"}]',
-	'{"speedKmh":32,"tempC":23.1,"status":"normal"}')
-	ON CONFLICT (id) DO NOTHING;`
+	schedQuery := `INSERT INTO schedules (
+		id, school_id, school_name, npsn, city, portions, sppg_id,
+		route_name, fleet_name, license_plate, driver_name, driver_phone,
+		departure_time, arrival_eta, total_portions, status, status_label,
+		status_reason, corridor_name, distance_remaining_km, fleet,
+		timestamps, validator_contact, target_schools, telemetry
+	) VALUES 
+	(
+		'SCHED-001', 'SCH-JKT-01', 'SDN 01 Menteng Pagi', '20101456', 'Jakarta Pusat', 450, 'SPPG-001',
+		'Koridor Menteng - Cikini via Jl. Teuku Umar', 'Van Pendingin Berinsulasi (Cold Chain)', 'B 9842 SXZ', 'Hendra Setiawan', '0812-7711-2233',
+		'06:28 WIB', '06:56 WIB', 450, 'on_time', 'Tepat Waktu',
+		'Perjalanan lancar melalui Koridor Menteng - Cikini.', 'Koridor Menteng - Cikini via Jl. Teuku Umar', 0.8,
+		'{"vehicleId": "FLT-JKT-01", "plateNumber": "B 9842 SXZ", "driverName": "Hendra Setiawan", "driverPhone": "0812-7711-2233", "vehicleType": "Van Pendingin Berinsulasi (Cold Chain)", "status": "moving", "currentSpeed": "28 km/h", "cargoTempCelsius": 64.2, "lastGpsPing": "1 menit yang lalu", "gpsLocation": "Jl. Cikini Raya (800m menuju gerbang sekolah)"}',
+		'{"cookingStart": "04:45 WIB", "cookingDone": "06:10 WIB", "departedAt": "06:28 WIB", "targetArrival": "06:55 WIB", "currentEta": "06:56 WIB", "actualArrival": null, "delayMinutes": 1, "rescheduledReason": null}',
+		'{"name": "Siti Rahmawati, S.Pd", "phone": "0813-2287-9914"}', '[]', '{}'
+	),
+	(
+		'SCHED-002', 'SCH-BDG-02', 'SMPN 2 Bandung Wetan', '20219876', 'Bandung', 620, 'SPPG-002',
+		'Koridor Cihapit - Dago via Jl. Riau', 'Box Thermo Hybrid', 'D 8124 AC', 'Asep Ridwan', '0819-3322-1144',
+		'06:25 WIB', '06:58 WIB', 620, 'arrived', 'Tiba di Sekolah',
+		'Tiba 7 menit lebih cepat dari jadwal wajib. Telah serah terima validator.', 'Koridor Cihapit - Dago via Jl. Riau', 0.0,
+		'{"vehicleId": "FLT-BDG-03", "plateNumber": "D 8124 AC", "driverName": "Asep Ridwan", "driverPhone": "0819-3322-1144", "vehicleType": "Box Thermo Hybrid", "status": "delivered", "currentSpeed": "0 km/h (Parkir)", "cargoTempCelsius": 63.8, "lastGpsPing": "Telah Tiba", "gpsLocation": "Halaman Belakang UKS SMPN 2 Bandung"}',
+		'{"cookingStart": "04:30 WIB", "cookingDone": "06:05 WIB", "departedAt": "06:25 WIB", "targetArrival": "07:05 WIB", "currentEta": "06:58 WIB", "actualArrival": "06:58 WIB", "delayMinutes": 0, "rescheduledReason": null}',
+		'{"name": "Rina Kusuma Dewi, S.Pd", "phone": "0857-9912-3341"}', '[]', '{}'
+	),
+	(
+		'SCHED-003', 'SCH-SBY-03', 'SMPN 1 Surabaya Pusat', '20532109', 'Surabaya', 710, 'SPPG-003',
+		'Koridor Wonokromo - Genteng via Jl. Darmo', 'Box Cargo Termal Berinsulasi', 'L 9012 XP', 'Bambang Sugiono', '0813-8899-7711',
+		'06:34 WIB', '07:44 WIB', 710, 'delayed_traffic', 'Peringatan Macet (+29m)',
+		'Tertahan proyek perbaikan jalur trem Wonokromo. Prediksi terlambat 29 menit melampaui jam 07:30 WIB.', 'Koridor Wonokromo - Genteng via Jl. Darmo', 3.4,
+		'{"vehicleId": "FLT-SBY-02", "plateNumber": "L 9012 XP", "driverName": "Bambang Sugiono", "driverPhone": "0813-8899-7711", "vehicleType": "Box Cargo Termal Berinsulasi", "status": "stuck", "currentSpeed": "6 km/h (Macet Padat)", "cargoTempCelsius": 61.5, "lastGpsPing": "2 menit yang lalu", "gpsLocation": "Pertigaan Darmo - Wonokromo (Antrean Padat)"}',
+		'{"cookingStart": "04:35 WIB", "cookingDone": "06:12 WIB", "departedAt": "06:34 WIB", "targetArrival": "07:15 WIB", "currentEta": "07:44 WIB", "actualArrival": null, "delayMinutes": 29, "rescheduledReason": null}',
+		'{"name": "Agus Subekti, S.Pd.Jas", "phone": "0812-7765-4321"}', '[]', '{}'
+	),
+	(
+		'SCHED-004', 'SCH-YGY-04', 'SDN Percobaan 1 Sleman', '20401122', 'Sleman', 380, 'SPPG-004',
+		'Koridor Kaliurang - Ring Road Utara', 'Blind Van Insulated Eco', 'AB 1290 KZ', 'Sigit Purnomo', '0878-1122-3344',
+		'06:20 WIB', '06:42 WIB', 380, 'arrived', 'Tiba di Sekolah',
+		'Tiba tepat waktu pada gelombang pertama kedatangan.', 'Koridor Kaliurang - Ring Road Utara', 0.0,
+		'{"vehicleId": "FLT-YGY-01", "plateNumber": "AB 1290 KZ", "driverName": "Sigit Purnomo", "driverPhone": "0878-1122-3344", "vehicleType": "Blind Van Insulated Eco", "status": "delivered", "currentSpeed": "0 km/h (Selesai)", "cargoTempCelsius": 65.0, "lastGpsPing": "Telah Tiba", "gpsLocation": "Lobby UKS SDN Percobaan 1 Sleman"}',
+		'{"cookingStart": "04:30 WIB", "cookingDone": "06:00 WIB", "departedAt": "06:20 WIB", "targetArrival": "06:45 WIB", "currentEta": "06:42 WIB", "actualArrival": "06:42 WIB", "delayMinutes": 0, "rescheduledReason": null}',
+		'{"name": "Rahmat Hidayat, S.Pd", "phone": "0877-3890-1122"}', '[]', '{}'
+	),
+	(
+		'SCHED-005', 'SCH-MKS-06', 'SMPN 5 Makassar', '40305678', 'Makassar', 580, 'SPPG-006',
+		'Koridor Mariso - Ujung Pandang via Jl. Sudirman', 'Box Termal Logistik', 'DD 8841 XX', 'Daeng Rahmat', '0852-4411-2299',
+		'06:32 WIB', '07:55 WIB (Darurat)', 580, 'fleet_breakdown', 'Armada Mogok (Re-route)',
+		'Kendaraan katering mengalami kerusakan radiator mendadak di Jl. Haji Bau. Butuh pengiriman armada cadangan.', 'Koridor Mariso - Ujung Pandang via Jl. Sudirman', 2.1,
+		'{"vehicleId": "FLT-MKS-04", "plateNumber": "DD 8841 XX", "driverName": "Daeng Rahmat", "driverPhone": "0852-4411-2299", "vehicleType": "Box Termal Logistik", "status": "breakdown", "currentSpeed": "0 km/h (Mogok)", "cargoTempCelsius": 59.8, "lastGpsPing": "3 menit yang lalu", "gpsLocation": "Jl. Haji Bau (Depan Rumah Jabatan Wagub) - Mesin Mati"}',
+		'{"cookingStart": "04:40 WIB", "cookingDone": "06:14 WIB", "departedAt": "06:32 WIB", "targetArrival": "07:00 WIB", "currentEta": "07:55 WIB (Darurat)", "actualArrival": null, "delayMinutes": 55, "rescheduledReason": null}',
+		'{"name": "Faisal Basri, S.Pd", "phone": "0852-9901-4478"}', '[]', '{}'
+	),
+	(
+		'SCHED-006', 'SCH-MDN-07', 'MIN 2 Medan Petisah', '10204567', 'Medan', 400, 'SPPG-007',
+		'Koridor Medan - Petisah via Jl. S. Parman', 'Van Pendingin Berinsulasi', 'BK 7721 DS', 'Zulkifli Nasution', '0821-5588-9900',
+		'06:30 WIB', '07:10 WIB', 400, 'on_time', 'Tepat Waktu',
+		'Perjalanan stabil dalam koridor utama kota Medan.', 'Koridor Medan - Petisah via Jl. S. Parman', 1.2,
+		'{"vehicleId": "FLT-MDN-02", "plateNumber": "BK 7721 DS", "driverName": "Zulkifli Nasution", "driverPhone": "0821-5588-9900", "vehicleType": "Van Pendingin Berinsulasi", "status": "moving", "currentSpeed": "36 km/h", "cargoTempCelsius": 63.4, "lastGpsPing": "1 menit yang lalu", "gpsLocation": "Jl. S. Parman (1.2 km menuju sekolah)"}',
+		'{"cookingStart": "04:30 WIB", "cookingDone": "06:08 WIB", "departedAt": "06:30 WIB", "targetArrival": "07:08 WIB", "currentEta": "07:10 WIB", "actualArrival": null, "delayMinutes": 2, "rescheduledReason": null}',
+		'{"name": "Aisyah Putri, S.Ag", "phone": "0821-6644-3321"}', '[]', '{}'
+	),
+	(
+		'SCHED-007', 'SCH-JKT-08', 'SDN 05 Tebet Timur', '20108871', 'Jakarta Selatan', 420, 'SPPG-001',
+		'Koridor Menteng - Tebet via Manggarai', 'Box Thermo Hybrid', 'B 9133 TKQ', 'Wahyu Hidayat', '0812-9900-4455',
+		'06:45 WIB', '07:40 WIB', 420, 'rescheduled', 'Jadwal Khusus (07:45)',
+		'Jadwal dimundurkan resmi ke 07:45 WIB karena kegiatan senam kesegaran jasmani Jumat pagi.', 'Koridor Menteng - Tebet via Manggarai', 1.5,
+		'{"vehicleId": "FLT-JKT-05", "plateNumber": "B 9133 TKQ", "driverName": "Wahyu Hidayat", "driverPhone": "0812-9900-4455", "vehicleType": "Box Thermo Hybrid", "status": "moving", "currentSpeed": "32 km/h", "cargoTempCelsius": 64.8, "lastGpsPing": "Baru saja", "gpsLocation": "Jl. Tebet Timur Dalam Raya"}',
+		'{"cookingStart": "05:00 WIB", "cookingDone": "06:30 WIB", "departedAt": "06:45 WIB", "targetArrival": "07:45 WIB", "currentEta": "07:40 WIB", "actualArrival": null, "delayMinutes": 0, "rescheduledReason": "Penyesuaian Jadwal Hari Jumat (Senam Pagi Bersama 06:30 - 07:30 WIB)"}',
+		'{"name": "Dewi Lestari, S.Pd", "phone": "0813-8899-0011"}', '[]', '{}'
+	)
+	ON CONFLICT (id) DO UPDATE SET
+		school_id = EXCLUDED.school_id,
+		school_name = EXCLUDED.school_name,
+		npsn = EXCLUDED.npsn,
+		city = EXCLUDED.city,
+		portions = EXCLUDED.portions,
+		sppg_id = EXCLUDED.sppg_id,
+		route_name = EXCLUDED.route_name,
+		fleet_name = EXCLUDED.fleet_name,
+		license_plate = EXCLUDED.license_plate,
+		driver_name = EXCLUDED.driver_name,
+		driver_phone = EXCLUDED.driver_phone,
+		departure_time = EXCLUDED.departure_time,
+		arrival_eta = EXCLUDED.arrival_eta,
+		total_portions = EXCLUDED.total_portions,
+		status = EXCLUDED.status,
+		status_label = EXCLUDED.status_label,
+		status_reason = EXCLUDED.status_reason,
+		corridor_name = EXCLUDED.corridor_name,
+		distance_remaining_km = EXCLUDED.distance_remaining_km,
+		fleet = EXCLUDED.fleet,
+		timestamps = EXCLUDED.timestamps,
+		validator_contact = EXCLUDED.validator_contact,
+		updated_at = NOW();`
 	if _, err := tx.Exec(ctx, schedQuery); err != nil {
 		return fmt.Errorf("seed schedules: %w", err)
 	}
 
 	// 8. Seed Attendances
-	attQuery := `INSERT INTO attendances (id, school_npsn, date, registered_students, present_students, delivered_portions, consumed_portions, surplus_portions, surplus_status, attendance_rate, finish_rate, reconciliation_status, target_tomorrow_quota, notes)
-	VALUES 
-	('ATT-20261007-01', '33.210.130', '2026-10-07', 480, 468, 480, 468, 12, 'available_for_redistribution', 97.5, 98.2, 'surplus_safe', 470, '12 siswa izin sakit. Porsi sisa utuh disimpan di suhu dingin untuk redistribusi aman.'),
-	('ATT-20261007-02', '20219876', '2026-10-07', 650, 642, 650, 642, 8, 'available_for_redistribution', 98.8, 99.0, 'surplus_safe', 645, 'Konsumsi siswa jenjang SMP habis bersih.'),
-	('ATT-20261007-03', '20101456', '2026-10-07', 530, 521, 530, 521, 9, 'available_for_redistribution', 98.3, 97.9, 'surplus_safe', 525, 'Penerimaan tepat waktu tanpa insiden.')
+	attQuery := `INSERT INTO attendances (
+		id, school_npsn, date, registered_students, present_students, delivered_portions, consumed_portions,
+		surplus_portions, surplus_status, attendance_rate, finish_rate, reconciliation_status, target_tomorrow_quota,
+		absent_details, consumption_eval, golden_window, discrepancy_count, head_validator, notes
+	) VALUES 
+	('ATT-20261007-01', '33.210.130', '2026-10-07', 480, 468, 480, 468, 12, 'available_for_redistribution', 97.5, 98.2, 'surplus_safe', 470, '{"sick": 10, "permission": 2, "unexplained": 0}', '{"finishRate": 98.2, "riceWastePct": 1.0, "proteinWastePct": 0.2, "veggieWastePct": 1.8, "feedbackNotes": "Porsi gizi dihabiskan dengan baik oleh siswa."}', '{"cookedAt": "05:45 WIB", "deliveredAt": "06:55 WIB", "lunchTime": "09:30 WIB", "safeUntil": "10:45 WIB", "minutesLeft": 45, "isSafeToRedistribute": true}', 0, 'Dr. Hendra Prasetyo', '12 siswa izin sakit. Porsi sisa utuh disimpan di suhu dingin untuk redistribusi aman.'),
+	('ATT-20261007-02', '20219876', '2026-10-07', 650, 642, 642, 642, 0, 'zero_surplus', 98.8, 99.0, 'matched', 645, '{"sick": 5, "permission": 3, "unexplained": 0}', '{"finishRate": 99.0, "riceWastePct": 0.5, "proteinWastePct": 0.1, "veggieWastePct": 1.0, "feedbackNotes": "Konsumsi siswa jenjang SMP habis bersih."}', '{"cookedAt": "06:00 WIB", "deliveredAt": "07:05 WIB", "lunchTime": "09:45 WIB", "safeUntil": "10:30 WIB", "minutesLeft": 60, "isSafeToRedistribute": false}', 0, 'Siti Nurhaliza, S.Pd', 'Konsumsi siswa jenjang SMP habis bersih.'),
+	('ATT-20261007-03', '20101456', '2026-10-07', 530, 521, 530, 521, 9, 'available_for_redistribution', 98.3, 97.9, 'surplus_safe', 525, '{"sick": 7, "permission": 2, "unexplained": 0}', '{"finishRate": 97.9, "riceWastePct": 1.2, "proteinWastePct": 0.3, "veggieWastePct": 1.5, "feedbackNotes": "Penerimaan tepat waktu tanpa insiden."}', '{"cookedAt": "06:15 WIB", "deliveredAt": "07:15 WIB", "lunchTime": "09:30 WIB", "safeUntil": "10:45 WIB", "minutesLeft": 30, "isSafeToRedistribute": true}', 0, 'Bambang Irawan, S.Kom', 'Penerimaan tepat waktu tanpa insiden.')
 	ON CONFLICT (id) DO NOTHING;`
 	if _, err := tx.Exec(ctx, attQuery); err != nil {
 		return fmt.Errorf("seed attendances: %w", err)
 	}
 
 	// 9. Seed Notices
-	notQuery := `INSERT INTO notices (id, ref_number, title, category, urgency, target_audience, scope_region, published_at, effective_date, author_name, author_role, content, is_flash_alert, requires_acknowledgement, attachments)
+	notQuery := `INSERT INTO notices (
+		id, ref_number, title, category, urgency, target_audience, scope_region,
+		published_at, effective_date, author_name, author_role, content,
+		is_flash_alert, requires_acknowledgement, status, status_label, status_reason,
+		acknowledgement_stats, attachments
+	)
 	VALUES 
-	('NOT-2026-001', 'BGN/SE/084/X/2026', 'Peringatan Higienitas: Standar Penyimpanan Daging dan Suhu Rantai Dingin', 'seasonal', 'important', 'all', 'Nasional', '07 Okt 2026, 06:00 WIB', 'Berlaku Selama Oktober 2026', 'Dr. Hendra Gunawan, M.Epid', 'Direktur Kepatuhan Mutu BGN', 'Seluruh SPPG wajib memastikan suhu boks pengiriman terjaga pada rentang aman 20-25°C untuk makanan hangat dan 2-4°C untuk produk olahan susu sebelum tiba di sekolah penerima.', false, false, '[]'),
-	('NOT-2026-002', 'BGN/EDR/102/X/2026', 'Instruksi Khusus: Integrasi Pemindai Kamera YOLOv8 untuk Seluruh Guru Validator', 'system', 'info', 'validators', 'Nasional', '06 Okt 2026, 14:00 WIB', 'Berlaku Permanen', 'Tim Pengembang KawanGizi', 'Satgas Digitalisasi MBG', 'Aplikasi mobile pemindai versi v2.4.1 telah mengaktifkan deteksi anomali fisik otomatis dan kalkulasi makronutrien instan. Pastikan izin kamera aktif.', false, false, '[]')
+	('NOT-2026-001', 'BGN/SE/084/IX/2026', 'Peringatan Darurat: Penarikan Sementara Menu Olahan Kerang & Telur Puyuh SPPG Surabaya', 'seasonal', 'critical', 'all', 'Jawa Timur & Koridor Surabaya', '28 Sep 2026, 06:15 WIB', 'Berlaku Segera s.d 30 Sep 2026', 'Dr. apt. Hendra Gunawan, M.Epid', 'Direktur Kepatuhan Mutu & Keamanan Pangan BGN', 'Ditemukan indikasi kontaminasi cemaran mikrobiologis pada pasokan bahan baku kerang air tawar dan telur puyuh di klaster Jawa Timur. Seluruh Dapur SPPG diinstruksikan MENIADAKAN menu olahan tersebut dan menggantinya dengan daging ayam potong segar terakreditasi NKV.', true, true, 'active', 'Tayang Publik', 'Siaran Flash Alert Aktif. Aplikasi validator terkunci hingga konfirmasi diterima.', '{"totalRecipients": 420, "acknowledgedCount": 398, "complianceRate": 94.8}', '[{"fileName": "Surat_Edaran_Darurat_BGN_084_Penarikan_Bahan.pdf", "fileSize": "1.4 MB", "verifiedSignature": "Terverifikasi BSrE BSSN"}]'),
+	('NOT-2026-002', 'BGN/SE/079/IX/2026', 'Surat Edaran BGN: Protokol Uji Suhu Termal Inti Makanan Min 60°C Saat Serah Terima', 'circular', 'important', 'validators', 'Nasional (Seluruh Satuan Pendidikan)', '26 Sep 2026, 14:00 WIB', 'Berlaku Permanen', 'Prof. Dr. Ir. Siti Nurjanah, M.Sc', 'Kepala Badan Gizi Nasional (BGN)', 'Berdasarkan evaluasi mingguan Satgas MBG, ditemukan potensi penurunan suhu makanan jika boks didiamkan lebih dari 45 menit tanpa tutup berinsulasi.', false, true, 'active', 'Tayang Publik', '', '{"totalRecipients": 1250, "acknowledgedCount": 1195, "complianceRate": 95.6}', '[{"fileName": "Pedoman_Suhu_Termal_Inti_MBG_Rev3.pdf", "fileSize": "2.8 MB", "verifiedSignature": "Terverifikasi BSrE BSSN"}]'),
+	('NOT-2026-003', 'MBG/SYS/042/IX/2026', 'Pembaruan Sistem: Rilis AI Vision YOLOv8x v2.4 & Jadwal Pemeliharaan Server Tengah Malam', 'system', 'info', 'all', 'Seluruh Indonesia', '25 Sep 2026, 10:30 WIB', '29 Sep 2026, 01:00 – 03:00 WIB', 'Tim Arsitektur Komputasi KawanGizi', 'Pusat Operasi TI & AI Satgas MBG', 'Kami akan melakukan pemeliharaan server database terdistribusi pada hari Selasa, 29 September 2026 pukul 01:00 – 03:00 WIB (dini hari).', false, false, 'active', 'Tayang Publik', '', '{"totalRecipients": 3400, "acknowledgedCount": 2980, "complianceRate": 87.6}', '[{"fileName": "Changelog_YOLOv8x_MBG_v2.4_ReleaseNotes.pdf", "fileSize": "820 KB", "verifiedSignature": "Terverifikasi SHA-256"}]'),
+	('NOT-2026-004', 'BGN/ADV/018/IX/2026', 'Advis Musim Pancaroba: Peningkatan Standar Filtrasi Air & Sanitasi Talenan Dapur SPPG', 'seasonal', 'important', 'sppg', 'Wilayah Barat & Tengah Indonesia', '24 Sep 2026, 09:15 WIB', '24 Sep – 15 Okt 2026', 'dr. Yudhi Prasetiyo, Sp.Ok', 'Ketua Tim Audit SLHS & Sanitasi Dapur BGN', 'Memasuki masa peralihan musim hujan, tingkat kekeruhan air tanah dan risiko cemaran coliform meningkat hingga 35%.', false, true, 'active', 'Tayang Publik', '', '{"totalRecipients": 180, "acknowledgedCount": 172, "complianceRate": 95.5}', '[{"fileName": "Instruksi_Audit_Sanitasi_Pancaroba_Dapur_SPPG.pdf", "fileSize": "3.1 MB", "verifiedSignature": "Terverifikasi BSrE BSSN"}]'),
+	('NOT-2026-005', 'KEMENDIKBUD/SE/312/2026', 'Surat Edaran Kemendikbud: Integrasi Data Presensi Siswa Dapodik dengan Kuota Makan MBG', 'circular', 'info', 'validators', 'Nasional', '22 Sep 2026, 11:00 WIB', 'Berlaku Semester Genap 2026', 'Direktorat Jenderal PAUD Dikdasmen', 'Kemendikbudristek RI', 'Pemberitahuan kepada seluruh satuan pendidikan jenjang SD dan SMP penerima MBG agar menyinkronkan data presensi siswa di kelas sebelum jam 10:00 WIB setiap harinya.', false, false, 'active', 'Tayang Publik', '', '{"totalRecipients": 1250, "acknowledgedCount": 1180, "complianceRate": 94.4}', '[{"fileName": "Juknis_Sinkronisasi_Dapodik_MBG_2026.pdf", "fileSize": "1.9 MB", "verifiedSignature": "Terverifikasi BSrE BSSN"}]'),
+	('NOT-2026-006', 'BGN/SE/066/VIII/2026', 'Maklumat Kedaluwarsa: Pedoman Menu Khusus Uji Coba Katering Wilayah 3T Tahap 1', 'circular', 'info', 'all', 'Wilayah Tertinggal, Terdepan, dan Terluar (3T)', '15 Agu 2026, 08:00 WIB', 'Berakhir 31 Agu 2026', 'Sekretariat Satgas MBG Pusat', 'Satuan Pelayanan Pangan Bergizi', 'Pedoman alokasi menu sementara pada masa uji coba rantai pasok daerah kepulauan dan pedalaman telah resmi digantikan oleh Pedoman Standar Porsi Nasional MBG Rev 3.', false, false, 'archived', 'Diarsipkan', 'Telah digantikan oleh Pedoman Standar Porsi Nasional MBG Rev 3.', '{"totalRecipients": 800, "acknowledgedCount": 760, "complianceRate": 95.0}', '[]')
 	ON CONFLICT (id) DO NOTHING;`
 	if _, err := tx.Exec(ctx, notQuery); err != nil {
 		return fmt.Errorf("seed notices: %w", err)

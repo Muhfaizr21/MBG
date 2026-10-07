@@ -30,11 +30,13 @@ import { Code, Figure, RowAction, StatusDot } from './tableKit'
  */
 
 export function SppgPanel({
-  sppgList: initialSppgList,
-  onSuperadminAction,
+  sppgList = [],
+  onAction,
+  canManage,
+  canDiscipline,
+  loading,
   showToast
 }) {
-  const [sppgList, setSppgList] = useState(initialSppgList || [])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'active' | 'warning' | 'suspended' | 'expiring'
   const [cityFilter, setCityFilter] = useState('all')
@@ -43,12 +45,17 @@ export function SppgPanel({
 
   // Drawer & Modals State
   const [selectedSppg, setSelectedSppg] = useState(null)
+
+  useEffect(() => {
+    setSelectedSppg((cur) => (cur ? sppgList.find((k) => k.id === cur.id) || null : cur))
+  }, [sppgList])
   const [drawerTab, setDrawerTab] = useState('overview') // 'overview' | 'scorecard' | 'schools' | 'recipe' | 'logs'
   const [openMenuId, setOpenMenuId] = useState(null)
 
   // Superadmin Action Modals
   const [warningModalData, setWarningModalData] = useState(null) // { sppg, warningType: 'SP-1' | 'SP-2' }
   const [suspensionModalData, setSuspensionModalData] = useState(null) // { sppg, reason, alternativeSppg }
+  const [reinstateModalData, setReinstateModalData] = useState(null) // { sppg, reason, initialQuota }
   const [recipeAuditModalData, setRecipeAuditModalData] = useState(null) // { sppg }
   const [quotaModalData, setQuotaModalData] = useState(null) // { sppg, newQuota, reason }
   const [schoolsModalData, setSchoolsModalData] = useState(null) // { sppg }
@@ -73,6 +80,7 @@ export function SppgPanel({
         setSelectedSppg(null)
         setWarningModalData(null)
         setSuspensionModalData(null)
+        setReinstateModalData(null)
         setRecipeAuditModalData(null)
         setQuotaModalData(null)
         setSchoolsModalData(null)
@@ -107,7 +115,7 @@ export function SppgPanel({
       if (statusFilter === 'active') matchStatus = s.status === 'active'
       else if (statusFilter === 'warning') matchStatus = s.status === 'warning' || s.scorecard.compositeScore < 85
       else if (statusFilter === 'suspended') matchStatus = s.status === 'suspended'
-      else if (statusFilter === 'expiring') matchStatus = s.certificates.slhs.status === 'expiring' || s.certificates.slhs.daysLeft < 30
+      else if (statusFilter === 'expiring') matchStatus = s.certificates?.slhs?.status === 'expiring' || (s.certificates?.slhs?.daysLeft ?? 0) < 30
 
       const matchCity = cityFilter === 'all' || s.city === cityFilter
       const matchType = typeFilter === 'all' || s.type === typeFilter
@@ -124,7 +132,7 @@ export function SppgPanel({
     const activeCount = sppgList.filter((s) => s.status === 'active').length
     const warningCount = sppgList.filter((s) => s.status === 'warning' || s.scorecard.compositeScore < 85).length
     const suspendedCount = sppgList.filter((s) => s.status === 'suspended').length
-    const expiringSlhsCount = sppgList.filter((s) => s.certificates.slhs.status === 'expiring' || s.certificates.slhs.daysLeft < 30).length
+    const expiringSlhsCount = sppgList.filter((s) => s.certificates?.slhs?.status === 'expiring' || (s.certificates?.slhs?.daysLeft ?? 0) < 30).length
 
     const totalMaxCapacity = sppgList.reduce((acc, s) => acc + s.capacity.maxDailyPortions, 0)
     const totalActiveQuota = sppgList.reduce((acc, s) => acc + s.capacity.activeQuota, 0)
@@ -191,8 +199,8 @@ export function SppgPanel({
       s.scorecard.timelinessScore + '%',
       s.scorecard.compositeScore + '%',
       s.scorecard.grade,
-      s.certificates.slhs.status,
-      s.certificates.slhs.validUntil,
+      s.certificates?.slhs?.status ?? '—',
+      s.certificates?.slhs?.validUntil ?? '—',
       s.status
     ])
 
@@ -215,16 +223,24 @@ export function SppgPanel({
   // 1. ACTION: Penerbitan Surat Peringatan (SP-1 / SP-2)
   const handleOpenWarningModal = (sppg) => {
     setOpenMenuId(null)
-    const currentSpCount = sppg.warningLetters ? sppg.warningLetters.length : 0
-    const nextSpType = currentSpCount === 0 ? 'SP-1' : 'SP-2'
-    const docSeq = sppg.code.replace('BGN-SPPG-', '') || '014'
+    const letters = sppg.warningLetters || []
+    const hasSp1 = letters.some((w) => w.type === 'SP-1')
+    const hasSp2 = letters.some((w) => w.type === 'SP-2')
+
+    if (hasSp1 && hasSp2) {
+      showToast?.(`[PERINGATAN MAKSIMAL] ${sppg.name} telah menerima SP-1 dan SP-2. Sanksi eskalasi berikutnya adalah Penangguhan Izin Distribusi (Suspension).`, 'error')
+      return
+    }
+
+    const nextSpType = !hasSp1 ? 'SP-1' : 'SP-2'
+    const docSeq = sppg.code?.replace('BGN-SPPG-', '') || '014'
 
     setWarningModalData({
       sppg,
       warningType: nextSpType,
       letterNumber: `BGN/${nextSpType}/MBG/IX/2026/0${docSeq}`,
-      issueDate: '28 September 2026',
-      deadlineDays: '3 Hari Kerja (01 Oktober 2026)',
+      issueDate: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
+      deadlineDays: nextSpType === 'SP-1' ? '3 Hari Kerja' : '7 Hari Kerja',
       reasons: [
         `Kepatuhan rata-rata 7 hari terakhir tercatat ${sppg.scorecard.compositeScore}% (di bawah batas minimum 85%).`,
         `Skor Cold-Chain armada tercatat ${sppg.scorecard.coldChainScore}% dengan fluktuasi suhu di atas batas aman.`,
@@ -237,39 +253,45 @@ export function SppgPanel({
     })
   }
 
-  const executeIssueWarning = () => {
-    if (onSuperadminAction?.('issue_warning')?.allowed === false) return
-    if (!warningModalData) return
-    const { sppg, warningType, letterNumber, issueDate, deadlineDays, reasons } = warningModalData
-
-    const newWarning = {
-      id: `sp-${Date.now()}`,
-      type: warningType,
+  const executeIssueWarning = async () => {
+    if (!warningModalData || !canDiscipline) return
+    const { sppg, warningType, letterNumber, reasons, deadlineDays } = warningModalData
+    const result = await onAction?.('issue_warning', sppg, {
+      letterType: warningType,
       letterNumber,
-      issuedDate: issueDate,
       reason: reasons.join(' '),
-      deadlineDate: deadlineDays,
-      status: 'Menunggu Tanggapan / Rencana Aksi Korektif',
-      signedBy: 'Dr. Hendra Prasetyo (Satgas MBG Pusat)'
-    }
+      deadlineLabel: deadlineDays,
+    })
+    if (result?.ok) setWarningModalData(null)
+  }
 
-    setSppgList((prev) =>
-      prev.map((item) => {
-        if (item.id === sppg.id) {
-          const updatedLetters = [...(item.warningLetters || []), newWarning]
-          return {
-            ...item,
-            status: 'warning',
-            statusNote: `Penerbitan ${warningType} Aktif Ã¢â‚¬Â¢ Menunggu Klarifikasi Vendor`,
-            warningLetters: updatedLetters
-          }
-        }
-        return item
-      })
-    )
+  const executeSuspension = async () => {
+    if (!suspensionModalData || !canDiscipline) return
+    const { sppg, alternativeSppgId, formalNotes } = suspensionModalData
+    const result = await onAction?.('suspend_kitchen', sppg, {
+      reason: formalNotes,
+      alternativeSppgId,
+    })
+    if (result?.ok) setSuspensionModalData(null)
+  }
 
-    showToast?.(`[RESMI BGN] ${warningType} (${letterNumber}) berhasil diterbitkan secara digital untuk ${sppg.name}.`)
-    setWarningModalData(null)
+  const handleOpenReinstateModal = (sppg) => {
+    setOpenMenuId(null)
+    setReinstateModalData({
+      sppg,
+      reason: 'Audit sanitasi ulang & perbaikan fasilitas telah diverifikasi oleh tim pengawas BGN.',
+      initialQuota: sppg.capacity?.maxDailyPortions ? Math.round(sppg.capacity.maxDailyPortions * 0.7) : 1500,
+    })
+  }
+
+  const executeReinstate = async () => {
+    if (!reinstateModalData || !canDiscipline) return
+    const { sppg, reason, initialQuota } = reinstateModalData
+    const result = await onAction?.('reinstate_kitchen', sppg, {
+      reason,
+      initialQuota: parseInt(initialQuota, 10) || 1500,
+    })
+    if (result?.ok) setReinstateModalData(null)
   }
 
   // 2. ACTION: Penangguhan Izin Distribusi (Suspension)
@@ -288,80 +310,28 @@ export function SppgPanel({
     })
   }
 
-  const executeSuspension = () => {
-    if (onSuperadminAction?.('suspend_kitchen')?.allowed === false) return
-    if (!suspensionModalData) return
-    const { sppg, alternativeSppgId, formalNotes } = suspensionModalData
-    const altKitchen = sppgList.find((k) => k.id === alternativeSppgId)
-    const docSeq = sppg.code.replace('BGN-SPPG-', '') || '009'
-
-    const suspensionDoc = {
-      id: `susp-${sppg.id}`,
-      type: 'SURAT PENANGGUHAN DISTRIBUSI (SUSPENSION)',
-      letterNumber: `BGN/SUSP/MBG/IX/2026/00${docSeq}`,
-      issuedDate: '28 September 2026',
-      reason: formalNotes,
-      status: 'Distribusi Dibekukan Penuh',
-      signedBy: 'Dr. Hendra Prasetyo (Satgas MBG Pusat) & Kadinkes Wilayah'
-    }
-
-    setSppgList((prev) =>
-      prev.map((item) => {
-        if (item.id === sppg.id) {
-          return {
-            ...item,
-            status: 'suspended',
-            statusNote: 'IZIN DISTRIBUSI DITANGGUHKAN SEMENTARA (INVESTIGASI SANITASI)',
-            capacity: {
-              ...item.capacity,
-              activeQuota: 0,
-              utilizationPct: 0
-            },
-            scorecard: {
-              ...item.scorecard,
-              grade: 'SUSPENDED'
-            },
-            warningLetters: [...(item.warningLetters || []), suspensionDoc]
-          }
-        }
-        // If contingency alternative kitchen selected, adjust their quota
-        if (altKitchen && item.id === altKitchen.id) {
-          const addedPortions = sppg.capacity.activeQuota || 1200
-          const updatedQuota = Math.min(item.capacity.maxDailyPortions, item.capacity.activeQuota + addedPortions)
-          return {
-            ...item,
-            capacity: {
-              ...item.capacity,
-              activeQuota: updatedQuota,
-              utilizationPct: Math.round((updatedQuota / item.capacity.maxDailyPortions) * 100)
-            }
-          }
-        }
-        return item
-      })
-    )
-
-    showToast?.(`[PENANGGUHAN IZIN] Distribusi ${sppg.name} resmi DIBEKUKAN. Suplai dialihkan ke ${altKitchen?.name || 'dapur cadangan'}.`)
-    setSuspensionModalData(null)
-  }
-
   // 3. ACTION: Audit Gramatur Resep (TKPI Inspection)
   const handleOpenRecipeAudit = (sppg) => {
     setOpenMenuId(null)
     setRecipeAuditModalData({
       sppg,
-      auditDate: '28 September 2026',
-      auditorName: 'Dr. Hendra Prasetyo & Tim Nutrisionis BGN',
+      tkpiStatus: sppg.recipeAudit.tkpiStatus || 'COMPLIANT',
+      avgDeviationPct: sppg.recipeAudit.avgDeviationPct || 0,
+      auditorName: sppg.recipeAudit.auditor || '',
       notes: ''
     })
   }
 
-  const executeVerifyRecipeAudit = () => {
-    if (!recipeAuditModalData) return
-    const { sppg } = recipeAuditModalData
-
-    showToast?.(`[AUDIT TKPI] Hasil pengujian gramatur resep ${sppg.name} diverifikasi dan ditandatangani.`)
-    setRecipeAuditModalData(null)
+  const executeVerifyRecipeAudit = async () => {
+    if (!recipeAuditModalData || !canManage) return
+    const { sppg, tkpiStatus, avgDeviationPct, auditorName, notes } = recipeAuditModalData
+    const result = await onAction?.('audit_recipe', sppg, {
+      tkpiStatus,
+      avgDeviationPct: avgDeviationPct ?? 0,
+      auditor: auditorName,
+      notes,
+    })
+    if (result?.ok) setRecipeAuditModalData(null)
   }
 
   // 4. ACTION: Penetapan Kuota Produksi
@@ -374,33 +344,15 @@ export function SppgPanel({
     })
   }
 
-  const executeSetQuota = () => {
-    if (!quotaModalData) return
+  const executeSetQuota = async () => {
+    if (!quotaModalData || !canManage) return
     const { sppg, newQuota, reason } = quotaModalData
-    if (onSuperadminAction?.('update_quota', { sppg, newQuota, reason })?.allowed === false) return
     const quotaVal = parseInt(newQuota, 10) || sppg.capacity.activeQuota
-
-    setSppgList((prev) =>
-      prev.map((item) => {
-        if (item.id === sppg.id) {
-          const util = Math.round((quotaVal / item.capacity.maxDailyPortions) * 100)
-          return {
-            ...item,
-            capacity: {
-              ...item.capacity,
-              activeQuota: quotaVal,
-              utilizationPct: util,
-              requestedQuota: quotaVal
-            },
-            statusNote: `Kuota Ditetapkan: ${quotaVal.toLocaleString()} Porsi/Hari`
-          }
-        }
-        return item
-      })
-    )
-
-    showToast?.(`[KUOTA BARU] Alokasi harian ${sppg.name} berhasil ditetapkan menjadi ${quotaVal.toLocaleString()} porsi/hari.`)
-    setQuotaModalData(null)
+    const result = await onAction?.('update_quota', sppg, {
+      quota: quotaVal,
+      reason,
+    })
+    if (result?.ok) setQuotaModalData(null)
   }
 
   return (
@@ -612,7 +564,7 @@ export function SppgPanel({
           <div className="my-3">
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-semibold text-slate-900 tabular-nums tracking-tight">
-                {sppgList.filter((s) => s.certificates.slhs.status === 'valid').length}
+                {sppgList.filter((s) => s.certificates?.slhs?.status === 'valid').length}
               </span>
               <span className="text-xs text-slate-500 font-medium">dari {stats.total} berizin penuh</span>
             </div>
@@ -918,13 +870,13 @@ export function SppgPanel({
                       {/* Col 4: Sertifikat. Satu baris, tanpa pil bertumpuk. */}
                       <td className={`px-4 ${paddingY}`}>
                         <div className="space-y-0.5">
-                          <StatusDot
-                            tone={sppg.certificates.slhs.status === 'valid' ? 'ok' : sppg.certificates.slhs.status === 'expiring' ? 'warn' : 'critical'}
-                          >
-                            SLHS {sppg.certificates.slhs.status === 'valid' ? 'valid' : sppg.certificates.slhs.status === 'expiring' ? `sisa ${slhsDays}h` : 'kedaluwarsa'}
-                          </StatusDot>
+<StatusDot
+                             tone={sppg.certificates?.slhs?.status === 'valid' ? 'ok' : sppg.certificates?.slhs?.status === 'expiring' ? 'warn' : 'critical'}
+                           >
+                             SLHS {sppg.certificates?.slhs?.status === 'valid' ? 'valid' : sppg.certificates?.slhs?.status === 'expiring' ? `sisa ${slhsDays}h` : 'kedaluwarsa'}
+                           </StatusDot>
                           <p className="text-[11px] text-slate-500">HACCP {haccpDisplay}</p>
-                          <p className="text-[11px] text-slate-500 font-mono truncate">{sppg.certificates.slhs.number}</p>
+                          <p className="text-[11px] text-slate-500 font-mono truncate">{sppg.certificates?.slhs?.number ?? '—'}</p>
                         </div>
                       </td>
 
@@ -991,16 +943,23 @@ export function SppgPanel({
                                   <span>Daftar Sekolah Suplai</span>
                                 </button>
                                 <div className="my-1 border-t border-slate-100" />
-                                <button
-                                  onClick={() => handleOpenSuspensionModal(sppg)}
-                                  disabled={isSuspended}
-                                  className={`w-full text-left px-3 py-2 flex items-center gap-2 font-medium transition ${
-                                    isSuspended ? 'text-slate-400 cursor-not-allowed' : 'text-rose-800 hover:bg-rose-50 cursor-pointer'
-                                  }`}
-                                >
-                                  <Lock className="h-3.5 w-3.5" />
-                                  <span>{isSuspended ? 'Izin sudah dibekukan' : 'Bekukan Izin Distribusi'}</span>
-                                </button>
+                                {isSuspended ? (
+                                  <button
+                                    onClick={() => handleOpenReinstateModal(sppg)}
+                                    className="w-full text-left px-3 py-2 flex items-center gap-2 font-medium text-emerald-700 hover:bg-emerald-50 cursor-pointer transition"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    <span>Pulihkan Izin (Reaktivasi)</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleOpenSuspensionModal(sppg)}
+                                    className="w-full text-left px-3 py-2 flex items-center gap-2 font-medium text-rose-800 hover:bg-rose-50 cursor-pointer transition"
+                                  >
+                                    <Lock className="h-3.5 w-3.5" />
+                                    <span>Bekukan Izin Distribusi</span>
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1266,6 +1225,65 @@ export function SppgPanel({
                   {recipeAuditModalData.sppg.recipeAudit.actualCalories} / {recipeAuditModalData.sppg.recipeAudit.targetCalories} kkal
                 </p>
               </div>
+            </div>
+
+            {/* Hasil Audit (diisi petugas lapangan) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Status TKPI</label>
+                <select
+                  value={recipeAuditModalData.tkpiStatus || 'COMPLIANT'}
+                  onChange={(e) =>
+                    setRecipeAuditModalData((d) => ({ ...d, tkpiStatus: e.target.value }))
+                  }
+                  className="w-full px-2.5 py-1.5 text-xs font-mono font-bold border border-slate-200 rounded-lg focus:outline-2 focus:outline-blue-600"
+                >
+                  <option value="COMPLIANT">Sesuai</option>
+                  <option value="WARNING">Perhatian</option>
+                  <option value="VIOLATION">Pelanggaran</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Deviasi Rata-rata (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={recipeAuditModalData.avgDeviationPct ?? ''}
+                  onChange={(e) =>
+                    setRecipeAuditModalData((d) => ({
+                      ...d,
+                      avgDeviationPct: e.target.value === '' ? null : parseFloat(e.target.value),
+                    }))
+                  }
+                  placeholder="0.0"
+                  className="w-full px-2.5 py-1.5 text-xs font-mono font-bold border border-slate-200 rounded-lg focus:outline-2 focus:outline-blue-600"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Petugas Lapangan</label>
+                <input
+                  type="text"
+                  value={recipeAuditModalData.auditorName || ''}
+                  onChange={(e) =>
+                    setRecipeAuditModalData((d) => ({ ...d, auditorName: e.target.value }))
+                  }
+                  placeholder="Nama auditor"
+                  className="w-full px-2.5 py-1.5 text-xs font-mono font-bold border border-slate-200 rounded-lg focus:outline-2 focus:outline-blue-600"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Catatan Berita Acara</label>
+              <textarea
+                value={recipeAuditModalData.notes || ''}
+                onChange={(e) =>
+                  setRecipeAuditModalData((d) => ({ ...d, notes: e.target.value }))
+                }
+                rows={2}
+                placeholder="Temuan lapangan..."
+                className="w-full px-2.5 py-1.5 text-xs font-mono font-bold border border-slate-200 rounded-lg focus:outline-2 focus:outline-blue-600 resize-none"
+              />
             </div>
 
             {/* Table of 5 Food Groups */}
@@ -1958,14 +1976,105 @@ export function SppgPanel({
               </div>
 
               <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handleOpenSuspensionModal(selectedSppg)}
-                  disabled={selectedSppg.status === 'suspended'}
-                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs transition"
-                >
-                  Bekukan Izin
-                </button>
+                {selectedSppg.status === 'suspended' ? (
+                  <button
+                    onClick={() => handleOpenReinstateModal(selectedSppg)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer"
+                  >
+                    Pulihkan Izin (Reaktivasi)
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleOpenSuspensionModal(selectedSppg)}
+                    className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition cursor-pointer"
+                  >
+                    Bekukan Izin
+                  </button>
+                )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================================
+          MODAL REINSTATEMENT: PEMULIHAN IZIN DISTRIBUSI DAPUR
+          ==================================================================== */}
+      {reinstateModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div>
+                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold">
+                  REAKTIVASI / PEMULIHAN OPERASIONAL
+                </span>
+                <h3 className="text-lg font-black text-slate-900 tracking-tight mt-1">
+                  Pulihkan Hak Masak &amp; Distribusi
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Dapur: <strong className="text-slate-900">{reinstateModalData.sppg.name}</strong> ({reinstateModalData.sppg.code})
+                </p>
+              </div>
+              <button
+                onClick={() => setReinstateModalData(null)}
+                className="text-slate-500 hover:text-slate-700 p-1 rounded-lg"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 leading-relaxed">
+                Tindakan ini akan mengaktifkan kembali dapur SPPG dari status <strong>DIBEKUKAN</strong> menjadi <strong>AKTIF</strong>, serta membuka kembali izin distribusi porsi ke sekolah binaan.
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Alokasi Kuota Pemulihan Awal (Porsi/Hari):
+                </label>
+                <input
+                  type="number"
+                  min="500"
+                  max={reinstateModalData.sppg.capacity?.maxDailyPortions || 3500}
+                  value={reinstateModalData.initialQuota}
+                  onChange={(e) =>
+                    setReinstateModalData({ ...reinstateModalData, initialQuota: parseInt(e.target.value, 10) || 0 })
+                  }
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono focus:ring-2 focus:ring-emerald-500"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Maksimum kapasitas peralatan dapur: {reinstateModalData.sppg.capacity?.maxDailyPortions?.toLocaleString()} porsi.
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Dasar Hukum / Catatan Hasil Audit Pemulihan (min. 20 karakter):
+                </label>
+                <textarea
+                  rows="3"
+                  value={reinstateModalData.reason}
+                  onChange={(e) => setReinstateModalData({ ...reinstateModalData, reason: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Jelaskan hasil verifikasi laboratorium, sterilisasi sarana, atau pembaruan armada..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                onClick={() => setReinstateModalData(null)}
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold text-xs hover:bg-slate-50 transition"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeReinstate}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Sah Reaktivasi Dapur</span>
+              </button>
             </div>
           </div>
         </div>

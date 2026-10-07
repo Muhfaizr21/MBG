@@ -11,14 +11,13 @@ import {
   Cell
 } from 'recharts'
 import { ShieldCheck, TrendingUp, PieChart as PieIcon } from 'lucide-react'
+import { STATUS } from './chartTheme.jsx'
 
 const PIE_COLORS = {
   cleared: STATUS.ok,
   adjusted: STATUS.info,
   blocked: STATUS.critical,
 }
-
-import { STATUS } from './chartTheme.jsx'
 export function ReportsCharts({
   bastList = [],
   invoicesList = []

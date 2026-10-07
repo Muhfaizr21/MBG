@@ -6,25 +6,43 @@ import (
 	"backend/models"
 	"backend/utils"
 	"net/http"
+	"time"
 
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 type RouterDependencies struct {
-	HealthCtrl    *controllers.HealthController
-	ItemCtrl      *controllers.ItemController
-	AuthCtrl      *controllers.AuthController
-	ScanCtrl      *controllers.ScanController
-	NutritionCtrl *controllers.NutritionController
-	PortalCtrl    *controllers.PortalController
-	AuthMW        func(http.Handler) http.Handler
-	CORSOrigins   []string
+	HealthCtrl     *controllers.HealthController
+	ItemCtrl       *controllers.ItemController
+	AuthCtrl       *controllers.AuthController
+	ScanCtrl       *controllers.ScanController
+	NutritionCtrl  *controllers.NutritionController
+	PortalCtrl     *controllers.PortalController
+	ValidatorCtrl  *controllers.ValidatorController
+	SppgCtrl       *controllers.SppgController
+	DeliveryCtrl   *controllers.DeliveryController
+	AttendanceCtrl *controllers.AttendanceController
+	SchoolCtrl     *controllers.SchoolController
+	ScheduleCtrl   *controllers.ScheduleController
+	NoticeCtrl     *controllers.NoticeController
+	CalendarCtrl   *controllers.CalendarController
+	ReportCtrl     *controllers.ReportController
+	FeedbackCtrl   *controllers.FeedbackController
+	DashboardCtrl  *controllers.DashboardController
+	AuthMW         func(http.Handler) http.Handler
+	CORSOrigins    []string
+	AppEnv         string
 }
 
 // SetupRoutes registers all application routes and returns a configured handler.
-// Chain: Logger -> CORS -> Auth (populates context) -> Mux (route-level guards).
+// Chain: Logger -> SecurityHeaders -> BodyLimit -> CORS -> RateLimiter -> Auth (populates context) -> Mux.
 func SetupRoutes(deps RouterDependencies) http.Handler {
 	mux := http.NewServeMux()
+
+	// Rate limiters:
+	// - Auth limiter: 10 requests / min burst 15 per IP (anti brute-force / credential stuffing)
+	// - API limiter: 200 requests / min burst 300 per IP (anti scraping / DDoS)
+	authLimiter := middlewares.NewRateLimiter(10, 15, time.Minute)
 
 	// Swagger documentation route
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
@@ -33,9 +51,9 @@ func SetupRoutes(deps RouterDependencies) http.Handler {
 	mux.HandleFunc("GET /{$}", deps.HealthCtrl.Root)
 	mux.HandleFunc("GET /api/health", deps.HealthCtrl.HealthCheck)
 
-	// Auth routes
-	mux.HandleFunc("POST /api/auth/register", deps.AuthCtrl.Register)
-	mux.HandleFunc("POST /api/auth/login", deps.AuthCtrl.Login)
+	// Auth routes (protected against brute-force)
+	mux.Handle("POST /api/auth/register", authLimiter.Limit("Terlalu banyak permintaan pendaftaran. Silakan coba lagi dalam 1 menit.")(http.HandlerFunc(deps.AuthCtrl.Register)))
+	mux.Handle("POST /api/auth/login", authLimiter.Limit("Terlalu banyak percobaan login. Akun dilindungi dari serangan brute-force. Silakan tunggu 1 menit.")(http.HandlerFunc(deps.AuthCtrl.Login)))
 	mux.HandleFunc("POST /api/auth/refresh", deps.AuthCtrl.Refresh)
 	mux.HandleFunc("POST /api/auth/logout", deps.AuthCtrl.Logout)
 	mux.Handle("GET /api/auth/me", middlewares.RequireAuth(http.HandlerFunc(deps.AuthCtrl.Me)))
@@ -56,26 +74,133 @@ func SetupRoutes(deps RouterDependencies) http.Handler {
 	// Nutrition dataset — any authenticated user may look up item gizi
 	mux.Handle("GET /api/nutrition/items", middlewares.RequireAuth(http.HandlerFunc(deps.NutritionCtrl.Items)))
 
-	// Portal Ekosistem KawanGizi MBG (Schools, SPPG, Menu, Deliveries, Attendance, Schedules, Notices, Feedbacks, Reports, Validators)
-	if deps.PortalCtrl != nil {
-		mux.HandleFunc("GET /api/schools", deps.PortalCtrl.GetSchools)
-		mux.HandleFunc("GET /api/schools/{npsn}", deps.PortalCtrl.GetSchoolByNPSN)
-		mux.HandleFunc("GET /api/sppg", deps.PortalCtrl.GetSPPGs)
-		mux.HandleFunc("GET /api/sppg/{id}", deps.PortalCtrl.GetSPPGByID)
-		mux.HandleFunc("GET /api/menu-packages", deps.PortalCtrl.GetMenuPackages)
-		mux.HandleFunc("GET /api/calendar", deps.PortalCtrl.GetCalendarDays)
-		mux.HandleFunc("GET /api/deliveries", deps.PortalCtrl.GetDeliveries)
-		mux.HandleFunc("GET /api/schedules", deps.PortalCtrl.GetSchedules)
-		mux.HandleFunc("GET /api/attendance", deps.PortalCtrl.GetAttendances)
-		mux.HandleFunc("GET /api/notices", deps.PortalCtrl.GetNotices)
-		mux.HandleFunc("GET /api/feedback", deps.PortalCtrl.GetFeedbacks)
-		mux.HandleFunc("POST /api/feedback", deps.PortalCtrl.CreateFeedback)
-		mux.HandleFunc("GET /api/reports", deps.PortalCtrl.GetReports)
-		mux.HandleFunc("GET /api/validators", deps.PortalCtrl.GetValidators)
-		mux.HandleFunc("GET /api/admin/metrics", deps.PortalCtrl.GetAdminMetrics)
+	// Dapur SPPG resource routes.
+	// Baca: sppg.read (superadmin, satgas, sppg, validator).
+	// Kapasitas & audit resep: sppg.manage — dapur boleh mengisi data sendiri.
+	// Tindakan disipliner (surat teguran, pembekuan) tetap superadmin: dapur
+	// tidak boleh menjatuhkan teguran ke dirinya sendiri.
+	if deps.SppgCtrl != nil {
+		mux.Handle("GET /api/sppg", middlewares.RequirePermission(models.PermSppgRead)(http.HandlerFunc(deps.SppgCtrl.List)))
+		mux.Handle("GET /api/sppg/{id}", middlewares.RequirePermission(models.PermSppgRead)(http.HandlerFunc(deps.SppgCtrl.Get)))
+		mux.Handle("POST /api/sppg/{id}/warnings", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.SppgCtrl.IssueWarning)))
+		mux.Handle("POST /api/sppg/{id}/suspension", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.SppgCtrl.Suspend)))
+		mux.Handle("POST /api/sppg/{id}/reinstate", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.SppgCtrl.Reinstate)))
+		mux.Handle("PUT /api/sppg/{id}/quota", middlewares.RequirePermission(models.PermSppgManage)(http.HandlerFunc(deps.SppgCtrl.UpdateQuota)))
+		mux.Handle("POST /api/sppg/{id}/recipe-audit", middlewares.RequirePermission(models.PermSppgManage)(http.HandlerFunc(deps.SppgCtrl.RecordRecipeAudit)))
 	}
 
-	// Admin portal — superadmin only
+	// Validator resource routes.
+	// Baca: validators.read (superadmin, satgas, validator).
+	// Tulis: validators.manage — superadmin saja, sesuai SUPERADMIN.md Bab 2.
+	if deps.ValidatorCtrl != nil {
+		mux.Handle("GET /api/validators", middlewares.RequirePermission(models.PermValidatorsRead)(http.HandlerFunc(deps.ValidatorCtrl.List)))
+		mux.Handle("GET /api/validators/{id}", middlewares.RequirePermission(models.PermValidatorsRead)(http.HandlerFunc(deps.ValidatorCtrl.Get)))
+		mux.Handle("PATCH /api/validators/{id}/status", middlewares.RequirePermission(models.PermValidatorsManage)(http.HandlerFunc(deps.ValidatorCtrl.SetStatus)))
+		mux.Handle("POST /api/validators/{id}/device/reset", middlewares.RequirePermission(models.PermValidatorsManage)(http.HandlerFunc(deps.ValidatorCtrl.ResetDevice)))
+		mux.Handle("POST /api/validators/{id}/warnings", middlewares.RequirePermission(models.PermValidatorsManage)(http.HandlerFunc(deps.ValidatorCtrl.IssueWarning)))
+		mux.Handle("PUT /api/validators/{id}/backup", middlewares.RequirePermission(models.PermValidatorsManage)(http.HandlerFunc(deps.ValidatorCtrl.AssignBackup)))
+	}
+
+	// Telemetri Pengiriman Makanan & Hasil YOLOv8
+	if deps.DeliveryCtrl != nil {
+		mux.Handle("GET /api/deliveries", middlewares.RequirePermission(models.PermDeliveriesRead)(http.HandlerFunc(deps.DeliveryCtrl.List)))
+		mux.Handle("GET /api/deliveries/{id}", middlewares.RequirePermission(models.PermDeliveriesRead)(http.HandlerFunc(deps.DeliveryCtrl.Get)))
+		mux.Handle("POST /api/deliveries/{id}/override", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.DeliveryCtrl.OverrideAI)))
+		mux.Handle("POST /api/deliveries/{id}/lab-audit", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.DeliveryCtrl.OrderLabTest)))
+	}
+
+	// Rekonsiliasi Presensi & Penerimaan Porsi Siswa MBG
+	if deps.AttendanceCtrl != nil {
+		mux.Handle("GET /api/attendance", middlewares.RequirePermission(models.PermAttendanceRead)(http.HandlerFunc(deps.AttendanceCtrl.List)))
+		mux.Handle("GET /api/attendance/{id}", middlewares.RequirePermission(models.PermAttendanceRead)(http.HandlerFunc(deps.AttendanceCtrl.GetByID)))
+		mux.Handle("PUT /api/attendance/{id}/quota", middlewares.RequirePermission(models.PermAttendanceManage)(http.HandlerFunc(deps.AttendanceCtrl.AdjustQuota)))
+		mux.Handle("POST /api/attendance/{id}/redistribute", middlewares.RequirePermission(models.PermAttendanceManage)(http.HandlerFunc(deps.AttendanceCtrl.RedistributeSurplus)))
+		mux.Handle("POST /api/attendance/{id}/audit", middlewares.RequirePermission(models.PermAttendanceManage)(http.HandlerFunc(deps.AttendanceCtrl.AuditDiscrepancy)))
+	}
+
+	// Master Data Sekolah Binaan & Titik Distribusi Last-Mile MBG
+	if deps.SchoolCtrl != nil {
+		mux.Handle("GET /api/schools", middlewares.RequirePermission(models.PermSchoolsRead)(http.HandlerFunc(deps.SchoolCtrl.List)))
+		mux.Handle("GET /api/schools/{npsn}", middlewares.RequirePermission(models.PermSchoolsRead)(http.HandlerFunc(deps.SchoolCtrl.GetByNPSN)))
+		mux.Handle("POST /api/schools", middlewares.RequirePermission(models.PermSchoolsManage)(http.HandlerFunc(deps.SchoolCtrl.Create)))
+		mux.Handle("PUT /api/schools/{npsn}/sppg", middlewares.RequirePermission(models.PermSchoolsManage)(http.HandlerFunc(deps.SchoolCtrl.ReassignSPPG)))
+		mux.Handle("PUT /api/schools/{npsn}/contacts", middlewares.RequirePermission(models.PermSchoolsManage)(http.HandlerFunc(deps.SchoolCtrl.UpdateContacts)))
+		mux.Handle("PATCH /api/schools/{npsn}/status", middlewares.RequirePermission(models.PermSchoolsManage)(http.HandlerFunc(deps.SchoolCtrl.ToggleStatus)))
+	}
+
+	// Jadwal Distribusi & Armada Cold-Chain MBG
+	if deps.ScheduleCtrl != nil {
+		mux.Handle("GET /api/schedules", middlewares.RequirePermission(models.PermScheduleRead)(http.HandlerFunc(deps.ScheduleCtrl.List)))
+		mux.Handle("GET /api/schedules/backup-fleets", middlewares.RequirePermission(models.PermScheduleRead)(http.HandlerFunc(deps.ScheduleCtrl.GetBackupFleets)))
+		mux.Handle("GET /api/schedules/{id}", middlewares.RequirePermission(models.PermScheduleRead)(http.HandlerFunc(deps.ScheduleCtrl.GetByID)))
+		mux.Handle("PUT /api/schedules/{id}/reschedule", middlewares.RequirePermission(models.PermScheduleManage)(http.HandlerFunc(deps.ScheduleCtrl.Reschedule)))
+		mux.Handle("POST /api/schedules/{id}/delay-alert", middlewares.RequirePermission(models.PermScheduleManage)(http.HandlerFunc(deps.ScheduleCtrl.SendDelayAlert)))
+		mux.Handle("POST /api/schedules/{id}/reroute", middlewares.RequirePermission(models.PermScheduleManage)(http.HandlerFunc(deps.ScheduleCtrl.RerouteBackupFleet)))
+	}
+
+	// Notice & Broadcast resource routes.
+	// Baca: notices.read (superadmin, satgas, sppg, validator, siswa).
+	// Tulis: notices.publish — superadmin.
+	if deps.NoticeCtrl != nil {
+		mux.Handle("GET /api/notices", middlewares.RequirePermission(models.PermNoticesRead)(http.HandlerFunc(deps.NoticeCtrl.List)))
+		mux.Handle("GET /api/notices/{id}", middlewares.RequirePermission(models.PermNoticesRead)(http.HandlerFunc(deps.NoticeCtrl.GetByID)))
+		mux.Handle("POST /api/notices", middlewares.RequirePermission(models.PermNoticesPublish)(http.HandlerFunc(deps.NoticeCtrl.Create)))
+		mux.Handle("POST /api/notices/{id}/flash-alert", middlewares.RequirePermission(models.PermNoticesPublish)(http.HandlerFunc(deps.NoticeCtrl.BroadcastFlashAlert)))
+		mux.Handle("PUT /api/notices/{id}/archive", middlewares.RequirePermission(models.PermNoticesPublish)(http.HandlerFunc(deps.NoticeCtrl.ToggleArchive)))
+		mux.Handle("DELETE /api/notices/{id}", middlewares.RequirePermission(models.PermNoticesPublish)(http.HandlerFunc(deps.NoticeCtrl.Delete)))
+		mux.Handle("POST /api/notices/{id}/ack", middlewares.RequireAuth(http.HandlerFunc(deps.NoticeCtrl.Acknowledge)))
+	}
+
+	// Kalender Operasional MBG, Siklus Menu Nasional & Penggantian Darurat
+	if deps.CalendarCtrl != nil {
+		mux.Handle("GET /api/calendar", middlewares.RequirePermission(models.PermCalendarRead)(http.HandlerFunc(deps.CalendarCtrl.ListDays)))
+		mux.Handle("GET /api/calendar/days/{date}", middlewares.RequirePermission(models.PermCalendarRead)(http.HandlerFunc(deps.CalendarCtrl.GetDayByDate)))
+		mux.Handle("POST /api/calendar/lock-month", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.CalendarCtrl.LockMonth)))
+		mux.Handle("PUT /api/calendar/days/{date}/lock", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.CalendarCtrl.ToggleDayLock)))
+		mux.Handle("POST /api/calendar/days/{date}/blackout", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.CalendarCtrl.SetBlackoutDate)))
+		mux.Handle("GET /api/calendar/substitutions", middlewares.RequirePermission(models.PermCalendarRead)(http.HandlerFunc(deps.CalendarCtrl.ListSubstitutions)))
+		mux.Handle("GET /api/calendar/substitutions/{id}", middlewares.RequirePermission(models.PermCalendarRead)(http.HandlerFunc(deps.CalendarCtrl.GetSubstitutionByID)))
+		mux.Handle("POST /api/calendar/substitutions", middlewares.RequirePermission(models.PermCalendarManage)(http.HandlerFunc(deps.CalendarCtrl.CreateSubstitution)))
+		mux.Handle("PUT /api/calendar/substitutions/{id}/review", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.CalendarCtrl.ReviewSubstitution)))
+		mux.Handle("POST /api/calendar/days/{date}/inspection", middlewares.RequirePermission(models.PermCalendarManage)(http.HandlerFunc(deps.CalendarCtrl.ScheduleInspection)))
+		mux.Handle("GET /api/menu-packages", middlewares.RequirePermission(models.PermCalendarRead)(http.HandlerFunc(deps.CalendarCtrl.ListMenuPackages)))
+	}
+
+	// Katalog Dokumen Laporan Resmi, BAST Digital, Payment Clearance & Audit Forensik
+	if deps.ReportCtrl != nil {
+		mux.Handle("GET /api/reports/bundle", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.GetBundle)))
+		mux.Handle("GET /api/reports", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.ListReports)))
+		mux.Handle("GET /api/reports/stats", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.GetExecutiveStats)))
+		mux.Handle("POST /api/reports", middlewares.RequirePermission(models.PermReportsManage)(http.HandlerFunc(deps.ReportCtrl.CreateReport)))
+		mux.Handle("GET /api/reports/basts", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.ListDigitalBasts)))
+		mux.Handle("GET /api/reports/basts/{id}", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.GetDigitalBastByID)))
+		mux.Handle("GET /api/reports/invoices", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.ListVendorInvoices)))
+		mux.Handle("GET /api/reports/invoices/{id}", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.GetVendorInvoiceByID)))
+		mux.Handle("POST /api/reports/invoices/{id}/clearance", middlewares.RequirePermission(models.PermPaymentClearance)(http.HandlerFunc(deps.ReportCtrl.AuthorizePayment)))
+		mux.Handle("GET /api/reports/forensic", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.ListForensicFindings)))
+		mux.Handle("GET /api/reports/{id}", middlewares.RequirePermission(models.PermReportsDownload)(http.HandlerFunc(deps.ReportCtrl.GetReportByID)))
+	}
+
+	// Feedback & Emergency Kill-Switch resource routes.
+	// Triage & Baca: feedback.triage (superadmin, satgas, sppg).
+	// Buat aduan & tutup tiket: feedback.triage (superadmin, satgas).
+	// Eksekusi Kill-Switch: killswitch (superadmin only).
+	if deps.FeedbackCtrl != nil {
+		mux.Handle("GET /api/feedback/bundle", middlewares.RequirePermission(models.PermFeedbackTriage)(http.HandlerFunc(deps.FeedbackCtrl.GetBundle)))
+		mux.Handle("GET /api/feedback/stats", middlewares.RequirePermission(models.PermFeedbackTriage)(http.HandlerFunc(deps.FeedbackCtrl.GetStats)))
+		mux.Handle("GET /api/feedback", middlewares.RequirePermission(models.PermFeedbackTriage)(http.HandlerFunc(deps.FeedbackCtrl.ListTickets)))
+		mux.Handle("POST /api/feedback", middlewares.RequirePermission(models.PermFeedbackTriage)(http.HandlerFunc(deps.FeedbackCtrl.CreateTicket)))
+		mux.Handle("GET /api/feedback/{id}", middlewares.RequirePermission(models.PermFeedbackTriage)(http.HandlerFunc(deps.FeedbackCtrl.GetTicketByID)))
+		mux.Handle("POST /api/feedback/{id}/kill-switch", middlewares.RequirePermission(models.PermKillswitch)(http.HandlerFunc(deps.FeedbackCtrl.ExecuteKillSwitch)))
+		mux.Handle("POST /api/feedback/{id}/medical", middlewares.RequirePermission(models.PermFeedbackTriage)(http.HandlerFunc(deps.FeedbackCtrl.EscalateMedical)))
+		mux.Handle("POST /api/feedback/{id}/close", middlewares.RequirePermission(models.PermFeedbackTriage)(http.HandlerFunc(deps.FeedbackCtrl.CloseTicket)))
+	}
+
+	// Admin portal & live executive dashboard
+	if deps.DashboardCtrl != nil {
+		mux.Handle("GET /api/admin/dashboard", middlewares.RequirePermission(models.PermDashboardRead)(http.HandlerFunc(deps.DashboardCtrl.GetDashboardBundle)))
+		mux.Handle("GET /api/admin/metrics", middlewares.RequirePermission(models.PermDashboardRead)(http.HandlerFunc(deps.DashboardCtrl.GetMetrics)))
+	}
 	mux.Handle("GET /api/admin/summary", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(adminSummary)))
 	mux.Handle("GET /api/admin/audit", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(adminSummary)))
 
@@ -86,7 +211,19 @@ func SetupRoutes(deps RouterDependencies) http.Handler {
 	uploadDir := "uploads"
 	mux.Handle("GET /uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir))))
 
-	handler := middlewares.Logger(deps.AuthMW(middlewares.CORS(deps.CORSOrigins)(mux)))
+	apiLimiter := middlewares.NewRateLimiter(200, 300, time.Minute)
+
+	handler := middlewares.Logger(
+		middlewares.SecurityHeaders(deps.AppEnv)(
+			middlewares.BodyLimit(10 * 1024 * 1024)( // 10MB max request body
+				middlewares.CORS(deps.CORSOrigins)(
+					apiLimiter.Limit()(
+						deps.AuthMW(mux),
+					),
+				),
+			),
+		),
+	)
 
 	return handler
 }

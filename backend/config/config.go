@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -110,4 +111,17 @@ func loadEnvFile(path string) {
 			os.Setenv(key, value)
 		}
 	}
+}
+
+// Validate checks for critical security misconfigurations in production environments.
+func (c *Config) Validate() error {
+	if c.AppEnv == "production" {
+		if c.JWTSecret == "kawangizi-dev-secret-ganti-di-produksi" || len(c.JWTSecret) < 32 {
+			return errors.New("keamanan kritis: JWT_SECRET wajib diganti dengan string acak dengan entropi tinggi (minimal 32 karakter) di lingkungan produksi")
+		}
+		if c.DBSSLMode == "disable" {
+			return errors.New("keamanan kritis: DB_SSLMODE tidak boleh 'disable' di lingkungan produksi; gunakan 'require' atau 'verify-full'")
+		}
+	}
+	return nil
 }

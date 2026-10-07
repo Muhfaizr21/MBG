@@ -30,9 +30,20 @@ import {
 export function NoticesPanel({
   noticesList = [],
   onSuperadminAction = () => {},
-  showToast = () => {}
+  showToast = () => {},
+  onCreateNotice = null,
+  onBroadcastFlashAlert = null,
+  onToggleArchive = null,
+  onDeleteNotice = null,
+  onReload = null,
 }) {
   const [notices, setNotices] = useState(noticesList)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    setNotices(noticesList)
+  }, [noticesList])
+
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [urgencyFilter, setUrgencyFilter] = useState('all')
@@ -169,125 +180,200 @@ export function NoticesPanel({
   }
 
   // Handle Compose Notice Submit
-  const handleComposeSubmit = (e) => {
-    if (onSuperadminAction?.('CREATE_NOTICE')?.allowed === false) return
+  const handleComposeSubmit = async (e) => {
     e.preventDefault()
+    if (onSuperadminAction?.('CREATE_NOTICE')?.allowed === false) return
     if (!composeForm.title || !composeForm.content) {
       showToast('Judul dan isi maklumat wajib diisi!')
       return
     }
 
-    const catObj = NOTICE_CATEGORIES.find((c) => c.id === composeForm.category) || NOTICE_CATEGORIES[1]
-    const urgObj = URGENCY_LEVELS.find((u) => u.id === composeForm.urgency) || URGENCY_LEVELS[0]
-    const audObj = TARGET_AUDIENCES.find((a) => a.id === composeForm.targetAudience) || TARGET_AUDIENCES[0]
+    setIsSubmitting(true)
+    try {
+      if (onCreateNotice) {
+        await onCreateNotice({
+          title: composeForm.title,
+          refNumber: composeForm.refNumber,
+          category: composeForm.category,
+          urgency: composeForm.urgency,
+          targetAudience: composeForm.targetAudience,
+          scopeRegion: composeForm.scopeRegion,
+          authorName: composeForm.authorName,
+          authorRole: composeForm.authorRole,
+          content: composeForm.content,
+          effectiveDate: composeForm.effectiveDate,
+          isFlashAlert: composeForm.urgency === 'critical' || composeForm.isFlashAlert,
+          requiresAcknowledgement: composeForm.requiresAcknowledgement,
+          attachmentName: composeForm.attachmentName,
+          attachmentSize: '1.2 MB'
+        })
+      } else {
+        const catObj = NOTICE_CATEGORIES.find((c) => c.id === composeForm.category) || NOTICE_CATEGORIES[1]
+        const urgObj = URGENCY_LEVELS.find((u) => u.id === composeForm.urgency) || URGENCY_LEVELS[0]
+        const audObj = TARGET_AUDIENCES.find((a) => a.id === composeForm.targetAudience) || TARGET_AUDIENCES[0]
 
-    const newNoticeItem = {
-      id: `NOT-${Date.now().toString().slice(-4)}`,
-      refNumber: composeForm.refNumber,
-      title: composeForm.title,
-      category: composeForm.category,
-      categoryLabel: catObj.label,
-      urgency: composeForm.urgency,
-      urgencyLabel: urgObj.label,
-      targetAudience: composeForm.targetAudience,
-      targetAudienceLabel: audObj.label,
-      scopeRegion: composeForm.scopeRegion,
-      publishedAt: 'Baru saja',
-      effectiveDate: composeForm.effectiveDate,
-      author: {
-        name: composeForm.authorName,
-        role: composeForm.authorRole
-      },
-      content: composeForm.content,
-      isFlashAlert: composeForm.urgency === 'critical' || composeForm.isFlashAlert,
-      requiresAcknowledgement: composeForm.requiresAcknowledgement,
-      acknowledgementStats: {
-        totalRecipients: composeForm.targetAudience === 'sppg' ? 180 : composeForm.targetAudience === 'validators' ? 1250 : 1850,
-        acknowledgedCount: 0,
-        complianceRate: 0.0
-      },
-      attachments: composeForm.attachmentName
-        ? [
-            {
-              fileName: composeForm.attachmentName,
-              fileSize: '1.2 MB',
-              verifiedSignature: 'Belum diverifikasi'
-            }
-          ]
-        : [],
-      status: 'active',
-      statusLabel: 'Tayang Publik'
+        const newNoticeItem = {
+          id: `NOT-${Date.now().toString().slice(-4)}`,
+          refNumber: composeForm.refNumber,
+          title: composeForm.title,
+          category: composeForm.category,
+          categoryLabel: catObj.label,
+          urgency: composeForm.urgency,
+          urgencyLabel: urgObj.label,
+          targetAudience: composeForm.targetAudience,
+          targetAudienceLabel: audObj.label,
+          scopeRegion: composeForm.scopeRegion,
+          publishedAt: 'Baru saja',
+          effectiveDate: composeForm.effectiveDate,
+          author: {
+            name: composeForm.authorName,
+            role: composeForm.authorRole
+          },
+          content: composeForm.content,
+          isFlashAlert: composeForm.urgency === 'critical' || composeForm.isFlashAlert,
+          requiresAcknowledgement: composeForm.requiresAcknowledgement,
+          acknowledgementStats: {
+            totalRecipients: composeForm.targetAudience === 'sppg' ? 180 : composeForm.targetAudience === 'validators' ? 1250 : 1850,
+            acknowledgedCount: 0,
+            complianceRate: 0.0
+          },
+          attachments: composeForm.attachmentName
+            ? [
+                {
+                  fileName: composeForm.attachmentName,
+                  fileSize: '1.2 MB',
+                  verifiedSignature: 'Belum diverifikasi'
+                }
+              ]
+            : [],
+          status: 'active',
+          statusLabel: 'Tayang Publik'
+        }
+        setNotices([newNoticeItem, ...notices])
+      }
+
+      setComposeModalOpen(false)
+      showToast(`Maklumat resmi "${composeForm.title}" berhasil dipublikasikan ke jaringan MBG!`)
+      setComposeForm((prev) => ({
+        ...prev,
+        title: '',
+        content: '',
+        refNumber: `BGN/SE/${Math.floor(100 + Math.random() * 900)}/X/2026`
+      }))
+    } catch (err) {
+      showToast(`Gagal mempublikasikan maklumat: ${err.message || err}`)
+    } finally {
+      setIsSubmitting(false)
     }
-
-    setNotices([newNoticeItem, ...notices])
-    setComposeModalOpen(false)
-    showToast(`Maklumat resmi "${newNoticeItem.title}" berhasil dipublikasikan ke jaringan MBG!`)
   }
 
   // Handle Trigger Flash Alert
-  const handleTriggerFlashAlert = (e) => {
-    if (onSuperadminAction?.('BROADCAST_FLASH_ALERT')?.allowed === false) return
+  const handleTriggerFlashAlert = async (e) => {
     e.preventDefault()
+    if (onSuperadminAction?.('BROADCAST_FLASH_ALERT')?.allowed === false) return
     if (!flashAlertModalData) return
 
     const { notice } = flashAlertModalData
-
-    setNotices((prev) =>
-      prev.map((n) => {
-        if (n.id === notice.id) {
-          return {
-            ...n,
-            urgency: 'critical',
-            urgencyLabel: 'Panggilan Darurat (Flash Alert)',
-            isFlashAlert: true,
-            requiresAcknowledgement: true,
-            statusReason: 'Siaran Flash Alert Aktif. Aplikasi validator terkunci hingga konfirmasi diterima.'
-          }
-        }
-        return s
-      })
-    )
-
-    setFlashAlertModalData(null)
-    showToast(`Penyiaran Darurat (Flash Alert) aktif! Semua aplikasi validator diwajibkan melakukan konfirmasi sebelum kamera pemindai dapat digunakan.`)
+    setIsSubmitting(true)
+    try {
+      if (onBroadcastFlashAlert) {
+        await onBroadcastFlashAlert(notice.id)
+      } else {
+        setNotices((prev) =>
+          prev.map((n) => {
+            if (n.id === notice.id) {
+              return {
+                ...n,
+                urgency: 'critical',
+                urgencyLabel: 'Panggilan Darurat (Flash Alert)',
+                isFlashAlert: true,
+                requiresAcknowledgement: true,
+                statusReason: 'Siaran Flash Alert Aktif. Aplikasi validator terkunci hingga konfirmasi diterima.'
+              }
+            }
+            return n
+          })
+        )
+      }
+      setFlashAlertModalData(null)
+      if (selectedNotice && selectedNotice.id === notice.id) {
+        setSelectedNotice((prev) => (prev ? {
+          ...prev,
+          urgency: 'critical',
+          urgencyLabel: 'Panggilan Darurat (Flash Alert)',
+          isFlashAlert: true,
+          requiresAcknowledgement: true,
+          statusReason: 'Siaran Flash Alert Aktif. Aplikasi validator terkunci hingga konfirmasi diterima.'
+        } : null))
+      }
+      showToast(`Penyiaran Darurat (Flash Alert) aktif! Semua aplikasi validator diwajibkan melakukan konfirmasi sebelum kamera pemindai dapat digunakan.`)
+    } catch (err) {
+      showToast(`Gagal mengaktifkan Flash Alert: ${err.message || err}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Handle Archive / Restore Notice
-  const handleArchiveSubmit = (e) => {
-    if (onSuperadminAction?.('TOGGLE_ARCHIVE_NOTICE')?.allowed === false) return
+  const handleArchiveSubmit = async (e) => {
     e.preventDefault()
+    if (onSuperadminAction?.('TOGGLE_ARCHIVE_NOTICE')?.allowed === false) return
     if (!archiveModalData) return
 
     const { notice, isArchiving } = archiveModalData
-
-    setNotices((prev) =>
-      prev.map((n) => {
-        if (n.id === notice.id) {
-          return {
-            ...n,
-            status: isArchiving ? 'archived' : 'active',
-            statusLabel: isArchiving ? 'Diarsipkan' : 'Tayang Publik'
-          }
-        }
-        return n
-      })
-    )
-
-    setArchiveModalData(null)
-    const actText = isArchiving ? 'diarsipkan dari papan publik' : 'diaktifkan kembali'
-    showToast(`Pengumuman "${notice.title}" berhasil ${actText}!`)
+    setIsSubmitting(true)
+    try {
+      if (onToggleArchive) {
+        await onToggleArchive(notice.id, isArchiving)
+      } else {
+        setNotices((prev) =>
+          prev.map((n) => {
+            if (n.id === notice.id) {
+              return {
+                ...n,
+                status: isArchiving ? 'archived' : 'active',
+                statusLabel: isArchiving ? 'Diarsipkan' : 'Tayang Publik'
+              }
+            }
+            return n
+          })
+        )
+      }
+      setArchiveModalData(null)
+      setSelectedNotice(null)
+      const actText = isArchiving ? 'diarsipkan dari papan publik' : 'diaktifkan kembali'
+      showToast(`Pengumuman "${notice.title}" berhasil ${actText}!`)
+    } catch (err) {
+      showToast(`Gagal mengubah status arsip: ${err.message || err}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Handle Delete Notice
-  const handleDeleteSubmit = (e) => {
-    if (onSuperadminAction?.('DELETE_NOTICE')?.allowed === false) return
+  const handleDeleteSubmit = async (e) => {
     e.preventDefault()
+    if (onSuperadminAction?.('DELETE_NOTICE')?.allowed === false) return
     if (!deleteModalData) return
 
     const { notice } = deleteModalData
-    setNotices((prev) => prev.filter((n) => n.id !== notice.id))
-    setDeleteModalData(null)
-    showToast(`Pengumuman "${notice.title}" berhasil dihapus permanen!`)
+    setIsSubmitting(true)
+    try {
+      if (onDeleteNotice) {
+        await onDeleteNotice(notice.id)
+      } else {
+        setNotices((prev) => prev.filter((n) => n.id !== notice.id))
+      }
+      setDeleteModalData(null)
+      if (selectedNotice && selectedNotice.id === notice.id) {
+        setSelectedNotice(null)
+      }
+      showToast(`Pengumuman "${notice.title}" berhasil dihapus permanen!`)
+    } catch (err) {
+      showToast(`Gagal menghapus pengumuman: ${err.message || err}`)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -802,10 +888,191 @@ export function NoticesPanel({
       </div>
 
       {/* ====================================================================
-          MODAL 1: BUAT PENGUMUMAN BARU (COMPOSE NOTICE)
+          DRAWER: DETAIL PENGUMUMAN LENGKAP & BERKAS RESMI (z-50)
+          Placed BEFORE modals so any action modal opens cleanly on top (z-[70])
+          ==================================================================== */}
+      {selectedNotice && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedNotice(null)
+          }}
+          className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs animate-in fade-in"
+        >
+          <div className="w-full max-w-xl bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300 overflow-hidden">
+            {/* Drawer Header */}
+            <div className="px-6 py-4.5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-100 text-blue-700">
+                  <Megaphone className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-sm font-mono">{selectedNotice.refNumber}</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+                      {selectedNotice.categoryLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">{selectedNotice.publishedAt}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedNotice(null)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Drawer Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
+              {/* Urgency Alert Badge */}
+              <div
+                className={`p-3.5 rounded-xl border flex items-start gap-3 ${
+                  selectedNotice.urgency === 'critical'
+                    ? 'bg-rose-50 border-rose-200 text-rose-950'
+                    : selectedNotice.urgency === 'important'
+                    ? 'bg-amber-50 border-amber-200 text-amber-950'
+                    : 'bg-blue-50 border-blue-200 text-blue-950'
+                }`}
+              >
+                {selectedNotice.urgency === 'critical' ? (
+                  <ShieldAlert className="h-5 w-5 text-rose-800 shrink-0 mt-0.5" />
+                ) : selectedNotice.urgency === 'important' ? (
+                  <AlertTriangle className="h-5 w-5 text-amber-800 shrink-0 mt-0.5" />
+                ) : (
+                  <Megaphone className="h-5 w-5 text-blue-800 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-0.5">
+                  <div className="font-bold text-xs">{selectedNotice.urgencyLabel}</div>
+                  <p className="text-[11px] opacity-90">
+                    Sasaran: <strong>{selectedNotice.targetAudienceLabel}</strong> &bull; Cakupan: {selectedNotice.scopeRegion}
+                  </p>
+                </div>
+              </div>
+
+              {/* Title & Metadata */}
+              <div className="space-y-2">
+                <h2 className="text-base font-bold text-slate-900 leading-snug">
+                  {selectedNotice.title}
+                </h2>
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                  <div>
+                    Penerbit Resmi: <strong className="text-slate-800">{selectedNotice.author.name}</strong>
+                  </div>
+                  <div>Jabatan / Instansi: {selectedNotice.author.role}</div>
+                  <div className="font-mono text-slate-500">Masa Berlaku: {selectedNotice.effectiveDate}</div>
+                </div>
+              </div>
+
+              {/* Full Content */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-2">
+                <span className="font-bold text-slate-900 text-xs block">
+                  Isi Surat Edaran &amp; Arahan Kebijakan:
+                </span>
+                <div className="text-slate-700 leading-relaxed whitespace-pre-line text-xs font-sans">
+                  {selectedNotice.content}
+                </div>
+              </div>
+
+              {/* Attachments */}
+              {selectedNotice.attachments.length > 0 && (
+                <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 space-y-2">
+                  <span className="font-bold text-blue-950 text-xs flex items-center gap-1.5">
+                    <Paperclip className="h-3.5 w-3.5 text-blue-800" />
+                    <span>Lampiran Berkas PDF Resmi</span>
+                  </span>
+                  {selectedNotice.attachments.map((att, i) => (
+                    <div key={i} className="p-3 rounded-lg bg-white border border-blue-200 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-rose-800" />
+                        <div>
+                          <span className="font-semibold text-slate-900 block font-mono text-[11px]">{att.fileName}</span>
+                          <span className="text-[10px] text-emerald-700 font-medium">{att.verifiedSignature} ({att.fileSize})</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => showToast(`Berkas ${att.fileName} hanya nama berkas pada prototipe. Unduhan belum tersedia.`)}
+                        className="px-2.5 py-1.5 rounded-md bg-slate-50 text-slate-600 font-medium text-[11px] hover:bg-slate-100 flex items-center gap-1 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span>Belum ada berkas</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Acknowledgment Stats */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5 text-slate-600" />
+                    <span>Statistik Pembacaan &amp; Konfirmasi Lapangan</span>
+                  </span>
+                  <span className="font-mono font-bold text-slate-900 text-xs">
+                    {selectedNotice.acknowledgementStats.complianceRate}% Selesai
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-center">
+                  <div className="p-3 rounded-lg bg-white border border-slate-200">
+                    <span className="text-[11px] text-slate-500 block uppercase font-medium">Telah Konfirmasi</span>
+                    <span className="text-base font-bold font-mono text-emerald-800">
+                      {selectedNotice.acknowledgementStats.acknowledgedCount}
+                    </span>
+                    <span className="text-[11px] text-slate-500 block">Pengguna</span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-white border border-slate-200">
+                    <span className="text-[11px] text-slate-500 block uppercase font-medium">Belum Konfirmasi</span>
+                    <span className="text-base font-bold font-mono text-slate-700">
+                      {selectedNotice.acknowledgementStats.totalRecipients - selectedNotice.acknowledgementStats.acknowledgedCount}
+                    </span>
+                    <span className="text-[11px] text-slate-500 block">Pengguna</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Drawer Footer Actions */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setArchiveModalData({
+                    notice: selectedNotice,
+                    isArchiving: selectedNotice.status === 'active'
+                  })
+                }}
+                className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition cursor-pointer"
+              >
+                {selectedNotice.status === 'active' ? 'Arsipkan Maklumat' : 'Aktifkan Kembali'}
+              </button>
+
+              {!selectedNotice.isFlashAlert && selectedNotice.status === 'active' && (
+                <button
+                  onClick={() => {
+                    setFlashAlertModalData({ notice: selectedNotice })
+                  }}
+                  className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  <span>Siarkan Flash Alert</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================================
+          MODAL 1: BUAT PENGUMUMAN BARU (COMPOSE NOTICE) (z-[70])
           ==================================================================== */}
       {composeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setComposeModalOpen(false)
+          }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
           <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
               <div className="flex items-center gap-2.5">
@@ -982,10 +1249,11 @@ export function NoticesPanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="h-4 w-4" />
-                  <span>Siarkan Pengumuman</span>
+                  <span>{isSubmitting ? 'Menyiarkan...' : 'Siarkan Pengumuman'}</span>
                 </button>
               </div>
             </form>
@@ -994,10 +1262,15 @@ export function NoticesPanel({
       )}
 
       {/* ====================================================================
-          MODAL 2: PENYIARAN DARURAT (BROADCAST FLASH ALERT)
+          MODAL 2: PENYIARAN DARURAT (BROADCAST FLASH ALERT) (z-[70])
           ==================================================================== */}
       {flashAlertModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setFlashAlertModalData(null)
+          }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-rose-50/80">
               <div className="flex items-center gap-2.5">
@@ -1060,10 +1333,11 @@ export function NoticesPanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ShieldAlert className="h-4 w-4" />
-                  <span>Aktifkan Flash Alert Sekarang</span>
+                  <span>{isSubmitting ? 'Mengaktifkan...' : 'Aktifkan Flash Alert Sekarang'}</span>
                 </button>
               </div>
             </form>
@@ -1072,10 +1346,15 @@ export function NoticesPanel({
       )}
 
       {/* ====================================================================
-          MODAL 3: ARSIPKAN / RESTORE PENGUMUMAN
+          MODAL 3: ARSIPKAN / RESTORE PENGUMUMAN (z-[70])
           ==================================================================== */}
       {archiveModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setArchiveModalData(null)
+          }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
               <div className="flex items-center gap-2.5">
@@ -1119,10 +1398,17 @@ export function NoticesPanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Archive className="h-4 w-4" />
-                  <span>{archiveModalData.isArchiving ? 'Ya, Arsipkan' : 'Aktifkan Kembali'}</span>
+                  <span>
+                    {isSubmitting
+                      ? 'Menyimpan...'
+                      : archiveModalData.isArchiving
+                      ? 'Ya, Arsipkan'
+                      : 'Aktifkan Kembali'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -1131,10 +1417,15 @@ export function NoticesPanel({
       )}
 
       {/* ====================================================================
-          MODAL 4: HAPUS PERMANEN
+          MODAL 4: HAPUS PERMANEN (z-[70])
           ==================================================================== */}
       {deleteModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteModalData(null)
+          }}
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+        >
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-rose-50/80">
               <div className="flex items-center gap-2.5">
@@ -1173,10 +1464,11 @@ export function NoticesPanel({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold shadow-sm transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="h-4 w-4" />
-                  <span>Hapus Permanen</span>
+                  <span>{isSubmitting ? 'Menghapus...' : 'Hapus Permanen'}</span>
                 </button>
               </div>
             </form>
@@ -1184,175 +1476,6 @@ export function NoticesPanel({
         </div>
       )}
 
-      {/* ====================================================================
-          DRAWER: DETAIL PENGUMUMAN LENGKAP & BERKAS RESMI
-          ==================================================================== */}
-      {selectedNotice && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-xl bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300 overflow-hidden">
-            {/* Drawer Header */}
-            <div className="px-6 py-4.5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-100 text-blue-700">
-                  <Megaphone className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900 text-sm font-mono">{selectedNotice.refNumber}</span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
-                      {selectedNotice.categoryLabel}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500">{selectedNotice.publishedAt}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedNotice(null)}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Drawer Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
-              {/* Urgency Alert Badge */}
-              <div
-                className={`p-3.5 rounded-xl border flex items-start gap-3 ${
-                  selectedNotice.urgency === 'critical'
-                    ? 'bg-rose-50 border-rose-200 text-rose-950'
-                    : selectedNotice.urgency === 'important'
-                    ? 'bg-amber-50 border-amber-200 text-amber-950'
-                    : 'bg-blue-50 border-blue-200 text-blue-950'
-                }`}
-              >
-                {selectedNotice.urgency === 'critical' ? (
-                  <ShieldAlert className="h-5 w-5 text-rose-800 shrink-0 mt-0.5" />
-                ) : selectedNotice.urgency === 'important' ? (
-                  <AlertTriangle className="h-5 w-5 text-amber-800 shrink-0 mt-0.5" />
-                ) : (
-                  <Megaphone className="h-5 w-5 text-blue-800 shrink-0 mt-0.5" />
-                )}
-                <div className="space-y-0.5">
-                  <div className="font-bold text-xs">{selectedNotice.urgencyLabel}</div>
-                  <p className="text-[11px] opacity-90">
-                    Sasaran: <strong>{selectedNotice.targetAudienceLabel}</strong> &bull; Cakupan: {selectedNotice.scopeRegion}
-                  </p>
-                </div>
-              </div>
-
-              {/* Title & Metadata */}
-              <div className="space-y-2">
-                <h2 className="text-base font-bold text-slate-900 leading-snug">
-                  {selectedNotice.title}
-                </h2>
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
-                  <div>
-                    Penerbit Resmi: <strong className="text-slate-800">{selectedNotice.author.name}</strong>
-                  </div>
-                  <div>Jabatan / Instansi: {selectedNotice.author.role}</div>
-                  <div className="font-mono text-slate-500">Masa Berlaku: {selectedNotice.effectiveDate}</div>
-                </div>
-              </div>
-
-              {/* Full Content */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-2">
-                <span className="font-bold text-slate-900 text-xs block">
-                  Isi Surat Edaran &amp; Arahan Kebijakan:
-                </span>
-                <div className="text-slate-700 leading-relaxed whitespace-pre-line text-xs font-sans">
-                  {selectedNotice.content}
-                </div>
-              </div>
-
-              {/* Attachments */}
-              {selectedNotice.attachments.length > 0 && (
-                <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 space-y-2">
-                  <span className="font-bold text-blue-950 text-xs flex items-center gap-1.5">
-                    <Paperclip className="h-3.5 w-3.5 text-blue-800" />
-                    <span>Lampiran Berkas PDF Resmi</span>
-                  </span>
-                  {selectedNotice.attachments.map((att, i) => (
-                    <div key={i} className="p-3 rounded-lg bg-white border border-blue-200 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-rose-800" />
-                        <div>
-                          <span className="font-semibold text-slate-900 block font-mono text-[11px]">{att.fileName}</span>
-                          <span className="text-[10px] text-emerald-700 font-medium">{att.verifiedSignature} ({att.fileSize})</span>
-                        </div>
-                      </div>
-                        <button
-                          onClick={() => showToast(`Berkas ${att.fileName} hanya nama berkas pada prototipe. Unduhan belum tersedia.`)}
-                          className="px-2.5 py-1.5 rounded-md bg-slate-50 text-slate-600 font-medium text-[11px] hover:bg-slate-100 flex items-center gap-1 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          <span>Belum ada berkas</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Acknowledgment Stats */}
-              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5 text-slate-600" />
-                    <span>Statistik Pembacaan &amp; Konfirmasi Lapangan</span>
-                  </span>
-                  <span className="font-mono font-bold text-slate-900 text-xs">
-                    {selectedNotice.acknowledgementStats.complianceRate}% Selesai
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-center">
-                  <div className="p-3 rounded-lg bg-white border border-slate-200">
-                    <span className="text-[11px] text-slate-500 block uppercase font-medium">Telah Konfirmasi</span>
-                    <span className="text-base font-bold font-mono text-emerald-800">
-                      {selectedNotice.acknowledgementStats.acknowledgedCount}
-                    </span>
-                    <span className="text-[11px] text-slate-500 block">Pengguna</span>
-                  </div>
-                  <div className="p-3 rounded-lg bg-white border border-slate-200">
-                    <span className="text-[11px] text-slate-500 block uppercase font-medium">Belum Konfirmasi</span>
-                    <span className="text-base font-bold font-mono text-slate-700">
-                      {selectedNotice.acknowledgementStats.totalRecipients - selectedNotice.acknowledgementStats.acknowledgedCount}
-                    </span>
-                    <span className="text-[11px] text-slate-500 block">Pengguna</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Drawer Footer Actions */}
-            <div className="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2 shrink-0">
-              <button
-                onClick={() => {
-                  setArchiveModalData({
-                    notice: selectedNotice,
-                    isArchiving: selectedNotice.status === 'active'
-                  })
-                }}
-                className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition cursor-pointer"
-              >
-                {selectedNotice.status === 'active' ? 'Arsipkan Maklumat' : 'Aktifkan Kembali'}
-              </button>
-
-              {!selectedNotice.isFlashAlert && selectedNotice.status === 'active' && (
-                <button
-                  onClick={() => {
-                    setFlashAlertModalData({ notice: selectedNotice })
-                  }}
-                  className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <ShieldAlert className="h-3.5 w-3.5" />
-                  <span>Siarkan Flash Alert</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

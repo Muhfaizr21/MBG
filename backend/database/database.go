@@ -5,12 +5,14 @@ import (
 	"backend/models"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -46,6 +48,19 @@ func Close() {
 	if pool != nil {
 		pool.Close()
 	}
+}
+
+// RecordAuditLog inserts an audit event record into audit_logs table.
+func RecordAuditLog(ctx context.Context, actorID, action, target, detail string) error {
+	if pool == nil {
+		return errors.New("database pool not initialized")
+	}
+	id := "AUDIT-" + uuid.New().String()[:8]
+	_, err := pool.Exec(ctx, `
+		INSERT INTO audit_logs (id, actor_id, action, target, detail, at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+	`, id, actorID, action, target, detail)
+	return err
 }
 
 const schema = `
@@ -90,6 +105,7 @@ CREATE TABLE IF NOT EXISTS scan_logs (
 	visual_score   DOUBLE PRECISION NOT NULL DEFAULT 0,
 	holding_temp_c DOUBLE PRECISION,
 	release_temp_c DOUBLE PRECISION,
+	duration_ms    INT,
 	verdict        TEXT NOT NULL CHECK (verdict IN ('layak','peringatan','tolak')),
 	reason         TEXT NOT NULL DEFAULT '',
 	actor_id       TEXT NOT NULL,
@@ -115,6 +131,7 @@ func Migrate(ctx context.Context) error {
 	// Tambahkan kolom baru tanpa menghancurkan data
 	_, _ = pool.Exec(ctx, "ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS rating INT DEFAULT 0;")
 	_, _ = pool.Exec(ctx, "ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS feedback TEXT DEFAULT '';")
+	_, _ = pool.Exec(ctx, "ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS duration_ms INT;")
 
 	return nil
 }
