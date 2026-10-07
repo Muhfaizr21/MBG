@@ -1,118 +1,232 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Modal,
+  ActivityIndicator,
+  Pressable,
+} from 'react-native';
 import { UserCheck, Shield, School, ArrowRightLeft, LogOut, Mail } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useAuthRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
 import { getInitials } from '../../utils/initials';
 
 export const ProfileTabContent: React.FC = () => {
+  const router = useRouter();
   const { user: sessionUser, logout } = useAuth();
   const { user, role, toggleRole } = useAuthRole();
 
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const handleRoleToggle = () => {
-    Alert.alert(
-      'Ganti Role Aplikasi',
-      `Beralih ke role "${role === 'guru' ? 'Siswa (Penerima Manfaat)' : 'Guru (Validator)'}"?`,
-      [
-        { text: 'Batal', style: 'cancel' },
-        { text: 'Ganti Sekarang', onPress: toggleRole },
-      ]
-    );
+    setShowRoleModal(true);
+  };
+
+  const handleConfirmRoleToggle = () => {
+    toggleRole();
+    setShowRoleModal(false);
   };
 
   const handleLogout = () => {
-    Alert.alert('Keluar', 'Akhiri sesi Anda di aplikasi ini?', [
-      { text: 'Batal', style: 'cancel' },
-      { text: 'Keluar', style: 'destructive', onPress: () => void logout() },
-    ]);
+    setShowLogoutModal(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      setShowLogoutModal(false);
+      router.replace('/login');
+    } catch (err) {
+      console.warn('Logout error:', err);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>Profil Pengguna</Text>
-        <Text style={styles.subtitle}>Kelola akun & preferensi validasi MBG</Text>
-      </View>
-
-      <View style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{getInitials(user.name)}</Text>
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Profil Pengguna</Text>
+          <Text style={styles.subtitle}>Kelola akun & preferensi validasi MBG</Text>
         </View>
-        <Text style={styles.name}>{user.name}</Text>
-        <Text style={styles.roleTitle}>{user.roleTitle}</Text>
 
-        <View style={styles.badgeRow}>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>
-              {role === 'guru' ? 'Mode Guru / Validator' : 'Mode Siswa'}
+        <View style={styles.profileCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{getInitials(user.name)}</Text>
+          </View>
+          <Text style={styles.name}>{user.name}</Text>
+          <Text style={styles.roleTitle}>{user.roleTitle}</Text>
+
+          <View style={styles.badgeRow}>
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleBadgeText}>
+                {role === 'guru' ? 'Mode Guru / Validator' : 'Mode Siswa'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionHeader}>Informasi Penugasan</Text>
+
+          <View style={styles.itemRow}>
+            <Mail size={18} color="#64748B" />
+            <View style={styles.itemTextContainer}>
+              <Text style={styles.itemLabel}>Email Akun</Text>
+              <Text style={styles.itemValue}>{sessionUser?.email ?? '-'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.itemRow}>
+            <School size={18} color="#64748B" />
+            <View style={styles.itemTextContainer}>
+              <Text style={styles.itemLabel}>Sekolah Induk</Text>
+              <Text style={styles.itemValue}>{user.schoolName}</Text>
+            </View>
+          </View>
+
+          <View style={styles.itemRow}>
+            <Shield size={18} color="#64748B" />
+            <View style={styles.itemTextContainer}>
+              <Text style={styles.itemLabel}>NPSN</Text>
+              <Text style={styles.itemValue}>{user.npsn}</Text>
+            </View>
+          </View>
+
+          <View style={styles.itemRow}>
+            <UserCheck size={18} color="#64748B" />
+            <View style={styles.itemTextContainer}>
+              <Text style={styles.itemLabel}>Dapur SPPG Mitra</Text>
+              <Text style={styles.itemValue}>{user.assignedSPPG}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* SOLID Multi-Role Switcher */}
+        <TouchableOpacity
+          style={styles.switchRoleButton}
+          onPress={handleRoleToggle}
+          activeOpacity={0.85}
+        >
+          <ArrowRightLeft size={18} color="#FFFFFF" />
+          <Text style={styles.switchRoleText}>
+            Beralih ke Role {role === 'guru' ? 'Siswa' : 'Guru'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Keluar dari aplikasi"
+        >
+          <LogOut size={16} color="#EF4444" />
+          <Text style={styles.logoutText}>Keluar dari Aplikasi</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* Modal Konfirmasi Logout Cross-Platform */}
+      <Modal
+        visible={showLogoutModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isLoggingOut) setShowLogoutModal(false);
+        }}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            if (!isLoggingOut) setShowLogoutModal(false);
+          }}
+        >
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.logoutIconWrapper}>
+              <LogOut size={26} color="#EF4444" />
+            </View>
+            <Text style={styles.modalTitle}>Keluar dari Aplikasi</Text>
+            <Text style={styles.modalSubtitle}>
+              Apakah Anda yakin ingin mengakhiri sesi akun ini? Anda harus masuk kembali untuk menggunakan aplikasi.
             </Text>
-          </View>
-        </View>
-      </View>
 
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionHeader}>Informasi Penugasan</Text>
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowLogoutModal(false)}
+                disabled={isLoggingOut}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalCancelText}>Batal</Text>
+              </TouchableOpacity>
 
-        <View style={styles.itemRow}>
-          <Mail size={18} color="#64748B" />
-          <View style={styles.itemTextContainer}>
-            <Text style={styles.itemLabel}>Email Akun</Text>
-            <Text style={styles.itemValue}>{sessionUser?.email ?? '-'}</Text>
-          </View>
-        </View>
+              <TouchableOpacity
+                style={[styles.modalDangerButton, isLoggingOut && styles.buttonDisabled]}
+                onPress={handleConfirmLogout}
+                disabled={isLoggingOut}
+                activeOpacity={0.85}
+              >
+                {isLoggingOut ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalDangerText}>Ya, Keluar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
-        <View style={styles.itemRow}>
-          <School size={18} color="#64748B" />
-          <View style={styles.itemTextContainer}>
-            <Text style={styles.itemLabel}>Sekolah Induk</Text>
-            <Text style={styles.itemValue}>{user.schoolName}</Text>
-          </View>
-        </View>
-
-        <View style={styles.itemRow}>
-          <Shield size={18} color="#64748B" />
-          <View style={styles.itemTextContainer}>
-            <Text style={styles.itemLabel}>NPSN</Text>
-            <Text style={styles.itemValue}>{user.npsn}</Text>
-          </View>
-        </View>
-
-        <View style={styles.itemRow}>
-          <UserCheck size={18} color="#64748B" />
-          <View style={styles.itemTextContainer}>
-            <Text style={styles.itemLabel}>Dapur SPPG Mitra</Text>
-            <Text style={styles.itemValue}>{user.assignedSPPG}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* SOLID Multi-Role Switcher */}
-      <TouchableOpacity
-        style={styles.switchRoleButton}
-        onPress={handleRoleToggle}
-        activeOpacity={0.85}
+      {/* Modal Konfirmasi Ganti Role Cross-Platform */}
+      <Modal
+        visible={showRoleModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRoleModal(false)}
       >
-        <ArrowRightLeft size={18} color="#FFFFFF" />
-        <Text style={styles.switchRoleText}>
-          Beralih ke Role {role === 'guru' ? 'Siswa' : 'Guru'}
-        </Text>
-      </TouchableOpacity>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowRoleModal(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.roleIconWrapper}>
+              <ArrowRightLeft size={26} color="#D97706" />
+            </View>
+            <Text style={styles.modalTitle}>Ganti Role Tampilan</Text>
+            <Text style={styles.modalSubtitle}>
+              Beralih ke mode {role === 'guru' ? 'Siswa (Penerima Manfaat)' : 'Guru (Validator Lapangan)'}?
+            </Text>
 
-      <TouchableOpacity
-        style={styles.logoutButton}
-        onPress={handleLogout}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel="Keluar dari aplikasi"
-      >
-        <LogOut size={16} color="#EF4444" />
-        <Text style={styles.logoutText}>Keluar dari Aplikasi</Text>
-      </TouchableOpacity>
-    </ScrollView>
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowRoleModal(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalCancelText}>Batal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalPrimaryButton}
+                onPress={handleConfirmRoleToggle}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalPrimaryText}>Ganti Sekarang</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 };
 
@@ -255,5 +369,104 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#EF4444',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  logoutIconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  roleIconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FEF3C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 22,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  modalDangerButton: {
+    flex: 1,
+    backgroundColor: '#EF4444',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalDangerText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalPrimaryButton: {
+    flex: 1,
+    backgroundColor: '#EBA338',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPrimaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
 });

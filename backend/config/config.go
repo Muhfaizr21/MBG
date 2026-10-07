@@ -31,6 +31,7 @@ type Config struct {
 
 // LoadConfig initializes application configurations from environment variables with sensible defaults
 func LoadConfig() *Config {
+	loadEnvFile(".env.local")
 	loadEnvFile(".env")
 
 	port := getEnv("PORT", "8080")

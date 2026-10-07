@@ -22,12 +22,14 @@ interface GuruDashboardViewProps {
   onTriggerScan?: () => void;
   onOpenHandover?: () => void;
   onOpenIncident?: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const GuruDashboardView: React.FC<GuruDashboardViewProps> = ({
   onTriggerScan,
   onOpenHandover,
   onOpenIncident,
+  onOpenProfile,
 }) => {
   const [selectedDayId, setSelectedDayId] = useState<string>('d-4');
   const { user } = useAuthRole();
@@ -83,7 +85,7 @@ export const GuruDashboardView: React.FC<GuruDashboardViewProps> = ({
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      <DashboardHeader user={user} />
+      <DashboardHeader user={user} onOpenProfile={onOpenProfile} />
 
       <WeeklyCalendarStrip
         days={MOCK_WEEKLY_DAYS}

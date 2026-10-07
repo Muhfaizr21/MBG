@@ -1,60 +1,284 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Pressable,
+  Modal,
+  Dimensions,
+  ActivityIndicator,
+} from 'react-native';
+import { User, LogOut, ArrowRightLeft } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { UserProfile } from '../../types/role';
 import { useAuthRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
 import { getInitials } from '../../utils/initials';
 
 interface DashboardHeaderProps {
   user: UserProfile;
+  onOpenProfile?: () => void;
 }
 
-export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user }) => {
+export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ user, onOpenProfile }) => {
+  const router = useRouter();
+  const { logout } = useAuth();
   const { role, toggleRole } = useAuthRole();
   const isGuru = role === 'guru';
 
-  const handleRoleToggle = () => {
-    Alert.alert(
-      'Ganti Role (Pratinjau Multi-Role)',
-      `Saat ini Anda berada di role "${isGuru ? 'Guru (Validator)' : 'Siswa'}". Beralih ke role "${isGuru ? 'Siswa (Penerima Manfaat)' : 'Guru'}"?`,
-      [
-        { text: 'Batal', style: 'cancel' },
-        { text: 'Ya, Ganti Role', onPress: toggleRole },
-      ]
-    );
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showRoleConfirm, setShowRoleConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const avatarRef = useRef<View>(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 68, right: 20 });
+
+  const handleAvatarPress = () => {
+    if (isProfileMenuOpen) {
+      setIsProfileMenuOpen(false);
+      return;
+    }
+
+    if (avatarRef.current && typeof avatarRef.current.measureInWindow === 'function') {
+      avatarRef.current.measureInWindow((x, y, width, height) => {
+        if (typeof y === 'number' && typeof height === 'number') {
+          const windowWidth = Dimensions.get('window').width;
+          const right = Math.max(16, windowWidth - (x + width));
+          setMenuPosition({
+            top: y + height + 6,
+            right,
+          });
+        }
+        setIsProfileMenuOpen(true);
+      });
+    } else {
+      setIsProfileMenuOpen(true);
+    }
+  };
+
+  const handleSelectProfile = () => {
+    setIsProfileMenuOpen(false);
+    if (onOpenProfile) {
+      onOpenProfile();
+    } else {
+      router.push('/' as any);
+    }
+  };
+
+  const handleSelectLogout = () => {
+    setIsProfileMenuOpen(false);
+    setShowLogoutConfirm(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      setShowLogoutConfirm(false);
+      router.replace('/login');
+    } catch (err) {
+      console.warn('Logout error:', err);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.leftColumn}>
-        <Text style={styles.greetingText}>Halo, {user.name}</Text>
-        <View style={styles.subtitleRow}>
-          <Text style={styles.schoolText}>{user.schoolName}</Text>
-          <Text style={styles.dotSeparator}>·</Text>
-          {/* Label role adalah status nyata (role aktif) sekaligus satu-satunya
-              kontrol ganti role, jadi badge ini berfungsi, bukan hiasan (R-09). */}
-          <TouchableOpacity
-            style={[styles.roleBadge, isGuru ? styles.guruBadge : styles.siswaBadge]}
-            onPress={handleRoleToggle}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={`Role aktif: ${isGuru ? 'Guru Validator' : 'Siswa'}`}
-            accessibilityHint="Ganti role pratinjau"
-          >
-            <Text style={styles.roleBadgeText}>{isGuru ? 'Guru Validator' : 'Siswa'}</Text>
-          </TouchableOpacity>
+    <>
+      <View style={styles.container}>
+        <View style={styles.leftColumn}>
+          <Text style={styles.greetingText}>Halo, {user.name}</Text>
+          <View style={styles.subtitleRow}>
+            <Text style={styles.schoolText}>{user.schoolName}</Text>
+            <Text style={styles.dotSeparator}>·</Text>
+            <TouchableOpacity
+              style={[styles.roleBadge, isGuru ? styles.guruBadge : styles.siswaBadge]}
+              onPress={() => setShowRoleConfirm(true)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Role aktif: ${isGuru ? 'Guru Validator' : 'Siswa'}`}
+              accessibilityHint="Ganti role pratinjau"
+            >
+              <Text style={styles.roleBadgeText}>{isGuru ? 'Guru Validator' : 'Siswa'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Interactive Avatar Button */}
+        <TouchableOpacity
+          ref={avatarRef}
+          onPress={handleAvatarPress}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Menu akun pengguna ${user.name}`}
+          accessibilityHint="Buka opsi profil dan keluar"
+          style={styles.avatarButton}
+        >
+          <View
+            style={[
+              styles.avatar,
+              isProfileMenuOpen && styles.avatarActive,
+            ]}
+          >
+            <Text style={styles.avatarText}>{getInitials(user.name)}</Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
-      {/* Avatar inisial, bukan foto orang: belum ada sumber foto pengguna
-          yang terverifikasi (R-18, R-23). */}
-      <View
-        style={styles.avatar}
-        accessible
-        accessibilityLabel={`Pengguna ${user.name}, ${user.roleTitle}`}
+      {/* Dropdown Menu Popover */}
+      <Modal
+        visible={isProfileMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsProfileMenuOpen(false)}
       >
-        <Text style={styles.avatarText}>{getInitials(user.name)}</Text>
-      </View>
-    </View>
+        <Pressable
+          style={styles.dropdownBackdrop}
+          onPress={() => setIsProfileMenuOpen(false)}
+        >
+          <View
+            style={[
+              styles.menuContainer,
+              { top: menuPosition.top, right: menuPosition.right },
+            ]}
+          >
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              {/* Header Mini Info */}
+              <View style={styles.menuHeader}>
+                <Text style={styles.menuHeaderName} numberOfLines={1}>
+                  {user.name}
+                </Text>
+                <Text style={styles.menuHeaderRole} numberOfLines={1}>
+                  {isGuru ? 'Guru Validator' : 'Siswa'} · {user.schoolName}
+                </Text>
+              </View>
+
+              <View style={styles.menuDivider} />
+
+              {/* Opsi 1: Profil */}
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={handleSelectProfile}
+                accessibilityRole="button"
+                accessibilityLabel="Lihat Profil"
+              >
+                <User size={18} color="#475569" />
+                <Text style={styles.menuItemTextProfil}>Profil</Text>
+              </Pressable>
+
+              <View style={styles.menuDivider} />
+
+              {/* Opsi 2: Keluar */}
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={handleSelectLogout}
+                accessibilityRole="button"
+                accessibilityLabel="Keluar dari Akun"
+              >
+                <LogOut size={18} color="#EF4444" />
+                <Text style={styles.menuItemTextKeluar}>Keluar</Text>
+              </Pressable>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Dialog Konfirmasi Logout */}
+      <Modal
+        visible={showLogoutConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isLoggingOut) setShowLogoutConfirm(false);
+        }}
+      >
+        <Pressable
+          style={styles.dialogBackdrop}
+          onPress={() => {
+            if (!isLoggingOut) setShowLogoutConfirm(false);
+          }}
+        >
+          <Pressable style={styles.dialogCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.logoutIconWrapper}>
+              <LogOut size={26} color="#EF4444" />
+            </View>
+            <Text style={styles.dialogTitle}>Keluar dari Aplikasi</Text>
+            <Text style={styles.dialogSubtitle}>
+              Apakah Anda yakin ingin mengakhiri sesi akun ini? Anda harus masuk kembali untuk menggunakan aplikasi.
+            </Text>
+
+            <View style={styles.dialogButtonsRow}>
+              <TouchableOpacity
+                style={styles.dialogCancelButton}
+                onPress={() => setShowLogoutConfirm(false)}
+                disabled={isLoggingOut}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.dialogCancelText}>Batal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.dialogDestructiveButton, isLoggingOut && styles.buttonDisabled]}
+                onPress={handleConfirmLogout}
+                disabled={isLoggingOut}
+                activeOpacity={0.85}
+              >
+                {isLoggingOut ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.dialogDestructiveText}>Ya, Keluar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Dialog Konfirmasi Ganti Role */}
+      <Modal
+        visible={showRoleConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRoleConfirm(false)}
+      >
+        <Pressable
+          style={styles.dialogBackdrop}
+          onPress={() => setShowRoleConfirm(false)}
+        >
+          <Pressable style={styles.dialogCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.roleIconWrapper}>
+              <ArrowRightLeft size={26} color="#D97706" />
+            </View>
+            <Text style={styles.dialogTitle}>Ganti Role Tampilan</Text>
+            <Text style={styles.dialogSubtitle}>
+              Beralih ke mode {isGuru ? 'Siswa (Penerima Manfaat)' : 'Guru (Validator Lapangan)'}?
+            </Text>
+
+            <View style={styles.dialogButtonsRow}>
+              <TouchableOpacity
+                style={styles.dialogCancelButton}
+                onPress={() => setShowRoleConfirm(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.dialogCancelText}>Batal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.dialogPrimaryButton}
+                onPress={() => {
+                  toggleRole();
+                  setShowRoleConfirm(false);
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.dialogPrimaryText}>Ganti Sekarang</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
   );
 };
 
@@ -109,6 +333,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#7C4A03',
   },
+  avatarButton: {
+    borderRadius: 22,
+  },
   avatar: {
     width: 44,
     height: 44,
@@ -116,10 +343,177 @@ const styles = StyleSheet.create({
     backgroundColor: '#EBA338',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  avatarActive: {
+    borderColor: '#7C4A03',
+    transform: [{ scale: 1.05 }],
   },
   avatarText: {
     fontSize: 15,
     fontWeight: '700',
     color: '#1E293B',
+  },
+
+  // Dropdown Menu Styles (Sesuai spesifikasi prompt)
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  menuContainer: {
+    position: 'absolute',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0', // border-gray-200
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 10, // shadow-lg
+    minWidth: 190,
+    overflow: 'hidden',
+  },
+  menuHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    backgroundColor: '#F8FAFC',
+  },
+  menuHeaderName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  menuHeaderRole: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16, // px-4
+    paddingVertical: 12,   // py-3
+    gap: 10,
+  },
+  menuItemPressed: {
+    backgroundColor: '#F1F5F9', // bg-gray-100 hover/press state
+  },
+  menuItemTextProfil: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B', // standard dark text
+  },
+  menuItemTextKeluar: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444', // text-red-500
+  },
+
+  // Dialog Styles
+  dialogBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  dialogCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  logoutIconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  roleIconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FEF3C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  dialogTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  dialogSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 22,
+  },
+  dialogButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  dialogCancelButton: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  dialogDestructiveButton: {
+    flex: 1,
+    backgroundColor: '#EF4444',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogDestructiveText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  dialogPrimaryButton: {
+    flex: 1,
+    backgroundColor: '#EBA338',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogPrimaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
 });

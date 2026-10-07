@@ -7,9 +7,13 @@ import { readMacros } from '../../utils/nutrition';
 
 const HEADLINE_MACROS = ['energi', 'protein', 'serat'] as const;
 
+interface SiswaDashboardViewProps {
+  onOpenProfile?: () => void;
+}
+
 // Role siswa tidak punya tombol ganti role sendiri: badge role di header sudah
 // cukup untuk itu. Dua kontrol untuk hal yang sama bikin ragu.
-export const SiswaDashboardView: React.FC = () => {
+export const SiswaDashboardView: React.FC<SiswaDashboardViewProps> = ({ onOpenProfile }) => {
   const { user } = useAuthRole();
   const macros = useMemo(() => readMacros(SCAN_GRADE_BAND, MOCK_MACRO_ESTIMATE), []);
   const headline = macros.filter((macro) =>
@@ -22,7 +26,7 @@ export const SiswaDashboardView: React.FC = () => {
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      <DashboardHeader user={user} />
+      <DashboardHeader user={user} onOpenProfile={onOpenProfile} />
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Menu hari ini</Text>

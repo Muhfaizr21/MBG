@@ -52,9 +52,10 @@ export default function MobileAppEntry() {
             onTriggerScan={handleCenterAction}
             onOpenHandover={() => setFlowScreen('handover')}
             onOpenIncident={() => setFlowScreen('incident')}
+            onOpenProfile={() => setActiveTab('profile')}
           />
         ) : (
-          <SiswaDashboardView />
+          <SiswaDashboardView onOpenProfile={() => setActiveTab('profile')} />
         );
       case 'explore':
         return <ExploreTabContent />;

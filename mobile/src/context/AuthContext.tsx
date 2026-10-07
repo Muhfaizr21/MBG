@@ -62,9 +62,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await logoutRequest();
-    setUser(null);
-    setPermissions([]);
+    try {
+      await logoutRequest();
+    } catch (err) {
+      console.warn('Logout request failed:', err);
+    } finally {
+      setUser(null);
+      setPermissions([]);
+    }
   }, []);
 
   const value = useMemo(
