@@ -1,19 +1,66 @@
 import { useState, useEffect } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
+import { useAuth } from '../../context/AuthContext'
+import { guardAdminAction } from '../../lib/adminActions'
 import { SchoolsPanel } from '../../components/dashboard/SchoolsPanel'
 import { INITIAL_SCHOOLS_LIST } from '../../data/schoolsData'
+import { fetchSchools } from '../../lib/api'
 
 /**
  * ==============================================================================
  * HALAMAN SUPERADMIN: SEKOLAH BINAAN (PANGKALAN DATA MASTER NPSN & LAST-MILE)
  * URL: /admin/schools
  * Arsitektur: Clean Code (AdminLayout + SchoolsPanel)
- * Regulasi: Bab 3.2.1 Titik Serah Terima Akhir Distribusi MBG
+ * Sumber Data: Database PostgreSQL via REST API Gateway Golang
  * ==============================================================================
  */
 
 export function SchoolsPage() {
+  const { user } = useAuth()
   const [toast, setToast] = useState(null)
+  const [schools, setSchools] = useState(INITIAL_SCHOOLS_LIST)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let isMounted = true
+    fetchSchools()
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          const mapped = data.map((s) => ({
+            ...s,
+            id: s.id || `SCH-${s.npsn}`,
+            coordinates: { lat: s.lat || -6.198, lng: s.lng || 106.832 },
+            principal: {
+              name: s.principalName || 'Kepala Sekolah',
+              nip: s.principalNip || '-',
+              phone: s.principalPhone || '-',
+              email: s.principalEmail || '-',
+            },
+            demographics: {
+              totalStudents: s.totalStudents || 450,
+              totalCalorieTarget: s.totalCalorieTarget || 232800,
+              dietaryNotes: s.dietaryNotes || 'Standar gizi terpenuhi',
+            },
+            sppgSupplier: {
+              id: s.sppgId || 'SPPG-01',
+              name: s.sppgId === 'SPPG-04' ? 'SPPG Sentral Sukajadi Bandung' : 'SPPG Sentral Menteng 01',
+              transitStatus: 'safe',
+            },
+          }))
+          setSchools(mapped)
+        }
+      })
+      .catch((err) => {
+        console.warn('Menggunakan data awal sekolah:', err)
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!toast) return
@@ -22,14 +69,16 @@ export function SchoolsPage() {
   }, [toast])
 
   const handleSuperadminAction = (action, payload) => {
-    console.log(`[Superadmin Schools Action] ${action}:`, payload)
+    const res = guardAdminAction(user, 'Schools', action, payload)
+    if (!res.allowed) setToast(res.message)
+    return res
   }
 
   return (
     <AdminLayout
       activeMenu="schools"
       title="Sekolah Binaan"
-      badge="NPSN REGISTRY"
+      badge={loading ? 'MEMUAT...' : 'POSTGRESQL LIVE'}
       showSearch={false}
     >
       {toast && (
@@ -44,7 +93,7 @@ export function SchoolsPage() {
       )}
 
       <SchoolsPanel
-        schoolsList={INITIAL_SCHOOLS_LIST}
+        schoolsList={schools}
         onSuperadminAction={handleSuperadminAction}
         showToast={setToast}
       />

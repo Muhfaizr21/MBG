@@ -1,28 +1,112 @@
 package config
 
 import (
+	"bufio"
 	"os"
+	"strconv"
+	"strings"
 )
 
 type Config struct {
 	Port   string
 	AppEnv string
+
+	DBHost     string
+	DBPort     int
+	DBUser     string
+	DBPassword string
+	DBName     string
+	DBSSLMode  string
+
+	JWTSecret           string
+	JWTAccessTTLMinutes int
+	JWTRefreshTTLHours  int
+	CORSOrigins         []string
+
+	AIBackendURL string
+
+	// NutritionDataPath: path CSV dataset gizi (backend/data/dataset_nutrisi_kasar.csv).
+	NutritionDataPath string
 }
 
 // LoadConfig initializes application configurations from environment variables with sensible defaults
 func LoadConfig() *Config {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	loadEnvFile(".env")
+
+	port := getEnv("PORT", "8080")
+	appEnv := getEnv("APP_ENV", "development")
+
+	dbPort, err := strconv.Atoi(getEnv("DB_PORT", "5432"))
+	if err != nil {
+		dbPort = 5432
 	}
 
-	appEnv := os.Getenv("APP_ENV")
-	if appEnv == "" {
-		appEnv = "development"
+	accessTTL, err := strconv.Atoi(getEnv("JWT_ACCESS_TTL_MINUTES", "15"))
+	if err != nil {
+		accessTTL = 15
+	}
+
+	refreshTTL, err := strconv.Atoi(getEnv("JWT_REFRESH_TTL_HOURS", "168"))
+	if err != nil {
+		refreshTTL = 168
 	}
 
 	return &Config{
 		Port:   port,
 		AppEnv: appEnv,
+
+		DBHost:     getEnv("DB_HOST", "127.0.0.1"),
+		DBPort:     dbPort,
+		DBUser:     getEnv("DB_USER", "kawangizi"),
+		DBPassword: getEnv("DB_PASSWORD", "kawangizi123"),
+		DBName:     getEnv("DB_NAME", "kawangizi"),
+		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
+
+		JWTSecret:           getEnv("JWT_SECRET", "kawangizi-dev-secret-ganti-di-produksi"),
+		JWTAccessTTLMinutes: accessTTL,
+		JWTRefreshTTLHours:  refreshTTL,
+		CORSOrigins:         strings.Split(getEnv("CORS_ORIGINS", "http://localhost:5173,http://localhost:4173,http://localhost:8081,http://127.0.0.1:8081"), ","),
+
+		AIBackendURL: getEnv("AI_BACKEND_URL", "http://127.0.0.1:8083"),
+
+		NutritionDataPath: getEnv("NUTRITION_DATA_PATH", "data/dataset_nutrisi_kasar.csv"),
+	}
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok && value != "" {
+		return value
+	}
+	return fallback
+}
+
+// loadEnvFile reads a dotenv-style file without overriding existing environment variables.
+// A missing file is ignored so the application still runs with defaults.
+func loadEnvFile(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		value = strings.Trim(value, `"'`)
+		if key == "" {
+			continue
+		}
+		if _, exists := os.LookupEnv(key); !exists {
+			os.Setenv(key, value)
+		}
 	}
 }

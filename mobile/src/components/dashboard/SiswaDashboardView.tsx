@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { DashboardHeader } from './DashboardHeader';
-import { MOCK_SISWA_USER } from '../../data/mockValidatorData';
+import { useAuthRole } from '../../context/RoleContext';
 import { MOCK_MACRO_ESTIMATE, SCAN_GRADE_BAND } from '../../data/mockScannerData';
 import { readMacros } from '../../utils/nutrition';
 
@@ -10,6 +10,7 @@ const HEADLINE_MACROS = ['energi', 'protein', 'serat'] as const;
 // Role siswa tidak punya tombol ganti role sendiri: badge role di header sudah
 // cukup untuk itu. Dua kontrol untuk hal yang sama bikin ragu.
 export const SiswaDashboardView: React.FC = () => {
+  const { user } = useAuthRole();
   const macros = useMemo(() => readMacros(SCAN_GRADE_BAND, MOCK_MACRO_ESTIMATE), []);
   const headline = macros.filter((macro) =>
     (HEADLINE_MACROS as readonly string[]).includes(macro.key),
@@ -21,7 +22,7 @@ export const SiswaDashboardView: React.FC = () => {
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      <DashboardHeader user={MOCK_SISWA_USER} />
+      <DashboardHeader user={user} />
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Menu hari ini</Text>

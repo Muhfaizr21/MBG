@@ -156,6 +156,7 @@ export function FeedbackPanel({
 
   // Handle Execute Emergency Kill-Switch
   const handleExecuteKillSwitch = (ticket) => {
+    if (onSuperadminAction?.('EXECUTE_KILL_SWITCH')?.allowed === false) return
     setTickets((prev) =>
       prev.map((t) => {
         if (t.id === ticket.id) {
@@ -183,12 +184,12 @@ export function FeedbackPanel({
 
     setKillSwitchModalData(null)
     showToast(`EMERGENCY KILL-SWITCH DIAKTIFKAN! Seluruh sekolah penerima batch ${ticket.batchId} DILARANG MEMBAGIKAN PORSI!`)
-    onSuperadminAction('EXECUTE_KILL_SWITCH', { ticketId: ticket.id, batchId: ticket.batchId })
   }
 
   // Handle Create Ticket Submit
   const handleCreateTicketSubmit = (e) => {
     e.preventDefault()
+    if (onSuperadminAction?.('CREATE_TICKET')?.allowed === false) return
     if (!newTicketForm.title || !newTicketForm.schoolName) {
       showToast('Mohon lengkapi judul dan nama sekolah!')
       return
@@ -258,11 +259,11 @@ export function FeedbackPanel({
     setTickets([newTicket, ...tickets])
     setCreateTicketModalOpen(false)
     showToast(`Tiket aduan darurat ${newTicket.ticketNumber} berhasil didaftarkan ke Pusat Triage!`)
-    onSuperadminAction('CREATE_TICKET', newTicket)
   }
 
   // Handle Close Ticket Submit
   const handleCloseTicketSubmit = (e) => {
+    if (onSuperadminAction?.('CLOSE_TICKET')?.allowed === false) return
     e.preventDefault()
     if (!closeTicketModalData) return
 
@@ -284,7 +285,6 @@ export function FeedbackPanel({
     const tNum = closeTicketModalData.ticketNumber
     setCloseTicketModalData(null)
     showToast(`Tiket aduan ${tNum} resmi DITUTUP setelah verifikasi kompensasi dan Berita Acara Uji Lab!`)
-    onSuperadminAction('CLOSE_TICKET', { ticketId: closeTicketModalData.id })
   }
 
   return (
@@ -701,7 +701,7 @@ export function FeedbackPanel({
                           <strong className="text-slate-900 text-sm font-mono">{t.batchId}</strong>
                         </div>
                         <p className="text-xs text-slate-500 mt-1">
-                          Produsen: <strong>{t.sppgName}</strong> ({t.sppgId}) • Menu: {t.menuPackage}
+                          Produsen: <strong>{t.sppgName}</strong> ({t.sppgId}) Ã¢â‚¬Â¢ Menu: {t.menuPackage}
                         </p>
                       </div>
 
@@ -1021,7 +1021,7 @@ export function FeedbackPanel({
               {selectedTicketDetail.medicalEscalation.escalated && (
                 <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 space-y-1">
                   <strong className="block font-bold">Status Siaga Medis:</strong>
-                  <p>{selectedTicketDetail.medicalEscalation.healthCenter} • {selectedTicketDetail.medicalEscalation.doctorInCharge}</p>
+                  <p>{selectedTicketDetail.medicalEscalation.healthCenter} Ã¢â‚¬Â¢ {selectedTicketDetail.medicalEscalation.doctorInCharge}</p>
                   <p className="text-[11px] font-semibold text-blue-700">Status: {selectedTicketDetail.medicalEscalation.dispatchStatus}</p>
                 </div>
               )}

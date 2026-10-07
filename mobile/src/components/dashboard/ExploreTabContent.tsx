@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { CheckCircle2, Clock, AlertTriangle, ChevronRight } from 'lucide-react-native';
+import { CheckCircle2, Clock, ChevronRight } from 'lucide-react-native';
 
 export const ExploreTabContent: React.FC = () => {
   const totes = [

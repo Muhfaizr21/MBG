@@ -24,7 +24,6 @@ import {
   Sparkles,
   Check,
   Clock,
-  Printer,
 } from 'lucide-react-native';
 import { BottomSheet } from '../ui/BottomSheet';
 import {

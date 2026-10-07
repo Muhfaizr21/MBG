@@ -194,6 +194,7 @@ export function SchoolsPanel({
   // Handle Onboarding New School
   const handleOnboardSubmit = (e) => {
     e.preventDefault()
+    if (onSuperadminAction?.('ONBOARD_SCHOOL')?.allowed === false) return
     if (!newSchoolForm.npsn || !newSchoolForm.name) {
       showToast('NPSN dan Nama Sekolah wajib diisi!')
       return
@@ -264,11 +265,11 @@ export function SchoolsPanel({
     setSchools([newSchoolItem, ...schools])
     setOnboardModalOpen(false)
     showToast(`Sekolah ${newSchoolItem.name} (NPSN: ${newSchoolItem.npsn}) berhasil didaftarkan ke jaringan MBG!`)
-    onSuperadminAction('ONBOARD_SCHOOL', newSchoolItem)
   }
 
   // Handle Reassign SPPG
   const handleReassignSubmit = (e) => {
+    if (onSuperadminAction?.('REASSIGN_SPPG')?.allowed === false) return
     e.preventDefault()
     if (!reassignModalData) return
 
@@ -305,11 +306,11 @@ export function SchoolsPanel({
 
     setReassignModalData(null)
     showToast(`Alokasi dapur penyuplai untuk ${school.name} berhasil dipindahkan ke ${selectedSppgObj.name}!`)
-    onSuperadminAction('REASSIGN_SPPG', { schoolId: school.id, targetSppgId, reason })
   }
 
   // Handle Update Emergency Contacts
   const handleUpdateContactSubmit = (e) => {
+    if (onSuperadminAction?.('UPDATE_EMERGENCY_CONTACTS')?.allowed === false) return
     e.preventDefault()
     if (!contactModalData) return
 
@@ -343,11 +344,11 @@ export function SchoolsPanel({
 
     setContactModalData(null)
     showToast(`Data kontak darurat dan Puskesmas rujukan untuk ${school.name} berhasil diperbarui!`)
-    onSuperadminAction('UPDATE_EMERGENCY_CONTACTS', { schoolId: school.id, formData })
   }
 
   // Handle Temporarily Suspend / Reactivate School
   const handleSuspendSubmit = (e) => {
+    if (onSuperadminAction?.('TOGGLE_SCHOOL_STATUS')?.allowed === false) return
     e.preventDefault()
     if (!suspendModalData) return
 
@@ -379,7 +380,6 @@ export function SchoolsPanel({
     setSuspendModalData(null)
     const actText = isDeactivating ? 'dinonaktifkan sementara' : 'diaktifkan kembali'
     showToast(`Status alokasi distribusi untuk ${school.name} berhasil ${actText}!`)
-    onSuperadminAction('TOGGLE_SCHOOL_STATUS', { schoolId: school.id, isDeactivating, reason, returnDate })
   }
 
   return (
@@ -596,9 +596,9 @@ export function SchoolsPanel({
             </span>
             {[
               { id: 'all', label: 'Semua Jenjang' },
-              { id: 'SD', label: 'SD (7–12 Thn)' },
-              { id: 'MI', label: 'MI (7–12 Thn)' },
-              { id: 'SMP', label: 'SMP (13–15 Thn)' }
+              { id: 'SD', label: 'SD (7Ã¢â‚¬â€œ12 Thn)' },
+              { id: 'MI', label: 'MI (7Ã¢â‚¬â€œ12 Thn)' },
+              { id: 'SMP', label: 'SMP (13Ã¢â‚¬â€œ15 Thn)' }
             ].map((chip) => (
               <button
                 key={chip.id}
@@ -1023,7 +1023,7 @@ export function SchoolsPanel({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[11px] text-slate-600 font-medium mb-1">
-                      SD Bawah (7–9 thn / 480 kkal)
+                      SD Bawah (7Ã¢â‚¬â€œ9 thn / 480 kkal)
                     </label>
                     <input
                       type="number"
@@ -1035,7 +1035,7 @@ export function SchoolsPanel({
                   </div>
                   <div>
                     <label className="block text-[11px] text-slate-600 font-medium mb-1">
-                      SD Atas (10–12 thn / 550 kkal)
+                      SD Atas (10Ã¢â‚¬â€œ12 thn / 550 kkal)
                     </label>
                     <input
                       type="number"
@@ -1047,7 +1047,7 @@ export function SchoolsPanel({
                   </div>
                   <div>
                     <label className="block text-[11px] text-slate-600 font-medium mb-1">
-                      SMP (13–15 thn / 650 kkal)
+                      SMP (13Ã¢â‚¬â€œ15 thn / 650 kkal)
                     </label>
                     <input
                       type="number"
@@ -1111,7 +1111,7 @@ export function SchoolsPanel({
               {/* Row 7: Alokasi Dapur SPPG Penyuplai */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Alokasi Dapur SPPG Penyuplai (Radius Aman &le; 30–45 Menit)
+                  Alokasi Dapur SPPG Penyuplai (Radius Aman &le; 30Ã¢â‚¬â€œ45 Menit)
                 </label>
                 <select
                   value={newSchoolForm.sppgId}
@@ -1681,21 +1681,21 @@ export function SchoolsPanel({
 
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100">
-                        <span className="text-[10px] text-emerald-800 font-bold block">SD Bawah (7–9 thn)</span>
+                        <span className="text-[10px] text-emerald-800 font-bold block">SD Bawah (7Ã¢â‚¬â€œ9 thn)</span>
                         <span className="text-base font-bold font-mono text-emerald-900">
                           {selectedSchool.demographics.lowerGrade}
                         </span>
                         <span className="text-[10px] text-emerald-700 block mt-0.5">480 kkal/porsi</span>
                       </div>
                       <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
-                        <span className="text-[10px] text-blue-800 font-bold block">SD Atas (10–12 thn)</span>
+                        <span className="text-[10px] text-blue-800 font-bold block">SD Atas (10Ã¢â‚¬â€œ12 thn)</span>
                         <span className="text-base font-bold font-mono text-blue-900">
                           {selectedSchool.demographics.upperGrade}
                         </span>
                         <span className="text-[10px] text-blue-700 block mt-0.5">550 kkal/porsi</span>
                       </div>
                       <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
-                        <span className="text-[10px] text-blue-800 font-bold block">SMP (13–15 thn)</span>
+                        <span className="text-[10px] text-blue-800 font-bold block">SMP (13Ã¢â‚¬â€œ15 thn)</span>
                         <span className="text-base font-bold font-mono text-blue-900">
                           {selectedSchool.demographics.smpGrade}
                         </span>

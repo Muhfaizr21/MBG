@@ -1,18 +1,43 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { navigate } from '../App'
 import loginArt from '../assets/login-art.png'
+import { registerRequest } from '../lib/api'
+import { findRegisterSppg, REGISTER_SPPG_OPTIONS } from '../data/registerData'
 
 export function RegisterPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [sppgId, setSppgId] = useState('')
+  const [kecamatanId, setKecamatanId] = useState('')
+  const [schoolId, setSchoolId] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const [success, setSuccess] = useState('')
   const [error, setError] = useState(null)
 
-  const handleSubmit = (e) => {
+  const sppg = useMemo(() => findRegisterSppg(sppgId), [sppgId])
+  const kecamatan = useMemo(
+    () => sppg?.kecamatanOptions.find((k) => k.id === kecamatanId) || null,
+    [sppg, kecamatanId]
+  )
+  const school = useMemo(
+    () => (kecamatan?.schools.find((s) => s.id === schoolId) || null),
+    [kecamatan, schoolId]
+  )
+
+  const onSelectSppg = (id) => {
+    setSppgId(id)
+    setKecamatanId('')
+    setSchoolId('')
+  }
+  const onSelectKecamatan = (id) => {
+    setKecamatanId(id)
+    setSchoolId('')
+  }
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    // Prototype: no account is created, so this must not claim it was.
     if (!name.trim() || !email.trim()) {
       setError('Isi nama dan email terlebih dahulu.')
       return
@@ -21,9 +46,29 @@ export function RegisterPage() {
       setError('Kata sandi minimal 8 karakter.')
       return
     }
+    if (!sppg || !kecamatan || !school) {
+      setError('Pilih dapur SPPG, kecamatan, dan sekolah terlebih dahulu.')
+      return
+    }
     setError(null)
+    setSuccess('')
     setSubmitted(true)
-    setTimeout(() => navigate('/login'), 600)
+    try {
+      await registerRequest({
+        fullName: name.trim(),
+        email: email.trim(),
+        password,
+        role: 'validator',
+        npsn: school.npsn,
+        schoolName: school.name,
+        sppgId: sppg.id,
+      })
+      setSuccess('Akun berhasil dibuat! Anda sudah bisa masuk.')
+      setTimeout(() => navigate('/login'), 1200)
+    } catch (err) {
+      setSubmitted(false)
+      setError(err?.message || 'Gagal membuat akun, coba lagi.')
+    }
   }
 
   return (
@@ -51,7 +96,7 @@ export function RegisterPage() {
         </div>
 
         {/* Center: Register Form Container (Enlarged, perfectly balanced) */}
-        <div className="w-full max-w-[440px] sm:max-w-[460px] lg:max-w-[480px] my-auto py-3 sm:py-5 shrink-0 lg:ml-12 xl:ml-24">
+        <div className="w-full max-w-[440px] sm:max-w-[460px] lg:max-w-[480px] my-auto py-3 sm:py-5 shrink-0 max-h-full overflow-y-auto lg:ml-12 xl:ml-24">
           {/* Minimalist Geometric Logo Mark */}
           <div className="w-9 h-9 text-black flex items-center justify-start mb-3">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
@@ -155,6 +200,87 @@ export function RegisterPage() {
               </div>
             </div>
 
+            <div className="border-t border-gray-100 pt-3 mt-3">
+              <p className="text-[10px] uppercase font-mono text-gray-400 tracking-wider mb-2.5">
+                Penempatan Anda
+              </p>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-mono font-medium text-gray-800 mb-1">
+                  Dapur SPPG
+                </label>
+                <select
+                  required
+                  value={sppgId}
+                  onChange={(e) => onSelectSppg(e.target.value)}
+                  className="w-full px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-sans rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:border-gray-900 transition shadow-xs"
+                >
+                  <option value="">Pilih dapur SPPG…</option>
+                  {REGISTER_SPPG_OPTIONS.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {s.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-3">
+                <label className="block text-xs sm:text-sm font-mono font-medium text-gray-800 mb-1">
+                  Kecamatan
+                </label>
+                <select
+                  required
+                  value={kecamatanId}
+                  disabled={!sppg}
+                  onChange={(e) => onSelectKecamatan(e.target.value)}
+                  className="w-full px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-sans rounded-xl border border-gray-200 bg-white text-gray-900 disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:border-gray-900 transition shadow-xs"
+                >
+                  <option value="">{sppg ? 'Pilih kecamatan…' : 'Pilih dapur SPPG dahulu'}</option>
+                  {sppg?.kecamatanOptions.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-3">
+                <label className="block text-xs sm:text-sm font-mono font-medium text-gray-800 mb-1">
+                  Sekolah
+                </label>
+                <select
+                  required
+                  value={schoolId}
+                  disabled={!kecamatan}
+                  onChange={(e) => setSchoolId(e.target.value)}
+                  className="w-full px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-sans rounded-xl border border-gray-200 bg-white text-gray-900 disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none focus:border-gray-900 transition shadow-xs"
+                >
+                  <option value="">
+                    {kecamatan ? 'Pilih sekolah…' : sppg ? 'Pilih kecamatan dahulu' : 'Pilih dapur SPPG dahulu'}
+                  </option>
+                  {kecamatan?.schools.map((sc) => (
+                    <option key={sc.id} value={sc.id}>
+                      {sc.name} ({sc.level} · NPSN {sc.npsn})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {school && sppg && kecamatan && (
+                <p className="text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 mt-3">
+                  Anda terdaftar di <span className="font-semibold text-gray-800">{sppg.name}</span>
+                  {' · '}
+                  {kecamatan.name} — {school.name}
+                </p>
+              )}
+            </div>
+
+            {success && (
+              <p role="status" className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                {success}
+              </p>
+            )}
+
             {error && (
               <p role="alert" className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
                 {error}
@@ -170,7 +296,7 @@ export function RegisterPage() {
             </button>
 
             <p className="text-[11px] text-gray-500 text-center">
-              Prototipe: tidak ada akun yang dibuat dan data tidak dikirim ke mana pun.
+              Akun Anda menunggu verifikasi data penempatan oleh pengelola.
             </p>
           </form>
         </div>

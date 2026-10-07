@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
+import { useAuth } from '../../context/AuthContext'
+import { guardAdminAction } from '../../lib/adminActions'
 import { CalendarPanel } from '../../components/dashboard/CalendarPanel'
 
 /**
@@ -12,6 +14,7 @@ import { CalendarPanel } from '../../components/dashboard/CalendarPanel'
  */
 
 export function CalendarPage() {
+  const { user } = useAuth()
   const [toast, setToast] = useState(null)
 
   useEffect(() => {
@@ -21,7 +24,9 @@ export function CalendarPage() {
   }, [toast])
 
   const handleSuperadminAction = (action, payload) => {
-    console.log(`[Superadmin Calendar Action] ${action}:`, payload)
+    const res = guardAdminAction(user, 'Calendar', action, payload)
+    if (!res.allowed) setToast(res.message)
+    return res
   }
 
   return (

@@ -1,0 +1,26 @@
+[
+  {
+    "instruction": "Makanan mana yang menyediakan jumlah kalori, protein, lemak, dan karbohidrat tertinggi dan terendah dalam dataset nutrisi makanan Indonesia?",
+    "output": "Makanan dengan kalori tertinggi adalah Opak Singkong, sedangkan yang terendah adalah Agar-agar. Protein tertinggi ditemukan pada Kerupuk Kulit Kerbau dan yang terendah pada Gula Aren. Untuk lemak, nilai tertinggi ada pada Lemak Babi dan terendah pada Telur Bebek bagian putih segar. Makanan dengan karbohidrat tertinggi adalah Pilus, dan yang terendah adalah Abon."
+  },
+  {
+    "instruction": "Berapa rata-rata kandungan kalori dari makanan dalam dataset ini dan apakah terdapat outlier ekstrem?",
+    "output": "Rata-rata kalori pada dataset ini adalah sekitar 203,217 kcal. Terdapat beberapa outlier ekstrem yang nilainya berada jauh di luar batas normal (IQR)."
+  },
+  {
+    "instruction": "Berapa persentase makanan yang memiliki kandungan kalori di bawah 100 dan di atas 500?",
+    "output": "Sekitar 34,25% makanan memiliki kalori di bawah 100 kcal, sedangkan 5,05% makanan memiliki kalori di atas 500 kcal."
+  },
+  {
+    "instruction": "Bagaimana rasio umum antara protein, lemak, dan karbohidrat pada makanan dalam dataset ini?",
+    "output": "Rasio umum proporsi makronutrien dalam dataset ini adalah Protein sebesar 23,27%, Lemak sebesar 17,65%, dan Karbohidrat sebesar 59,08%."
+  },
+  {
+    "instruction": "Sebutkan makanan yang dianggap lebih sehat berdasarkan kriteria rendah lemak dan tinggi protein dari dataset ini!",
+    "output": "Makanan yang dianggap lebih sehat (rendah lemak dan tinggi protein di atas rata-rata) antara lain: darah segar ayam, babat, ginjal babi, hati babi, bekasam, udang kering, udang kering mentah, udang papay mentah, udang segar, dan usus sapi."
+  },
+  {
+    "instruction": "Apakah ada makanan yang rendah kalori namun tinggi protein atau makronutrien bermanfaat lainnya dalam data ini?",
+    "output": "Ya, terdapat beberapa makanan dengan kalori di bawah rata-rata tetapi tinggi protein atau makronutrien lainnya, seperti daging sapi, anyang sayur, asam payak segar, udang, umbi uwi, usus sapi, dan woku uwi."
+  }
+]

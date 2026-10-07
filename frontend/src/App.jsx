@@ -29,6 +29,18 @@ import { SppgHandoverPage } from './pages/sppg/SppgHandoverPage'
 import { SppgIncidentsPage } from './pages/sppg/SppgIncidentsPage'
 import { SppgBillingPage } from './pages/sppg/SppgBillingPage'
 import { SppgCompliancePage } from './pages/sppg/SppgCompliancePage'
+import { SiswaDashboardPage } from './pages/siswa/SiswaDashboardPage'
+import { SiswaScansPage } from './pages/siswa/SiswaScansPage'
+import { SiswaMenuPage } from './pages/siswa/SiswaMenuPage'
+import { SiswaPresensiPage } from './pages/siswa/SiswaPresensiPage'
+import { SiswaNoticesPage } from './pages/siswa/SiswaNoticesPage'
+import { SiswaAduanPage } from './pages/siswa/SiswaAduanPage'
+import { ValidatorDashboardPage } from './pages/validator/ValidatorDashboardPage'
+import { ValidatorScanPage } from './pages/validator/ValidatorScanPage'
+import { ValidatorHandoverPage } from './pages/validator/ValidatorHandoverPage'
+import { ValidatorIncidentsPage } from './pages/validator/ValidatorIncidentsPage'
+import { ValidatorHistoryPage } from './pages/validator/ValidatorHistoryPage'
+import { RequireRole } from './components/RequireRole'
 
 // Helper for programmatic navigation
 export function navigate(to) {
@@ -105,7 +117,12 @@ function PublicPage({ path }) {
   if (path === '/' || path === '/home') return <HomePage />
   if (path === '/fitur') return <FiturPage />
   if (path === '/tentang-kami' || path === '/tentang' || path === '/mulai') return <TentangKamiPage />
-  if (path === '/scan') return <ScanPage />
+  if (path === '/scan')
+    return (
+      <RequireRole roles={['validator', 'superadmin']}>
+        <ScanPage />
+      </RequireRole>
+    )
 
   return <NotFoundPage path={path} />
 }
@@ -114,49 +131,109 @@ export default function App() {
   const path = usePath()
 
   // Full-screen isolated admin dashboard (no public header/footer)
-  if (path === '/admin') return <AdminPage route={path} />
-  if (path === '/admin/validators') return <ValidatorsPage />
-  if (path === '/admin/sppg') return <SppgPage />
-  if (path === '/admin/deliveries') return <DeliveriesPage />
-  if (path === '/admin/attendance') return <AttendancePage />
-  if (path === '/admin/schools') return <SchoolsPage />
-  if (path === '/admin/schedule') return <SchedulePage />
-  if (path === '/admin/notices') return <NoticesPage />
-  if (path === '/admin/calendar') return <CalendarPage />
-  if (path === '/admin/reports') return <ReportsPage />
-  if (path === '/admin/feedback') return <FeedbackPage />
-  if (path.startsWith('/admin/')) return <AdminPage route={path} />
+  // Guarded: superadmin & satgas only; wrong role bounces to own portal.
+  if (path.startsWith('/admin')) {
+    return (
+      <RequireRole roles={['superadmin', 'satgas']}>
+        {path === '/admin' ? (
+          <AdminPage route={path} />
+        ) : path === '/admin/validators' ? (
+          <ValidatorsPage />
+        ) : path === '/admin/sppg' ? (
+          <SppgPage />
+        ) : path === '/admin/deliveries' ? (
+          <DeliveriesPage />
+        ) : path === '/admin/attendance' ? (
+          <AttendancePage />
+        ) : path === '/admin/schools' ? (
+          <SchoolsPage />
+        ) : path === '/admin/schedule' ? (
+          <SchedulePage />
+        ) : path === '/admin/notices' ? (
+          <NoticesPage />
+        ) : path === '/admin/calendar' ? (
+          <CalendarPage />
+        ) : path === '/admin/reports' ? (
+          <ReportsPage />
+        ) : path === '/admin/feedback' ? (
+          <FeedbackPage />
+        ) : (
+          <AdminPage route={path} />
+        )}
+      </RequireRole>
+    )
+  }
 
   // Full-screen isolated SPPG kitchen cockpit (no public header/footer, completely decoupled from /admin/*)
-  if (path === '/sppg/recipes') {
-    return <SppgRecipesPage />
+  // Guarded: sppg (own portal), superadmin & satgas (read-only audit access).
+  if (path.startsWith('/sppg')) {
+    return (
+      <RequireRole roles={['sppg', 'superadmin', 'satgas']}>
+        {path === '/sppg/recipes' ? (
+          <SppgRecipesPage />
+        ) : path === '/sppg/batches' ? (
+          <SppgBatchesPage />
+        ) : path === '/sppg/quality' ? (
+          <SppgQualityPage />
+        ) : path === '/sppg/logistics' ? (
+          <SppgLogisticsPage />
+        ) : path === '/sppg/schools' ? (
+          <SppgSchoolsPage />
+        ) : path === '/sppg/handover' ? (
+          <SppgHandoverPage />
+        ) : path === '/sppg/incidents' ? (
+          <SppgIncidentsPage />
+        ) : path === '/sppg/billing' ? (
+          <SppgBillingPage />
+        ) : path === '/sppg/compliance' ? (
+          <SppgCompliancePage />
+        ) : (
+          <SppgDashboardPage />
+        )}
+      </RequireRole>
+    )
   }
-  if (path === '/sppg/batches') {
-    return <SppgBatchesPage />
+
+  // Full-screen isolated siswa portal (student dashboard + scan history)
+  // Guarded: siswa (own portal), superadmin (preview only).
+  if (path === '/siswa' || path.startsWith('/siswa/')) {
+    return (
+      <RequireRole roles={['siswa', 'superadmin']}>
+        {path === '/siswa/scans' ? (
+          <SiswaScansPage />
+        ) : path === '/siswa/menu' ? (
+          <SiswaMenuPage />
+        ) : path === '/siswa/presensi' ? (
+          <SiswaPresensiPage />
+        ) : path === '/siswa/notices' ? (
+          <SiswaNoticesPage />
+        ) : path === '/siswa/aduan' ? (
+          <SiswaAduanPage />
+        ) : (
+          <SiswaDashboardPage />
+        )}
+      </RequireRole>
+    )
   }
-  if (path === '/sppg/quality') {
-    return <SppgQualityPage />
-  }
-  if (path === '/sppg/logistics') {
-    return <SppgLogisticsPage />
-  }
-  if (path === '/sppg/schools') {
-    return <SppgSchoolsPage />
-  }
-  if (path === '/sppg/handover') {
-    return <SppgHandoverPage />
-  }
-  if (path === '/sppg/incidents') {
-    return <SppgIncidentsPage />
-  }
-  if (path === '/sppg/billing') {
-    return <SppgBillingPage />
-  }
-  if (path === '/sppg/compliance') {
-    return <SppgCompliancePage />
-  }
-  if (path === '/sppg' || path === '/sppg/dashboard' || path.startsWith('/sppg/')) {
-    return <SppgDashboardPage />
+
+  // Full-screen isolated validator portal (guru & staf sekolah — validator lapangan)
+  // Guarded: validator (own portal), superadmin (preview only).
+  if (path === '/validator' || path.startsWith('/validator/')) {
+    return (
+      <RequireRole roles={['validator', 'superadmin']}>
+        {path === '/validator/scan' ? (
+          <ValidatorScanPage />
+        ) : path === '/validator/handover' ? (
+          <ValidatorHandoverPage />
+        ) : path === '/validator/incidents' ? (
+          <ValidatorIncidentsPage />
+        ) : path === '/validator/history' ? (
+          <ValidatorHistoryPage />
+        ) : (
+          <ValidatorDashboardPage />
+        )}
+      </RequireRole>
+    )
   }
 
   // Full-screen isolated auth pages

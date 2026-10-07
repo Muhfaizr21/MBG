@@ -170,6 +170,7 @@ export function NoticesPanel({
 
   // Handle Compose Notice Submit
   const handleComposeSubmit = (e) => {
+    if (onSuperadminAction?.('CREATE_NOTICE')?.allowed === false) return
     e.preventDefault()
     if (!composeForm.title || !composeForm.content) {
       showToast('Judul dan isi maklumat wajib diisi!')
@@ -221,11 +222,11 @@ export function NoticesPanel({
     setNotices([newNoticeItem, ...notices])
     setComposeModalOpen(false)
     showToast(`Maklumat resmi "${newNoticeItem.title}" berhasil dipublikasikan ke jaringan MBG!`)
-    onSuperadminAction('CREATE_NOTICE', newNoticeItem)
   }
 
   // Handle Trigger Flash Alert
   const handleTriggerFlashAlert = (e) => {
+    if (onSuperadminAction?.('BROADCAST_FLASH_ALERT')?.allowed === false) return
     e.preventDefault()
     if (!flashAlertModalData) return
 
@@ -249,11 +250,11 @@ export function NoticesPanel({
 
     setFlashAlertModalData(null)
     showToast(`Penyiaran Darurat (Flash Alert) aktif! Semua aplikasi validator diwajibkan melakukan konfirmasi sebelum kamera pemindai dapat digunakan.`)
-    onSuperadminAction('BROADCAST_FLASH_ALERT', { noticeId: notice.id })
   }
 
   // Handle Archive / Restore Notice
   const handleArchiveSubmit = (e) => {
+    if (onSuperadminAction?.('TOGGLE_ARCHIVE_NOTICE')?.allowed === false) return
     e.preventDefault()
     if (!archiveModalData) return
 
@@ -275,11 +276,11 @@ export function NoticesPanel({
     setArchiveModalData(null)
     const actText = isArchiving ? 'diarsipkan dari papan publik' : 'diaktifkan kembali'
     showToast(`Pengumuman "${notice.title}" berhasil ${actText}!`)
-    onSuperadminAction('TOGGLE_ARCHIVE_NOTICE', { noticeId: notice.id, isArchiving })
   }
 
   // Handle Delete Notice
   const handleDeleteSubmit = (e) => {
+    if (onSuperadminAction?.('DELETE_NOTICE')?.allowed === false) return
     e.preventDefault()
     if (!deleteModalData) return
 
@@ -287,7 +288,6 @@ export function NoticesPanel({
     setNotices((prev) => prev.filter((n) => n.id !== notice.id))
     setDeleteModalData(null)
     showToast(`Pengumuman "${notice.title}" berhasil dihapus permanen!`)
-    onSuperadminAction('DELETE_NOTICE', { noticeId: notice.id })
   }
 
   return (

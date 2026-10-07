@@ -204,6 +204,12 @@ export function ValidatorPanel({
     if (!confirmAction) return
     const { type, validator } = confirmAction
 
+    const guard = onSuperadminAction?.(type, validator)
+    if (guard && guard.allowed === false) {
+      setConfirmAction(null)
+      return
+    }
+
     // Apply state updates locally
     setValidatorsList((prev) =>
       prev.map((v) => {
@@ -217,7 +223,6 @@ export function ValidatorPanel({
       })
     )
 
-    onSuperadminAction?.(type, validator)
     showToast?.(`[SUKSES AUDIT] ${confirmAction.title} berhasil dieksekusi pada ${validator.name}.`)
     setConfirmAction(null)
   }

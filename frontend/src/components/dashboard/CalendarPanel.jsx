@@ -32,6 +32,7 @@ import {
   DAY_TYPE_OPTIONS,
   MENU_STATUS_OPTIONS
 } from '../../data/calendarData'
+import { fetchCalendarDays, fetchMenuPackages } from '../../lib/api'
 
 export function CalendarPanel({
   onSuperadminAction = () => {},
@@ -40,7 +41,53 @@ export function CalendarPanel({
   // Main Data States
   const [calendarDays, setCalendarDays] = useState(INITIAL_CALENDAR_DAYS)
   const [substitutions, setSubstitutions] = useState(INITIAL_SUBSTITUTIONS)
-  const [menuPackages] = useState(MENU_PACKAGES)
+  const [menuPackages, setMenuPackages] = useState(MENU_PACKAGES)
+
+  useEffect(() => {
+    let isMounted = true
+    Promise.all([fetchCalendarDays(), fetchMenuPackages()])
+      .then(([days, packages]) => {
+        if (!isMounted) return
+        if (Array.isArray(packages) && packages.length > 0) {
+          const mappedPackages = packages.map(p => ({
+            ...p,
+            id: p.id,
+            cycleCode: p.cycleCode,
+            name: p.name,
+            calories: p.calories,
+            protein: p.protein,
+            carbs: p.carbs,
+            fat: p.fat,
+            calcium: p.calcium,
+            iron: p.iron,
+            zinc: p.zinc,
+            costPerServing: p.costPerServing,
+            allergens: p.allergens ? [p.allergens] : [],
+            description: p.description,
+          }))
+          setMenuPackages(mappedPackages)
+        }
+        if (Array.isArray(days) && days.length > 0) {
+          const mappedDays = days.map(d => ({
+            ...d,
+            date: d.date,
+            packageId: d.packageId,
+            dayName: d.dayName,
+            status: d.status || 'approved',
+            dayType: d.dayType || 'regular',
+            theme: d.theme,
+            targetPortions: d.targetPortions,
+            locked: d.status === 'locked',
+          }))
+          setCalendarDays(mappedDays)
+        }
+      })
+      .catch(err => console.warn('Calendar fallback:', err))
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   // Navigation & Filtering
   const [activeTab, setActiveTab] = useState('grid') // 'grid' | 'table' | 'packages' | 'substitutions'
@@ -193,6 +240,7 @@ export function CalendarPanel({
 
   // Handle Lock Entire Month
   const handleLockEntireMonth = () => {
+    if (onSuperadminAction?.('LOCK_MONTH_CYCLE')?.allowed === false) return
     setCalendarDays((prev) =>
       prev.map((d) => {
         if (d.dayType === 'school_day' || d.dayType === 'exam_day') {
@@ -207,11 +255,11 @@ export function CalendarPanel({
     )
     setLockMonthModalOpen(false)
     showToast(`Seluruh siklus menu untuk periode ${selectedMonth} telah DIKUNCI secara nasional!`)
-    onSuperadminAction('LOCK_MONTH_CYCLE', { month: selectedMonth })
   }
 
   // Handle Toggle Single Day Lock
   const handleToggleDayLock = (targetDate) => {
+    if (onSuperadminAction?.('TOGGLE_DAY_LOCK')?.allowed === false) return
     setCalendarDays((prev) =>
       prev.map((d) => {
         if (d.date === targetDate) {
@@ -229,11 +277,11 @@ export function CalendarPanel({
     )
     setOpenMenuDate(null)
     showToast(`Status penguncian menu tanggal ${targetDate} berhasil diperbarui!`)
-    onSuperadminAction('TOGGLE_DAY_LOCK', { date: targetDate })
   }
 
   // Handle Submit Operational Blackout (Set / Release)
   const handleSubmitBlackout = (e) => {
+    if (onSuperadminAction?.('SET_BLACKOUT_DATE')?.allowed === false) return
     e.preventDefault()
     if (!blackoutModalData) return
 
@@ -277,11 +325,12 @@ export function CalendarPanel({
     setBlackoutModalData(null)
     const act = isSettingBlackout ? 'ditetapkan sebagai Libur Blackout (Pemesanan Dikunci)' : 'dibuka kembali untuk operasional katering'
     showToast(`Tanggal ${date} berhasil ${act}!`)
-    onSuperadminAction('SET_BLACKOUT_DATE', { date, isSettingBlackout })
   }
 
   // Handle Substitution Approval / Creation
   const handleSubmitSubstitution = (e) => {
+    if (onSuperadminAction?.('CREATE_SUBSTITUTION')?.allowed === false) return
+    if (onSuperadminAction?.('REVIEW_SUBSTITUTION')?.allowed === false) return
     e.preventDefault()
     if (!substitutionModalData) return
 
@@ -328,7 +377,6 @@ export function CalendarPanel({
       )
 
       showToast(`Penggantian menu darurat untuk ${newSub.date} (${newSub.cycleCode}) berhasil disetujui & dipublikasikan!`)
-      onSuperadminAction('CREATE_SUBSTITUTION', newSub)
     } else if (substitutionModalData.mode === 'review') {
       const subItem = substitutionModalData.item
       const isApproved = substitutionModalData.action === 'approve'
@@ -363,7 +411,6 @@ export function CalendarPanel({
       )
 
       showToast(`Pengajuan substitusi ${subItem.id} berhasil ${isApproved ? 'DISETUJUI' : 'DITOLAK'}!`)
-      onSuperadminAction('REVIEW_SUBSTITUTION', { subId: subItem.id, approved: isApproved })
     }
 
     setSubstitutionModalData(null)
@@ -371,6 +418,7 @@ export function CalendarPanel({
 
   // Handle Schedule Inspection (Sidak)
   const handleScheduleInspection = (e) => {
+    if (onSuperadminAction?.('SCHEDULE_INSPECTION')?.allowed === false) return
     e.preventDefault()
     if (!inspectionForm.targetSppgName || !inspectionForm.date) {
       showToast('Mohon lengkapi dapur target dan tanggal sidak!')
@@ -403,7 +451,6 @@ export function CalendarPanel({
 
     setInspectionModalOpen(false)
     showToast(`Jadwal sidak mendadak ke ${inspectionForm.targetSppgName} berhasil didaftarkan secara rahasia!`)
-    onSuperadminAction('SCHEDULE_INSPECTION', newInspection)
   }
 
   return (
@@ -822,7 +869,7 @@ export function CalendarPanel({
                           </p>
                           <div className="flex items-center gap-2 text-[11px] text-slate-500">
                             <span>{pkg.calories} kkal</span>
-                            <span>•</span>
+                            <span>Ã¢â‚¬Â¢</span>
                             <span className="font-semibold text-emerald-700">{pkg.protein}g Prot</span>
                           </div>
                         </div>
@@ -934,7 +981,7 @@ export function CalendarPanel({
                                 </span>
                               </div>
                               <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                                {pkg.proteinMain} • {pkg.fruit}
+                                {pkg.proteinMain} Ã¢â‚¬Â¢ {pkg.fruit}
                               </p>
                             </div>
                           ) : (
@@ -1291,7 +1338,7 @@ export function CalendarPanel({
                         {sub.cycleCode}
                       </span>
                       <span className="font-extrabold text-slate-900 text-xs">
-                        {sub.id} • Tanggal: {sub.date}
+                        {sub.id} Ã¢â‚¬Â¢ Tanggal: {sub.date}
                       </span>
                       <span className="text-xs text-slate-500 font-medium">({sub.region})</span>
                     </div>
@@ -1325,9 +1372,9 @@ export function CalendarPanel({
                       </strong>
                       <div className="flex items-center gap-3 text-[11px] text-slate-600">
                         <span>Protein: {sub.nutritionComparison.proteinOriginal}</span>
-                        <span>•</span>
+                        <span>Ã¢â‚¬Â¢</span>
                         <span>Kalori: {sub.nutritionComparison.caloriesOriginal}</span>
-                        <span>•</span>
+                        <span>Ã¢â‚¬Â¢</span>
                         <span>Biaya: {sub.nutritionComparison.costOriginal}</span>
                       </div>
                     </div>
@@ -1343,9 +1390,9 @@ export function CalendarPanel({
                         <span className="font-semibold text-emerald-700">
                           {sub.nutritionComparison.proteinSubstitute}
                         </span>
-                        <span>•</span>
+                        <span>Ã¢â‚¬Â¢</span>
                         <span>{sub.nutritionComparison.caloriesSubstitute}</span>
-                        <span>•</span>
+                        <span>Ã¢â‚¬Â¢</span>
                         <span className="font-semibold text-emerald-700">
                           {sub.nutritionComparison.costSubstitute}
                         </span>
@@ -1934,7 +1981,7 @@ export function CalendarPanel({
                   {selectedDayDetail.blackoutReason || 'Hari libur resmi. Sistem pemesanan katering dikunci total untuk menjamin efisiensi APBN dan zero food waste.'}
                 </p>
                 <p className="text-[11px] text-rose-700 pt-2 border-t border-rose-200">
-                  Target Porsi: <strong>0 Porsi</strong> • Dapur SPPG Aktif: <strong>0 Dapur</strong>
+                  Target Porsi: <strong>0 Porsi</strong> Ã¢â‚¬Â¢ Dapur SPPG Aktif: <strong>0 Dapur</strong>
                 </p>
               </div>
             ) : (

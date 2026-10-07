@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import { UserCheck, Shield, School, ArrowRightLeft, LogOut } from 'lucide-react-native';
+import { UserCheck, Shield, School, ArrowRightLeft, LogOut, Mail } from 'lucide-react-native';
 import { useAuthRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
 import { getInitials } from '../../utils/initials';
 
 export const ProfileTabContent: React.FC = () => {
+  const { user: sessionUser, logout } = useAuth();
   const { user, role, toggleRole } = useAuthRole();
 
   const handleRoleToggle = () => {
@@ -16,6 +18,13 @@ export const ProfileTabContent: React.FC = () => {
         { text: 'Ganti Sekarang', onPress: toggleRole },
       ]
     );
+  };
+
+  const handleLogout = () => {
+    Alert.alert('Keluar', 'Akhiri sesi Anda di aplikasi ini?', [
+      { text: 'Batal', style: 'cancel' },
+      { text: 'Keluar', style: 'destructive', onPress: () => void logout() },
+    ]);
   };
 
   return (
@@ -47,6 +56,14 @@ export const ProfileTabContent: React.FC = () => {
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionHeader}>Informasi Penugasan</Text>
+
+        <View style={styles.itemRow}>
+          <Mail size={18} color="#64748B" />
+          <View style={styles.itemTextContainer}>
+            <Text style={styles.itemLabel}>Email Akun</Text>
+            <Text style={styles.itemValue}>{sessionUser?.email ?? '-'}</Text>
+          </View>
+        </View>
 
         <View style={styles.itemRow}>
           <School size={18} color="#64748B" />
@@ -87,8 +104,10 @@ export const ProfileTabContent: React.FC = () => {
 
       <TouchableOpacity
         style={styles.logoutButton}
-        onPress={() => Alert.alert('Keluar', 'Sesi Anda telah aman.')}
+        onPress={handleLogout}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Keluar dari aplikasi"
       >
         <LogOut size={16} color="#EF4444" />
         <Text style={styles.logoutText}>Keluar dari Aplikasi</Text>

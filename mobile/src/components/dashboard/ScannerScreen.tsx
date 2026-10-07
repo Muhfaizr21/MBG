@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -32,13 +32,13 @@ import {
   Tag,
   ShieldCheck,
   Bot,
-  MessageSquare,
 } from 'lucide-react-native';
 import { BottomSheet } from '../ui/BottomSheet';
 import { ContextualAiChatSheet } from './ContextualAiChatSheet';
 import { decideQuality, verifyQrPayload, QualityVerdict } from '../../utils/quality';
 import { readMacros } from '../../utils/nutrition';
 import { addScanLogEntry } from '../../utils/scanLog';
+import { scanRequest } from '../../lib/api';
 import {
   MOCK_MACRO_ESTIMATE,
   MOCK_SCAN_SCENARIOS,
@@ -130,6 +130,25 @@ const formatNumber = (num: number): string => {
   return num.toFixed(1).replace('.', ',');
 };
 
+/** Kartu keputusan mutu hasil POST /api/scans (gateway Go → AI service Python). */
+interface BackendScanResult {
+  id: string;
+  boxId: string;
+  qrToken: string;
+  scannedAt: string;
+  score: number;
+  verdict: 'layak' | 'peringatan' | 'tolak';
+  verdictLabel: string;
+  releaseTemp: number;
+  holdTemp: number;
+  checks: { label: string; ok: boolean; note: string }[];
+  note: string;
+  aiClass: string;
+  aiConfidence: number;
+  macros?: { energy: number; protein: number; carbs: number; fat: number };
+  nutritionNote?: string;
+}
+
 export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => {
   const [hasScanned, setHasScanned] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
@@ -142,6 +161,9 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
   const [confirm, setConfirm] = useState<QualityVerdict | null>(null);
   const [logged, setLogged] = useState(false);
   const [detectionResult] = useState<DetectionResult>(DEFAULT_DETECTION_RESULT);
+  const [backendScan, setBackendScan] = useState<BackendScanResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const capturedFileRef = useRef<Blob | null>(null);
   const [activeTab, setActiveTab] = useState<'gizi' | 'kelayakan'>('gizi');
   const [isChatOpen, setIsChatOpen] = useState(false);
 
@@ -165,21 +187,62 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
   );
 
   const qr = useMemo(() => verifyQrPayload(scenario.payload, SCAN_SCHOOL), [scenario]);
+
+  // Sinyal mutu: hasil backend AI bila ada, kalau tidak pakai skenario simulasi.
+  const effectiveScore = backendScan ? backendScan.score : scenario.score;
+  const effectiveHoldingTempC =
+    backendScan && backendScan.holdTemp > 0 ? backendScan.holdTemp : scenario.holdingTempC;
+
   const verdict = useMemo(
     () =>
       decideQuality({
-        score: scenario.score,
-        holdingTempC: scenario.holdingTempC,
+        score: effectiveScore,
+        holdingTempC: effectiveHoldingTempC,
         minutesToDeadline: scenario.minutesToDeadline,
         qrValid: qr.valid,
       }),
-    [scenario, qr.valid],
+    [effectiveScore, effectiveHoldingTempC, scenario.minutesToDeadline, qr.valid],
   );
-  const macros = useMemo(() => readMacros(SCAN_GRADE_BAND, MOCK_MACRO_ESTIMATE), []);
+  const macros = useMemo(() => {
+    const estimated = backendScan?.macros
+      ? {
+          energi: backendScan.macros.energy,
+          protein: backendScan.macros.protein,
+          karbohidrat: backendScan.macros.carbs,
+          lemak: backendScan.macros.fat,
+        }
+      : MOCK_MACRO_ESTIMATE;
+    return readMacros(SCAN_GRADE_BAND, estimated).filter((m) => m.key !== 'serat');
+  }, [backendScan]);
 
   const displayPhoto = capturedPhoto || DEFAULT_SAMPLE_PHOTO;
 
+  // Kirim foto ke POST /api/scans; fallback ke skenario simulasi saat error/offline.
+  const runBackendScan = async (image: { uri?: string; file?: Blob }) => {
+    setIsAnalyzing(true);
+    try {
+      const itemsParam = detectionResult.items
+        .map((item) => `${item.name}:${item.portionGram}`)
+        .join(',');
+      const body = await scanRequest({
+        uri: image.uri,
+        file: image.file,
+        qrToken: scenario.payload.code,
+        holdingTempC: scenario.holdingTempC,
+        releaseTempC: scenario.payload.coreTempC,
+        items: itemsParam,
+      });
+      setBackendScan(body?.data ?? null);
+    } catch (err) {
+      console.warn('Backend scan tidak terjangkau — memakai skenario simulasi.', err);
+      setBackendScan(null);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleStartScan = async () => {
+    setBackendScan(null);
     if (Platform.OS === 'web') {
       try {
         const input = document.createElement('input');
@@ -196,6 +259,8 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
             const imageUrl = URL.createObjectURL(file);
             setCapturedPhoto(imageUrl);
             setHasScanned(true);
+            capturedFileRef.current = file;
+            void runBackendScan({ file });
           }
           if (document.body.contains(input)) {
             document.body.removeChild(input);
@@ -233,8 +298,10 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
-          setCapturedPhoto(result.assets[0].uri);
+          const uri = result.assets[0].uri;
+          setCapturedPhoto(uri);
           setHasScanned(true);
+          void runBackendScan({ uri });
         }
       } catch (err) {
         console.error('Gagal meluncurkan kamera:', err);
@@ -259,6 +326,8 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
     setCapturedPhoto(null);
     setHasScanned(false);
     setLogged(false);
+    setBackendScan(null);
+    capturedFileRef.current = null;
     setIsImageViewerOpen(false);
     setSelectedItem(null);
     setRotation(0);
@@ -314,7 +383,7 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
       scannedAt: new Date(),
       batchCode: scenario.payload.code,
       portions: scenario.portions,
-      score: scenario.score,
+      score: effectiveScore,
       severity: verdict.verdict,
     });
     setLogged(true);
@@ -461,7 +530,13 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
             <View style={styles.capturedImageOverlayTop} pointerEvents="box-none">
               <View style={styles.capturedPhotoPill}>
                 <Sparkles size={13} color="#FFFFFF" strokeWidth={2.2} />
-                <Text style={styles.capturedPhotoPillText}>Deteksi YOLOv8 AI Aktif</Text>
+                <Text style={styles.capturedPhotoPillText}>
+                  {isAnalyzing
+                    ? 'Analisis AI berjalan…'
+                    : backendScan
+                      ? `YOLOv8: ${backendScan.aiClass}`
+                      : 'Deteksi YOLOv8 AI Aktif'}
+                </Text>
               </View>
 
               <TouchableOpacity
@@ -501,7 +576,7 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
             </View>
             <Text style={styles.emptyStateTitle}>Data akan muncul di sini setelah pemindaian</Text>
             <Text style={styles.emptyStateDescription}>
-              Ketuk tombol "Mulai Pindai Porsi MBG" untuk membuka kamera perangkat dan memindai porsi makanan secara langsung.
+              Ketuk tombol &quot;Mulai Pindai Porsi MBG&quot; untuk membuka kamera perangkat dan memindai porsi makanan secara langsung.
             </Text>
           </View>
         ) : (
@@ -597,7 +672,8 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
                 <View style={styles.macroSection}>
                   <Text style={styles.sectionTitle}>Estimasi makronutrien target porsi</Text>
                   <Text style={styles.sectionCaption}>
-                    Target kelompok SD atas. Estimasi dari segmentasi visual, bukan timbangan.
+                    Target kelompok SD atas. Estimasi dari dataset gizi per bahan menu.
+                    {backendScan?.nutritionNote ? ` ${backendScan.nutritionNote}` : ''}
                   </Text>
                   {macros.map((macro) => (
                     <View key={macro.key} style={styles.macroRow}>
@@ -649,7 +725,10 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
                       <TouchableOpacity
                         key={item.key}
                         style={[styles.scenarioChip, isSelected && styles.scenarioChipActive]}
-                        onPress={() => setScenarioKey(item.key)}
+                        onPress={() => {
+                          setScenarioKey(item.key);
+                          setBackendScan(null);
+                        }}
                         activeOpacity={0.8}
                         accessibilityRole="button"
                         accessibilityState={{ selected: isSelected }}
@@ -681,25 +760,52 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
                 <ChecklistSection
                   step="Tahap 2"
                   title="Deteksi visual porsi"
-                  caption="Empat kategori yang diperiksa model"
-                  rows={scenario.signals.map((signal) => ({
-                    id: signal.key,
-                    label: signal.label,
-                    value: signal.finding,
-                    note: undefined,
-                    color: SEVERITY_COLOR[signal.severity],
-                  }))}
+                  caption={
+                    backendScan
+                      ? 'Hasil model YOLOv8 + kategori pemeriksaan'
+                      : 'Empat kategori yang diperiksa model'
+                  }
+                  rows={[
+                    ...(backendScan
+                      ? [
+                          {
+                            id: 'ai-model',
+                            label: 'Model YOLOv8',
+                            value: `${backendScan.aiClass} · keyakinan ${Math.round(backendScan.aiConfidence * 100)}%`,
+                            note: undefined,
+                            color: backendScan.aiClass.toLowerCase().startsWith('fresh')
+                              ? SEVERITY_COLOR.none
+                              : SEVERITY_COLOR.critical,
+                          },
+                        ]
+                      : []),
+                    ...scenario.signals.map((signal) => ({
+                      id: signal.key,
+                      label: signal.label,
+                      value: signal.finding,
+                      note: undefined,
+                      color: SEVERITY_COLOR[signal.severity],
+                    })),
+                  ]}
                 />
 
                 {/* Keputusan Mutu Card */}
                 <View style={[styles.decisionCard, { borderColor: verdict.color }]}>
                   <Text style={styles.decisionStep}>Keputusan mutu</Text>
                   <View style={styles.decisionScoreRow}>
-                    <Text style={[styles.decisionScore, { color: verdict.color }]}>{scenario.score}</Text>
+                    <Text style={[styles.decisionScore, { color: verdict.color }]}>
+                      {Math.round(effectiveScore)}
+                    </Text>
                     <Text style={styles.decisionScoreUnit}>skor keamanan</Text>
                   </View>
                   <Text style={[styles.decisionLabel, { color: verdict.color }]}>{verdict.label}</Text>
                   <Text style={styles.decisionAction}>{verdict.action}</Text>
+                  {backendScan && (
+                    <Text style={styles.decisionAiMeta}>
+                      {backendScan.id} · YOLOv8 {backendScan.aiClass}{' '}
+                      {Math.round(backendScan.aiConfidence * 100)}% · {backendScan.scannedAt}
+                    </Text>
+                  )}
                   {verdict.reasons.length > 0 && (
                     <View style={styles.reasonList}>
                       {verdict.reasons.map((reason) => (
@@ -711,7 +817,7 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
                   )}
                   <View style={styles.holdingRow}>
                     <Text style={styles.holdingText}>
-                      Suhu holding {scenario.holdingTempC}°C · sisa waktu {scenario.minutesToDeadline} menit
+                      Suhu holding {effectiveHoldingTempC}°C · sisa waktu {scenario.minutesToDeadline} menit
                     </Text>
                   </View>
                 </View>
@@ -1030,8 +1136,8 @@ export const ScannerScreen: React.FC<{ onExit?: () => void }> = ({ onExit }) => 
         batchCode={scenario.payload.code}
         totalNutrition={totalNutrition}
         detectedItems={detectionResult.items}
-        score={scenario.score}
-        holdingTempC={scenario.holdingTempC}
+        score={effectiveScore}
+        holdingTempC={effectiveHoldingTempC}
         minutesToDeadline={scenario.minutesToDeadline}
         verdict={verdict}
       />
@@ -2361,6 +2467,11 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     lineHeight: 21,
     marginTop: 8,
+  },
+  decisionAiMeta: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 6,
   },
   reasonList: {
     marginTop: 12,

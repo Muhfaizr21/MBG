@@ -20,8 +20,6 @@ import {
   User,
   ShieldCheck,
   Flame,
-  CheckCircle2,
-  AlertTriangle,
   Lightbulb,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -178,14 +176,10 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
     const query = (textToSend || inputText).trim();
     if (!query || isTyping) return;
 
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      sender: 'user',
-      text: query,
-      timestamp: 'Sekarang',
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [
+      ...prev,
+      { id: `user-${prev.length}`, sender: 'user', text: query, timestamp: 'Sekarang' },
+    ]);
     setInputText('');
     setIsTyping(true);
 
@@ -196,14 +190,16 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
     // Simulate AI thinking and context matching
     setTimeout(() => {
       const responseText = generateContextualResponse(query);
-      const aiMsg: ChatMessage = {
-        id: `ai-${Date.now()}`,
-        sender: 'ai',
-        text: responseText,
-        timestamp: 'Sekarang',
-        badge: 'KawanGizi AI',
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `ai-${prev.length}`,
+          sender: 'ai',
+          text: responseText,
+          timestamp: 'Sekarang',
+          badge: 'KawanGizi AI',
+        },
+      ]);
       setIsTyping(false);
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });

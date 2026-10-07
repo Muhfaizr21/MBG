@@ -27,6 +27,13 @@ import {
 } from 'lucide-react'
 
 import { navigate } from '../../App'
+import { useAuth } from '../../context/AuthContext'
+
+const ROLE_LABELS = {
+  superadmin: 'Superadmin Satgas MBG',
+  satgas: 'Satgas MBG Pusat',
+  sppg: 'Petugas SPPG',
+}
 
 // Unified SVG Icons for Admin Layout
 
@@ -152,6 +159,19 @@ export function AdminLayout({
   const [notifFilter, setNotifFilter] = useState('all')
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS)
   const notifRef = useRef(null)
+
+  const { user, logout } = useAuth()
+  const initials = (user?.fullName || user?.email || '?')
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('')
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
+  }
 
   const unreadCount = notifications.filter((n) => !n.read).length
 
@@ -292,13 +312,14 @@ export function AdminLayout({
               <ChevronRight className="h-3.5 w-3.5" />
             </button>
 
-            <a
-              href="/"
-              className="w-full flex items-center gap-3 px-3.5 py-2 text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors"
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3.5 py-2 text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
             >
               <LogOut className="h-4.5 w-4.5 text-rose-500" />
-              <span>Keluar ke Web</span>
-            </a>
+              <span>Keluar</span>
+            </button>
           </div>
         </div>
       </aside>
@@ -550,14 +571,18 @@ export function AdminLayout({
             {/* User Profile */}
             <div className="flex items-center gap-2.5 pl-2 sm:border-l sm:border-slate-200">
               <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-blue-700 via-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0 border border-white/20">
-                HP
+                {initials}
               </div>
               <div className="hidden sm:block text-left leading-tight">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-bold text-slate-900">Dr. Hendra Prasetyo</p>
-                  <span className="text-[9px] font-mono font-bold bg-blue-100 text-blue-800 px-1 py-0.2 rounded">RI-1</span>
+                  <p className="text-xs font-bold text-slate-900">{user?.fullName || 'Pengguna'}</p>
+                  <span className="text-[9px] font-mono font-bold bg-blue-100 text-blue-800 px-1 py-0.2 rounded uppercase">
+                    {user?.role || '-'}
+                  </span>
                 </div>
-                <p className="text-[10px] text-slate-500 font-medium truncate max-w-[150px]">Satgas MBG Pusat &bull; Auditor</p>
+                <p className="text-[10px] text-slate-500 font-medium truncate max-w-[150px]">
+                  {ROLE_LABELS[user?.role] || user?.email || ''}
+                </p>
               </div>
             </div>
           </div>
@@ -578,7 +603,7 @@ export function AdminLayout({
           <div className="flex items-center gap-3 text-slate-500 font-mono text-[10px]">
             <span>Rancangan prototipe</span>
             <span aria-hidden="true">&bull;</span>
-            <span>Belum terhubung ke server</span>
+            <span>Terhubung ke API Gateway Golang</span>
           </div>
         </footer>
       </div>

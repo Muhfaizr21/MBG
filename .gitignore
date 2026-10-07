@@ -19,6 +19,8 @@ backend/bin/
 backend/dist/
 backend/*.test
 backend/*.out
+backend/model_ai/credentials.json
+backend/model_ai/token.json
 .env
 .env.*
 !.env.example

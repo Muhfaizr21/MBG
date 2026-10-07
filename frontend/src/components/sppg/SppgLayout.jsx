@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 
 import { navigate } from '../../App'
+import { useAuth } from '../../context/AuthContext'
 import { SPPG_PROFILE } from '../../data/sppgPortalData'
 
 export const SPPG_SIDEBAR_MENU = [
@@ -51,6 +52,11 @@ export function SppgLayout({
   const [toastMessage, setToastMessage] = useState(null)
   const [isNotifOpen, setIsNotifOpen] = useState(false)
   const notifRef = useRef(null)
+
+  // RBAC: satgas can inspect the SPPG portal but must stay read-only
+  // (server enforces writes; this pins the UI into view mode).
+  const { user } = useAuth()
+  const isReadOnly = user?.role === 'satgas'
 
   const showToast = (msg) => {
     setToastMessage(msg)
@@ -376,7 +382,16 @@ export function SppgLayout({
 
         {/* MAIN BODY DASHBOARD */}
         <main className="p-6 sm:p-7 space-y-5 flex-1">
-          {children}
+          {isReadOnly && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-800">
+              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              Mode Read-Only (Akun Satgas) — Formulir &amp; tombol perubahan dinonaktifkan. Akses tulis hanya untuk
+              Superadmin &amp; SPPG.
+            </div>
+          )}
+          <div className={isReadOnly ? 'pointer-events-none select-none' : undefined}>
+            {children}
+          </div>
         </main>
 
         {/* FOOTER */}

@@ -1,0 +1,24 @@
+# MBG Backend - Python Dependencies
+# Didesain untuk Python 3.14 (semua pin punya wheel cp314).
+
+# --- Data pipeline (backend/data/, scripts/) ---
+numpy==2.4.4
+pandas==2.3.3
+
+# --- AI service (backend/ai_service/) ---
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+python-multipart==0.0.27
+pydantic==2.13.3
+
+# --- Model inference YOLOv8n-cls (best.pt), runtime CPU ---
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+ultralytics==8.4.173
+opencv-python==4.13.0.92
+pillow==12.2.0
+
+# --- Testing ---
+pytest==8.3.4
+httpx==0.28.1

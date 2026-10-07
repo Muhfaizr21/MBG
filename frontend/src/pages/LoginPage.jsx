@@ -1,24 +1,36 @@
 import React, { useState } from 'react'
 import { navigate } from '../App'
+import { useAuth } from '../context/AuthContext'
+import { homeForRole } from '../lib/api'
 import loginArt from '../assets/login-art.png'
 
 export function LoginPage() {
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState(null)
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    // Prototype: there is no auth backend yet, so this must not claim success.
     if (!email.trim() || !password) {
       setError('Isi email dan kata sandi terlebih dahulu.')
       return
     }
     setError(null)
     setSubmitted(true)
-    setTimeout(() => navigate('/admin'), 600)
+    try {
+      const user = await login(email.trim(), password)
+      navigate(homeForRole(user.role))
+    } catch (err) {
+      setSubmitted(false)
+      setError(
+        err.status === 401
+          ? 'Email atau kata sandi salah.'
+          : 'Tidak bisa terhubung ke server. Coba lagi nanti.',
+      )
+    }
   }
 
   return (
@@ -158,10 +170,7 @@ export function LoginPage() {
               {submitted ? 'Membuka dasbor...' : 'Masuk ke Dasbor'}
             </button>
 
-            <p className="text-[11px] text-gray-500 text-center">
-              Prototipe: tidak ada pemeriksaan sandi. Tombol ini hanya membuka dasbor contoh.
-            </p>
-          </form>
+            </form>
         </div>
 
         {/* Bottom Footer */}

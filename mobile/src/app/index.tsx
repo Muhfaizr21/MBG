@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, StatusBar } from 'react-native';
+import { View, StyleSheet, StatusBar, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Redirect } from 'expo-router';
+import { useAuth } from '../context/AuthContext';
 import { useAuthRole } from '../context/RoleContext';
 import { GuruDashboardView } from '../components/dashboard/GuruDashboardView';
 import { SiswaDashboardView } from '../components/dashboard/SiswaDashboardView';
@@ -13,9 +15,24 @@ import { HandoverScreen } from '../components/dashboard/HandoverScreen';
 import { IncidentScreen } from '../components/dashboard/IncidentScreen';
 
 export default function MobileAppEntry() {
+  const { user, loading } = useAuth();
   const { role } = useAuthRole();
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [flowScreen, setFlowScreen] = useState<'handover' | 'incident' | null>(null);
+
+  // Sesi masih dipulihkan: tahan render utama supaya tidak kedip ke layar login.
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#EBA338" />
+      </View>
+    );
+  }
+
+  // Belum login (atau role bukan akun mobile): paksa ke layar login.
+  if (!user) {
+    return <Redirect href="/login" />;
+  }
 
   const handleCenterAction = () => {
     setFlowScreen(null);
@@ -89,6 +106,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#F9F8F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   mainContent: {
     flex: 1,

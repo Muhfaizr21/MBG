@@ -24,7 +24,7 @@ import { RowAction, StatusDot } from './tableKit'
  * ==============================================================================
  * BADAN GIZI NASIONAL (BGN) REPUBLIK INDONESIA
  * KONSOL REKONSILIASI PENERIMAAN SISWA & EFISIENSI PORSI (SUPERADMIN)
- * Standar: Enterprise 10-Year UI/UX • Zero-Glitch • Clean Code
+ * Standar: Enterprise 10-Year UI/UX Ã¢â‚¬Â¢ Zero-Glitch Ã¢â‚¬Â¢ Clean Code
  * Dasar Regulasi: Bab 4.2 Poin 8 & Bab 3.3.2 Sistem Pengawasan MBG
  * ==============================================================================
  */
@@ -212,6 +212,7 @@ export function AttendancePanel({
   const executeAdjustQuota = () => {
     if (!adjustQuotaModalData) return
     const { item, newQuota, reason } = adjustQuotaModalData
+    if (onSuperadminAction?.('adjust_attendance_quota', { item, newQuota, reason })?.allowed === false) return
     const quotaVal = parseInt(newQuota, 10) || item.targetTomorrowQuota
 
     setAttendanceList((prev) =>
@@ -226,7 +227,6 @@ export function AttendancePanel({
       })
     )
 
-    onSuperadminAction?.('adjust_attendance_quota', { item, newQuota: quotaVal, reason })
     showToast?.(`[ALOKASI H+1 DIPERBARUI] Kuota pesanan ${item.school} untuk esok hari ditetapkan sebesar ${quotaVal} porsi.`)
     setAdjustQuotaModalData(null)
   }
@@ -243,6 +243,7 @@ export function AttendancePanel({
   }
 
   const executeRedistribute = () => {
+    if (onSuperadminAction?.('redistribute_surplus')?.allowed === false) return
     if (!redistributeModalData) return
     const { item, targetFacility, portions, courier } = redistributeModalData
     const portionCount = parseInt(portions, 10) || item.surplusPortions
@@ -269,7 +270,6 @@ export function AttendancePanel({
       })
     )
 
-    onSuperadminAction?.('redistribute_surplus', { item, targetFacility, portions: portionCount, courier })
     showToast?.(`[PENGALIHAN RESMI DISAHKAN] ${portionCount} porsi utuh dari ${item.school} dialihkan ke ${targetFacility}.`)
     setRedistributeModalData(null)
   }
@@ -287,8 +287,8 @@ export function AttendancePanel({
   const executeAuditDiscrepancy = () => {
     if (!discrepancyAuditModalData) return
     const { item, investigator, notes } = discrepancyAuditModalData
+    if (onSuperadminAction?.('audit_discrepancy', { item, investigator, notes })?.allowed === false) return
 
-    onSuperadminAction?.('audit_discrepancy', { item, investigator, notes })
     showToast?.(`[BERITA ACARA AUDIT DITERBITKAN] Perintah investigasi selisih porsi untuk ${item.school} telah dicatat dalam log audit.`)
     setDiscrepancyAuditModalData(null)
   }

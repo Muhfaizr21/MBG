@@ -150,7 +150,7 @@ export function ReportsPanel({
       ['Status', report.auditBadge],
     ]
     const csv = rows.map((r) => r.map(csvCell).join(',')).join('\n')
-    downloadFile(`${report.code}.csv`, 'text/csv;charset=utf-8', '﻿' + csv)
+    downloadFile(`${report.code}.csv`, 'text/csv;charset=utf-8', 'Ã¯Â»Â¿' + csv)
     showToast(`${report.title} diekspor ke CSV.`)
   }
 
@@ -212,6 +212,7 @@ export function ReportsPanel({
 
   // Handle Generate Custom Report Submit
   const handleGenerateReportSubmit = (e) => {
+    if (onSuperadminAction?.('GENERATE_REPORT')?.allowed === false) return
     e.preventDefault()
     if (!generateForm.title) {
       showToast('Judul dokumen laporan wajib diisi!')
@@ -241,11 +242,11 @@ export function ReportsPanel({
     setReports([newReport, ...reports])
     setGenerateModalOpen(false)
     showToast(`Dokumen laporan "${newReport.title}" berhasil di-generate secara resmi!`)
-    onSuperadminAction('GENERATE_REPORT', newReport)
   }
 
   // Handle Authorize Payment (Payment Clearance)
   const handleAuthorizePayment = (e) => {
+    if (onSuperadminAction?.('CLEAR_PAYMENT')?.allowed === false) return
     e.preventDefault()
     if (!selectedInvoice) return
 
@@ -268,7 +269,6 @@ export function ReportsPanel({
     const authorizedName = selectedInvoice.invoiceNumber
     setSelectedInvoice(null)
     showToast(`Otorisasi pembayaran termin ${authorizedName} BERHASIL ditandatangani secara digital! Dokumen SP2D diterbitkan ke Kemenkeu.`)
-    onSuperadminAction('CLEAR_PAYMENT', { invoiceId: selectedInvoice.id, sp2d: clearanceForm.sp2dNumber })
   }
 
   return (
@@ -628,7 +628,7 @@ export function ReportsPanel({
                           {bast.refNumber}
                         </span>
                         <span className="text-[11px] text-slate-500 block">
-                          {bast.date} • {bast.deliveryTime}
+                          {bast.date} Ã¢â‚¬Â¢ {bast.deliveryTime}
                         </span>
                       </td>
 
@@ -756,7 +756,7 @@ export function ReportsPanel({
                         <strong className="text-slate-900 text-xs">{inv.sppgName}</strong>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        {inv.vendorCompany} • {inv.bankAccount}
+                        {inv.vendorCompany} Ã¢â‚¬Â¢ {inv.bankAccount}
                       </p>
                     </div>
 
@@ -1188,7 +1188,7 @@ export function ReportsPanel({
                 </p>
                 <p className="flex justify-between">
                   <span className="text-slate-500">Waktu &amp; Suhu Serah Terima:</span>
-                  <strong className="text-slate-900">{selectedBast.deliveryTime} • {selectedBast.thermalTempArrive}</strong>
+                  <strong className="text-slate-900">{selectedBast.deliveryTime} Ã¢â‚¬Â¢ {selectedBast.thermalTempArrive}</strong>
                 </p>
               </div>
 
@@ -1244,7 +1244,7 @@ export function ReportsPanel({
                     downloadFile(
                       `BAST_${selectedBast.refNumber.replace(/\//g, '_')}.csv`,
                       'text/csv;charset=utf-8',
-                      '﻿' + [
+                      'Ã¯Â»Â¿' + [
                         ['Nomor BAST', selectedBast.refNumber],
                         ['Tanggal', selectedBast.date],
                         ['Sekolah', selectedBast.schoolName],

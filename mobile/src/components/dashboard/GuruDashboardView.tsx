@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { StyleSheet, ScrollView, Alert } from 'react-native';
 import { DashboardHeader } from './DashboardHeader';
 import { WeeklyCalendarStrip } from './WeeklyCalendarStrip';
 import { HaccpCountdown } from './HaccpCountdown';
@@ -8,7 +8,6 @@ import { QuickActionSection } from './QuickActionCard';
 import { NutrientCapsuleSection } from './NutrientCapsuleSection';
 import { MenuDetailSheet, ActionDetailSheet } from './DetailSheets';
 import {
-  MOCK_GURU_USER,
   MOCK_WEEKLY_DAYS,
   MOCK_HERO_MEAL_GURU,
   MOCK_QUICK_ACTIONS_GURU,
@@ -16,6 +15,7 @@ import {
   MOCK_DASHBOARD_METRICS,
 } from '../../data/mockValidatorData';
 import { QuickActionItem } from '../../types/role';
+import { useAuthRole } from '../../context/RoleContext';
 import { getHaccpView } from '../../utils/haccp';
 
 interface GuruDashboardViewProps {
@@ -30,6 +30,7 @@ export const GuruDashboardView: React.FC<GuruDashboardViewProps> = ({
   onOpenIncident,
 }) => {
   const [selectedDayId, setSelectedDayId] = useState<string>('d-4');
+  const { user } = useAuthRole();
   const [activeAction, setActiveAction] = useState<QuickActionItem | null>(null);
   const [menuDetailVisible, setMenuDetailVisible] = useState(false);
   const [haccpMinutes, setHaccpMinutes] = useState(MOCK_HERO_MEAL_GURU.haccpRemainingMinutes);
@@ -82,7 +83,7 @@ export const GuruDashboardView: React.FC<GuruDashboardViewProps> = ({
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      <DashboardHeader user={MOCK_GURU_USER} />
+      <DashboardHeader user={user} />
 
       <WeeklyCalendarStrip
         days={MOCK_WEEKLY_DAYS}

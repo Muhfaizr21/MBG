@@ -22,7 +22,7 @@ import { Bar, Key, KpiCard, RowAction, StatusDot } from './tableKit'
  * ==============================================================================
  * BADAN GIZI NASIONAL (BGN) REPUBLIK INDONESIA
  * KONSOL HASIL PENGIRIMAN & TELEMETRI YOLOV8 MBG (SUPERADMIN)
- * Standar: Enterprise 10-Year UI/UX • Zero-Glitch • Clean Code
+ * Standar: Enterprise 10-Year UI/UX Ã¢â‚¬Â¢ Zero-Glitch Ã¢â‚¬Â¢ Clean Code
  * Dasar Regulasi: Bab 3.3.2 & Bab 4.2 Poin 8 Sistem Pengawasan MBG
  * ==============================================================================
  */
@@ -212,6 +212,7 @@ export function DeliveriesPanel({
   }
 
   const executeOverrideAi = () => {
+    if (onSuperadminAction?.('override_ai')?.allowed === false) return
     if (!overrideModalData) return
     const { delivery, auditorName, reason } = overrideModalData
 
@@ -238,7 +239,6 @@ export function DeliveriesPanel({
       })
     )
 
-    onSuperadminAction?.('override_ai', { delivery, auditorName, reason })
     showToast?.(`[OVERRIDE SAH] Hasil deteksi AI untuk ${delivery.school} berhasil disahkan layak konsumsi secara manual.`)
     setOverrideModalData(null)
   }
@@ -257,6 +257,7 @@ export function DeliveriesPanel({
   }
 
   const executeOrderLabTest = () => {
+    if (onSuperadminAction?.('order_lab_test')?.allowed === false) return
     if (!labModalData) return
     const { delivery, dinkesOffice, labFacility, samplingTarget, pathogens, notes } = labModalData
     const orderId = `LAB-${delivery.city.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`
@@ -286,7 +287,6 @@ export function DeliveriesPanel({
       })
     )
 
-    onSuperadminAction?.('order_lab_test', { delivery, orderId, dinkesOffice, pathogens })
     showToast?.(`[UJI PETIK LAB DIKIRIM] Perintah uji kultur mikroba ${orderId} telah diteruskan ke ${dinkesOffice}.`)
     setLabModalData(null)
   }
@@ -601,7 +601,7 @@ export function DeliveriesPanel({
 
                             <p className="text-[10px] text-slate-500 font-mono mt-0.5">
                               Pindai: <span className="text-slate-600">{delivery.scannedAt}</span>
-                              <span className="mx-1 text-slate-300">·</span>
+                              <span className="mx-1 text-slate-300">Ã‚Â·</span>
                               <span>{delivery.portions} Porsi</span>
                             </p>
                           </div>
@@ -656,11 +656,11 @@ export function DeliveriesPanel({
                             <span className="text-slate-600 font-medium">
                               {delivery.yolo.macronutrients.calories} kkal
                             </span>
-                            <span className="text-slate-300">·</span>
+                            <span className="text-slate-300">Ã‚Â·</span>
                             <span className="text-slate-600">
                               P: {delivery.yolo.macronutrients.proteinG}g
                             </span>
-                            <span className="text-slate-300">·</span>
+                            <span className="text-slate-300">Ã‚Â·</span>
                             <span className="text-slate-600">
                               K: {delivery.yolo.macronutrients.carbsG}g
                             </span>
@@ -689,7 +689,7 @@ export function DeliveriesPanel({
                               }`}
                             />
                             <span className="font-mono font-bold text-slate-900 text-xs">
-                              {delivery.thermal.temp}°C
+                              {delivery.thermal.temp}Ã‚Â°C
                             </span>
                             <span
                               className={`text-[11px] font-bold px-1.5 py-0.2 rounded font-mono ${
@@ -1249,7 +1249,7 @@ export function DeliveriesPanel({
                 <div>
                   <span className="text-slate-500">Suhu Termal Saat Tiba:</span>
                   <p className="font-mono font-bold text-emerald-700">
-                    {proofModalData.delivery.thermal.temp}°C ({proofModalData.delivery.thermal.probeDevice})
+                    {proofModalData.delivery.thermal.temp}Ã‚Â°C ({proofModalData.delivery.thermal.probeDevice})
                   </p>
                 </div>
               </div>

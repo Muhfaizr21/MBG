@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, PanResponder, LayoutChangeEvent } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
@@ -12,8 +12,12 @@ interface SignaturePadProps {
 
 const HEIGHT = 120;
 
+const hasLine = (path: string) => path.includes(' L');
+
 /** Kanvas tanda tangan. Pakai PanResponder bawaan React Native dan SVG yang
- *  sudah terpasang, jadi tidak menambah dependensi untuk satu layar ini. */
+ *  sudah terpasang, jadi tidak menambah dependensi untuk satu layar ini.
+ *  Stroke aktif disimpan sebagai elemen terakhir `strokes`, jadi semua
+ *  perubahan lewat updater murni (aman untuk aturan React Hooks). */
 export const SignaturePad: React.FC<SignaturePadProps> = ({
   label,
   party,
@@ -21,44 +25,47 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   onSign,
   onClear,
 }) => {
-  const [paths, setPaths] = useState<string[]>([]);
-  const [current, setCurrent] = useState('');
+  const [strokes, setStrokes] = useState<string[]>([]);
+  const [commitCount, setCommitCount] = useState(0);
   const [size, setSize] = useState({ width: 0, height: HEIGHT });
-  const currentRef = useRef('');
+  const committedRef = useRef(0);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => {
-          const { locationX, locationY } = event.nativeEvent;
-          currentRef.current = `M${locationX.toFixed(1)} ${locationY.toFixed(1)}`;
-          setCurrent(currentRef.current);
-        },
-        onPanResponderMove: (event) => {
-          const { locationX, locationY } = event.nativeEvent;
-          currentRef.current += ` L${locationX.toFixed(1)} ${locationY.toFixed(1)}`;
-          setCurrent(currentRef.current);
-        },
-        onPanResponderRelease: () => {
-          if (currentRef.current.includes('L')) {
-            const finished = currentRef.current;
-            setPaths((previous) => [...previous, finished]);
-            onSign(paths.concat(finished).join(' '));
-          }
-          currentRef.current = '';
-          setCurrent('');
-        },
-      }),
-    // paths dipakai di dalam callback, jadi harus ikut dependensi.
-    [paths, onSign],
+  const [panResponder] = useState(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (event) => {
+        const { locationX, locationY } = event.nativeEvent;
+        setStrokes((previous) => [...previous, `M${locationX.toFixed(1)} ${locationY.toFixed(1)}`]);
+      },
+      onPanResponderMove: (event) => {
+        const { locationX, locationY } = event.nativeEvent;
+        setStrokes((previous) => {
+          const head = previous.slice(0, -1);
+          const tail = previous[previous.length - 1];
+          if (tail === undefined) return previous;
+          return [...head, `${tail} L${locationX.toFixed(1)} ${locationY.toFixed(1)}`];
+        });
+      },
+      onPanResponderRelease: () => {
+        setStrokes((previous) => {
+          const tail = previous[previous.length - 1] ?? '';
+          // Titik tanpa gerakan (tanpa " L") dibuang, persis perilaku lama.
+          return hasLine(tail) ? previous : previous.slice(0, -1);
+        });
+        setCommitCount((count) => count + 1);
+      },
+    }),
   );
 
+  useEffect(() => {
+    if (committedRef.current === commitCount) return;
+    committedRef.current = commitCount;
+    onSign(strokes.filter(hasLine).join(' '));
+  }, [commitCount, strokes, onSign]);
+
   const handleClear = () => {
-    setPaths([]);
-    setCurrent('');
-    currentRef.current = '';
+    setStrokes([]);
     onClear();
   };
 
@@ -89,7 +96,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
       >
         {size.width > 0 && (
           <Svg width={size.width} height={size.height}>
-            {[...paths, current].filter(Boolean).map((path, index) => (
+            {strokes.filter(Boolean).map((path, index) => (
               <Path
                 key={index}
                 d={path}
@@ -102,7 +109,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
             ))}
           </Svg>
         )}
-        {paths.length === 0 && !current && (
+        {strokes.length === 0 && (
           <Text style={styles.placeholder} pointerEvents="none">
             Tanda tangan di sini
           </Text>

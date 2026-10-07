@@ -1,6 +1,9 @@
 import { useMemo, useState, useEffect } from 'react'
 import { AdminLayout } from '../../components/layout/AdminLayout'
+import { useAuth } from '../../context/AuthContext'
+import { guardAdminAction } from '../../lib/adminActions'
 import { ValidatorPanel } from '../../components/dashboard/ValidatorPanel'
+import { fetchValidators } from '../../lib/api'
 
 /**
  * ==============================================================================
@@ -11,6 +14,7 @@ import { ValidatorPanel } from '../../components/dashboard/ValidatorPanel'
  */
 
 export function ValidatorsPage() {
+  const { user } = useAuth()
   const initialValidators = useMemo(
     () => [
       {
@@ -277,8 +281,34 @@ export function ValidatorsPage() {
     []
   )
 
+  const [validators, setValidators] = useState(initialValidators)
+
+  useEffect(() => {
+    let isMounted = true
+    fetchValidators()
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setValidators((prev) =>
+            prev.map((v) => {
+              const live = data.find(
+                (d) => d.nip === v.nip || d.npsn === v.npsn || d.name === v.name
+              )
+              return live ? { ...v, ...live } : v
+            })
+          )
+        }
+      })
+      .catch((err) => console.warn('Fallback validators:', err))
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   const handleSuperadminAction = (action, validator) => {
-    console.log(`[Superadmin Audit Action] ${action} on validator:`, validator.name, validator.satgasId)
+    const res = guardAdminAction(user, 'Validators', action, validator)
+    if (!res.allowed) setToast(res.message)
+    return res
   }
 
   // Toast is owned here because ValidatorPanel has no visual channel of its own:
@@ -294,7 +324,7 @@ export function ValidatorsPage() {
     <AdminLayout
       activeMenu="validator"
       title="Profil Validator"
-      badge="ROSTER RESMI"
+      badge="POSTGRESQL LIVE"
       showSearch={false}
     >
       {toast && (
@@ -309,7 +339,7 @@ export function ValidatorsPage() {
       )}
 
       <ValidatorPanel
-        validators={initialValidators}
+        validators={validators}
         onSuperadminAction={handleSuperadminAction}
         showToast={setToast}
       />

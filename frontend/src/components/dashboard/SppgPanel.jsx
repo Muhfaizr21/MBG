@@ -24,7 +24,7 @@ import { Code, Figure, RowAction, StatusDot } from './tableKit'
  * ==============================================================================
  * BADAN GIZI NASIONAL (BGN) REPUBLIK INDONESIA
  * KONSOL DIREKTORI & EVALUASI KEPATUHAN DAPUR SPPG (SUPERADMIN)
- * Standar: Enterprise 10-Year UI/UX • Zero-Glitch • Clean Code
+ * Standar: Enterprise 10-Year UI/UX Ã¢â‚¬Â¢ Zero-Glitch Ã¢â‚¬Â¢ Clean Code
  * Dasar Hukum: Perpres No. 83/2024 & Bab 4.2 Poin 8 Sistem Pengawasan MBG
  * ==============================================================================
  */
@@ -238,6 +238,7 @@ export function SppgPanel({
   }
 
   const executeIssueWarning = () => {
+    if (onSuperadminAction?.('issue_warning')?.allowed === false) return
     if (!warningModalData) return
     const { sppg, warningType, letterNumber, issueDate, deadlineDays, reasons } = warningModalData
 
@@ -259,7 +260,7 @@ export function SppgPanel({
           return {
             ...item,
             status: 'warning',
-            statusNote: `Penerbitan ${warningType} Aktif • Menunggu Klarifikasi Vendor`,
+            statusNote: `Penerbitan ${warningType} Aktif Ã¢â‚¬Â¢ Menunggu Klarifikasi Vendor`,
             warningLetters: updatedLetters
           }
         }
@@ -267,7 +268,6 @@ export function SppgPanel({
       })
     )
 
-    onSuperadminAction?.('issue_warning', { sppg, warning: newWarning })
     showToast?.(`[RESMI BGN] ${warningType} (${letterNumber}) berhasil diterbitkan secara digital untuk ${sppg.name}.`)
     setWarningModalData(null)
   }
@@ -289,6 +289,7 @@ export function SppgPanel({
   }
 
   const executeSuspension = () => {
+    if (onSuperadminAction?.('suspend_kitchen')?.allowed === false) return
     if (!suspensionModalData) return
     const { sppg, alternativeSppgId, formalNotes } = suspensionModalData
     const altKitchen = sppgList.find((k) => k.id === alternativeSppgId)
@@ -340,7 +341,6 @@ export function SppgPanel({
       })
     )
 
-    onSuperadminAction?.('suspend_kitchen', { sppg, suspensionDoc, altKitchen })
     showToast?.(`[PENANGGUHAN IZIN] Distribusi ${sppg.name} resmi DIBEKUKAN. Suplai dialihkan ke ${altKitchen?.name || 'dapur cadangan'}.`)
     setSuspensionModalData(null)
   }
@@ -377,6 +377,7 @@ export function SppgPanel({
   const executeSetQuota = () => {
     if (!quotaModalData) return
     const { sppg, newQuota, reason } = quotaModalData
+    if (onSuperadminAction?.('update_quota', { sppg, newQuota, reason })?.allowed === false) return
     const quotaVal = parseInt(newQuota, 10) || sppg.capacity.activeQuota
 
     setSppgList((prev) =>
@@ -398,7 +399,6 @@ export function SppgPanel({
       })
     )
 
-    onSuperadminAction?.('update_quota', { sppg, newQuota: quotaVal, reason })
     showToast?.(`[KUOTA BARU] Alokasi harian ${sppg.name} berhasil ditetapkan menjadi ${quotaVal.toLocaleString()} porsi/hari.`)
     setQuotaModalData(null)
   }
@@ -1084,7 +1084,7 @@ export function SppgPanel({
                 <ul className="space-y-1 text-slate-700 bg-white p-2.5 rounded border border-amber-200/60">
                   {warningModalData.reasons.map((r, i) => (
                     <li key={i} className="flex items-start gap-1.5">
-                      <span className="text-rose-500 font-bold">•</span>
+                      <span className="text-rose-500 font-bold">Ã¢â‚¬Â¢</span>
                       <span>{r}</span>
                     </li>
                   ))}

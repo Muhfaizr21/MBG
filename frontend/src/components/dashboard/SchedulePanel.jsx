@@ -124,7 +124,7 @@ export function SchedulePanel({
       'Jam Berangkat',
       'Target Kedatangan',
       'Live ETA',
-      'Suhu Kargo (°C)',
+      'Suhu Kargo (Ã‚Â°C)',
       'Status Operasional',
       'Keterangan Kendala'
     ]
@@ -161,6 +161,7 @@ export function SchedulePanel({
 
   // Handle Reschedule Submit
   const handleRescheduleSubmit = (e) => {
+    if (onSuperadminAction?.('RESCHEDULE_DELIVERY')?.allowed === false) return
     e.preventDefault()
     if (!rescheduleModalData) return
 
@@ -189,7 +190,6 @@ export function SchedulePanel({
 
     setRescheduleModalData(null)
     showToast(`Jadwal pengiriman untuk ${schedule.schoolName} berhasil diubah ke ${newTime} WIB!`)
-    onSuperadminAction('RESCHEDULE_DELIVERY', { scheduleId: schedule.id, newTime, reason, effectiveDate })
   }
 
   // Handle Delay Alert Submit
@@ -198,14 +198,15 @@ export function SchedulePanel({
     if (!delayAlertModalData) return
 
     const { schedule, delayMinutes, customMessage } = delayAlertModalData
+    if (onSuperadminAction?.('SEND_DELAY_ALERT', { scheduleId: schedule.id, delayMinutes, customMessage })?.allowed === false) return
 
     setDelayAlertModalData(null)
     showToast(`Peringatan keterlambatan (+${delayMinutes}m) berhasil disiarkan ke WhatsApp Kepala Sekolah & Guru Validator ${schedule.schoolName}!`)
-    onSuperadminAction('SEND_DELAY_ALERT', { scheduleId: schedule.id, delayMinutes, customMessage })
   }
 
   // Handle Reroute Submit
   const handleRerouteSubmit = (e) => {
+    if (onSuperadminAction?.('DISPATCH_BACKUP_FLEET')?.allowed === false) return
     e.preventDefault()
     if (!rerouteModalData) return
 
@@ -245,7 +246,6 @@ export function SchedulePanel({
 
     setRerouteModalData(null)
     showToast(`Armada cadangan ${backupObj.plateNumber} (${backupObj.driverName}) berhasil ditugaskan untuk re-routing!`)
-    onSuperadminAction('DISPATCH_BACKUP_FLEET', { scheduleId: schedule.id, backupFleetId, notes })
   }
 
   return (
@@ -608,7 +608,7 @@ export function SchedulePanel({
                           <div className="flex items-center gap-1.5">
                             <Thermometer className="h-3.5 w-3.5 text-rose-500 shrink-0" />
                             <span className="font-mono font-bold text-slate-900 text-xs">
-                              {item.fleet.cargoTempCelsius}°C
+                              {item.fleet.cargoTempCelsius}Ã‚Â°C
                             </span>
                             <span className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-1 rounded">
                               Aman Termal
@@ -741,7 +741,7 @@ export function SchedulePanel({
             <strong className="text-slate-900">{schedules.length}</strong> jadwal armada logistik
           </span>
           <span className="font-mono text-[11px] text-slate-500">
-            JENDELA KEDATANGAN WAJIB: 06:45 – 07:30 WIB
+            JENDELA KEDATANGAN WAJIB: 06:45 Ã¢â‚¬â€œ 07:30 WIB
           </span>
         </div>
       </div>
@@ -1052,7 +1052,7 @@ export function SchedulePanel({
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
                 <span className="font-bold text-slate-800">Protokol Pemindahan Makanan (*Cold-Chain Safety*):</span>
                 <p>
-                  Pindahkan boks tertutup tanpa membuka segel termal untuk menjaga suhu makanan tetap di atas 60°C sampai tiba di sekolah.
+                  Pindahkan boks tertutup tanpa membuka segel termal untuk menjaga suhu makanan tetap di atas 60Ã‚Â°C sampai tiba di sekolah.
                 </p>
               </div>
 
@@ -1170,9 +1170,9 @@ export function SchedulePanel({
                       <span className="text-slate-500 text-[10px] uppercase tracking-wider block">Suhu Kargo Termal</span>
                       <div className="flex items-center gap-1.5 mt-1">
                         <Thermometer className="h-4 w-4 text-rose-500" />
-                        <span className="text-lg font-bold font-mono text-slate-900">{selectedSchedule.fleet.cargoTempCelsius}°C</span>
+                        <span className="text-lg font-bold font-mono text-slate-900">{selectedSchedule.fleet.cargoTempCelsius}Ã‚Â°C</span>
                       </div>
-                      <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">Higienis &gt; 60°C</span>
+                      <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">Higienis &gt; 60Ã‚Â°C</span>
                     </div>
 
                     <div className="p-3.5 rounded-xl border border-slate-200 bg-white">

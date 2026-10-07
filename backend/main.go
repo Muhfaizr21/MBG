@@ -3,7 +3,9 @@ package main
 import (
 	"backend/config"
 	"backend/controllers"
+	"backend/database"
 	_ "backend/docs"
+	"backend/middlewares"
 	"backend/repositories"
 	"backend/routes"
 	"backend/services"
@@ -35,24 +37,72 @@ func main() {
 	// 1. Load Configurations
 	cfg := config.LoadConfig()
 
-	// 2. Initialize Repositories (Data Access Layer)
+	bootCtx, bootCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer bootCancel()
+
+	// 2. Connect database (PostgreSQL) + migrate + seed demo accounts
+	if err := database.Connect(bootCtx, cfg); err != nil {
+		log.Fatalf("Database connection failed: %v\n", err)
+	}
+	defer database.Close()
+
+	if err := database.Migrate(bootCtx); err != nil {
+		log.Fatalf("Migration failed: %v\n", err)
+	}
+	if err := database.MigrateExtended(bootCtx); err != nil {
+		log.Fatalf("Extended migration failed: %v\n", err)
+	}
+	if err := database.Seed(bootCtx); err != nil {
+		log.Fatalf("Seed failed: %v\n", err)
+	}
+	if err := database.SeedExtended(bootCtx); err != nil {
+		log.Fatalf("Extended seed failed: %v\n", err)
+	}
+	if err := database.SeedNutrition(bootCtx, cfg.NutritionDataPath); err != nil {
+		log.Fatalf("Seed nutrition failed: %v\n", err)
+	}
+
+	// 3. Initialize Repositories (Data Access Layer)
 	itemRepo := repositories.NewInMemoryItemRepository()
+	userRepo := repositories.NewUserRepository()
+	scanRepo := repositories.NewScanRepository()
+	nutritionRepo := repositories.NewNutritionRepository()
+	portalRepo := repositories.NewPortalRepository()
 
-	// 3. Initialize Services (Business Logic Layer - Dependency Inversion)
+	// 4. Initialize Services (Business Logic Layer - Dependency Inversion)
 	itemService := services.NewItemService(itemRepo)
+	authService := services.NewAuthService(
+		userRepo,
+		cfg.JWTSecret,
+		time.Duration(cfg.JWTAccessTTLMinutes)*time.Minute,
+		time.Duration(cfg.JWTRefreshTTLHours)*time.Hour,
+	)
+	nutritionService := services.NewNutritionService(nutritionRepo)
+	scanService := services.NewScanService(scanRepo, cfg.AIBackendURL, nutritionService)
+	portalService := services.NewPortalService(portalRepo)
 
-	// 4. Initialize Controllers (Presentation / HTTP Layer)
+	// 5. Initialize Controllers (Presentation / HTTP Layer)
 	healthCtrl := controllers.NewHealthController()
 	itemCtrl := controllers.NewItemController(itemService)
+	authCtrl := controllers.NewAuthController(authService)
+	scanCtrl := controllers.NewScanController(scanService)
+	nutritionCtrl := controllers.NewNutritionController(nutritionService)
+	portalCtrl := controllers.NewPortalController(portalService)
 
-	// 5. Initialize Routes & Middlewares
+	// 6. Initialize Routes & Middlewares
 	routerDeps := routes.RouterDependencies{
-		HealthCtrl: healthCtrl,
-		ItemCtrl:   itemCtrl,
+		HealthCtrl:    healthCtrl,
+		ItemCtrl:      itemCtrl,
+		AuthCtrl:      authCtrl,
+		ScanCtrl:      scanCtrl,
+		NutritionCtrl: nutritionCtrl,
+		PortalCtrl:    portalCtrl,
+		AuthMW:        middlewares.Auth(authService),
+		CORSOrigins:   cfg.CORSOrigins,
 	}
 	handler := routes.SetupRoutes(routerDeps)
 
-	// 6. Setup HTTP Server
+	// 7. Setup HTTP Server
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      handler,
@@ -61,7 +111,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// 7. Start Server in Goroutine
+	// 8. Start Server in Goroutine
 	go func() {
 		fmt.Printf("🚀 Backend running at http://localhost:%s (env: %s)\n", cfg.Port, cfg.AppEnv)
 		fmt.Printf("📖 Swagger UI available at http://localhost:%s/swagger/index.html\n", cfg.Port)
@@ -70,7 +120,7 @@ func main() {
 		}
 	}()
 
-	// 8. Graceful Shutdown on SIGINT / SIGTERM
+	// 9. Graceful Shutdown on SIGINT / SIGTERM
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

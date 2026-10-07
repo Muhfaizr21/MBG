@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { StatusBar, Platform } from 'react-native';
+import { AuthProvider } from '../context/AuthContext';
 import { RoleProvider } from '../context/RoleContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -39,11 +40,13 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider value={AppTheme}>
-        <RoleProvider initialRole="guru">
-          <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
-          <ExpoStatusBar style="dark" />
-          <Slot />
-        </RoleProvider>
+        <AuthProvider>
+          <RoleProvider initialRole="guru">
+            <StatusBar backgroundColor="#ffffff" barStyle="dark-content" translucent={false} />
+            <ExpoStatusBar style="dark" />
+            <Slot />
+          </RoleProvider>
+        </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
