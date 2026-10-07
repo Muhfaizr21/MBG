@@ -3,11 +3,16 @@
 
 const API_BASE = 'http://localhost:8080'
 
-let accessToken = null
+let accessToken = localStorage.getItem('mbg_access_token') || null
 let refreshPromise = null
 
 export function setAccessToken(token) {
   accessToken = token
+  if (token) {
+    localStorage.setItem('mbg_access_token', token)
+  } else {
+    localStorage.removeItem('mbg_access_token')
+  }
 }
 
 export function getAccessToken() {
@@ -70,11 +75,11 @@ export async function loginRequest(email, password) {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   })
-  accessToken = body.data.accessToken
+  setAccessToken(body.data.accessToken)
   return body.data
 }
 
-/** Daftar akun baru (hanya validator/siswa; email wajib unik). */
+/** Daftar akun baru (hanya validator; email wajib unik). */
 export async function registerRequest({ fullName, email, password, role = 'validator', npsn, schoolName, sppgId }) {
   return api('/api/auth/register', {
     method: 'POST',
@@ -91,7 +96,7 @@ export async function logoutRequest() {
   try {
     await api('/api/auth/logout', { method: 'POST' })
   } finally {
-    accessToken = null
+    setAccessToken(null)
   }
 }
 
@@ -107,6 +112,9 @@ export async function scanRequest({
   holdingTempC,
   releaseTempC,
   items = '',
+  persist = true,
+  rating,
+  feedback,
 } = {}) {
   const body = new FormData()
   body.append('image', image)
@@ -120,16 +128,38 @@ export async function scanRequest({
     body.append('releaseTempC', String(releaseTempC))
   }
   if (items) body.append('items', items)
+  if (persist === false) body.append('persist', 'false')
+  if (rating) body.append('rating', String(rating))
+  if (feedback) body.append('feedback', String(feedback))
   return api('/api/scans', { method: 'POST', body })
+}
+
+export async function updateScanFeedback(id, payload) {
+  return api(`/api/scans/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteScan(id) {
+  return api(`/api/scans/${id}`, { method: 'DELETE' })
+}
+
+export async function deleteAllScans() {
+  return api('/api/scans/all', { method: 'DELETE' })
+}
+
+/** Riwayat scan terbaru (butuh izin scan.submit — role validator). */
+export async function fetchRecentScans(limit = 10) {
+  const res = await api(`/api/scans/recent?limit=${limit}`)
+  return res?.data || []
 }
 
 // Role → home portal mapping used after login and inside RequireRole.
 export const ROLE_HOME = {
   superadmin: '/admin',
-  satgas: '/admin',
   sppg: '/sppg/dashboard',
   validator: '/validator',
-  siswa: '/siswa',
 }
 
 export function homeForRole(role) {
@@ -216,4 +246,14 @@ export async function fetchValidators() {
 export async function fetchAdminMetrics() {
   const res = await api('/api/admin/metrics')
   return res?.data || null
+}
+
+/** Cari bahan makanan pada dataset gizi (dipakai pemindai porsi). */
+export async function fetchNutritionItems(q = '', limit = 20) {
+  const params = new URLSearchParams()
+  if (q) params.set('q', q)
+  if (limit) params.set('limit', String(limit))
+  const qs = params.toString()
+  const res = await api(`/api/nutrition/items${qs ? `?${qs}` : ''}`)
+  return res?.data || []
 }

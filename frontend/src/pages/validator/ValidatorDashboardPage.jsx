@@ -29,7 +29,7 @@ import {
   INITIAL_CALENDAR_DAYS,
   NATIONAL_AKG_STANDARDS,
 } from '../../data/calendarData'
-import { TODAY_PACKAGE_ID } from '../../data/siswaData'
+const TODAY_PACKAGE_ID = 'PKG-B'
 
 /**
  * ==============================================================================

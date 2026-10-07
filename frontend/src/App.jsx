@@ -29,17 +29,12 @@ import { SppgHandoverPage } from './pages/sppg/SppgHandoverPage'
 import { SppgIncidentsPage } from './pages/sppg/SppgIncidentsPage'
 import { SppgBillingPage } from './pages/sppg/SppgBillingPage'
 import { SppgCompliancePage } from './pages/sppg/SppgCompliancePage'
-import { SiswaDashboardPage } from './pages/siswa/SiswaDashboardPage'
-import { SiswaScansPage } from './pages/siswa/SiswaScansPage'
-import { SiswaMenuPage } from './pages/siswa/SiswaMenuPage'
-import { SiswaPresensiPage } from './pages/siswa/SiswaPresensiPage'
-import { SiswaNoticesPage } from './pages/siswa/SiswaNoticesPage'
-import { SiswaAduanPage } from './pages/siswa/SiswaAduanPage'
 import { ValidatorDashboardPage } from './pages/validator/ValidatorDashboardPage'
 import { ValidatorScanPage } from './pages/validator/ValidatorScanPage'
 import { ValidatorHandoverPage } from './pages/validator/ValidatorHandoverPage'
 import { ValidatorIncidentsPage } from './pages/validator/ValidatorIncidentsPage'
 import { ValidatorHistoryPage } from './pages/validator/ValidatorHistoryPage'
+import { ValidatorFoodScanPage } from './pages/validator/ValidatorFoodScanPage'
 import { RequireRole } from './components/RequireRole'
 
 // Helper for programmatic navigation
@@ -131,10 +126,10 @@ export default function App() {
   const path = usePath()
 
   // Full-screen isolated admin dashboard (no public header/footer)
-  // Guarded: superadmin & satgas only; wrong role bounces to own portal.
+  // Superadmin portal.
   if (path.startsWith('/admin')) {
     return (
-      <RequireRole roles={['superadmin', 'satgas']}>
+      <RequireRole roles={['superadmin']}>
         {path === '/admin' ? (
           <AdminPage route={path} />
         ) : path === '/admin/validators' ? (
@@ -165,10 +160,10 @@ export default function App() {
   }
 
   // Full-screen isolated SPPG kitchen cockpit (no public header/footer, completely decoupled from /admin/*)
-  // Guarded: sppg (own portal), superadmin & satgas (read-only audit access).
+  // SPPG portal; superadmin can audit.
   if (path.startsWith('/sppg')) {
     return (
-      <RequireRole roles={['sppg', 'superadmin', 'satgas']}>
+      <RequireRole roles={['sppg', 'superadmin']}>
         {path === '/sppg/recipes' ? (
           <SppgRecipesPage />
         ) : path === '/sppg/batches' ? (
@@ -194,28 +189,6 @@ export default function App() {
     )
   }
 
-  // Full-screen isolated siswa portal (student dashboard + scan history)
-  // Guarded: siswa (own portal), superadmin (preview only).
-  if (path === '/siswa' || path.startsWith('/siswa/')) {
-    return (
-      <RequireRole roles={['siswa', 'superadmin']}>
-        {path === '/siswa/scans' ? (
-          <SiswaScansPage />
-        ) : path === '/siswa/menu' ? (
-          <SiswaMenuPage />
-        ) : path === '/siswa/presensi' ? (
-          <SiswaPresensiPage />
-        ) : path === '/siswa/notices' ? (
-          <SiswaNoticesPage />
-        ) : path === '/siswa/aduan' ? (
-          <SiswaAduanPage />
-        ) : (
-          <SiswaDashboardPage />
-        )}
-      </RequireRole>
-    )
-  }
-
   // Full-screen isolated validator portal (guru & staf sekolah — validator lapangan)
   // Guarded: validator (own portal), superadmin (preview only).
   if (path === '/validator' || path.startsWith('/validator/')) {
@@ -223,6 +196,8 @@ export default function App() {
       <RequireRole roles={['validator', 'superadmin']}>
         {path === '/validator/scan' ? (
           <ValidatorScanPage />
+        ) : path === '/validator/foodscan' ? (
+          <ValidatorFoodScanPage />
         ) : path === '/validator/handover' ? (
           <ValidatorHandoverPage />
         ) : path === '/validator/incidents' ? (

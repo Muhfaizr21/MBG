@@ -24,3 +24,4 @@ backend/model_ai/token.json
 .env
 .env.*
 !.env.example
+.aider*

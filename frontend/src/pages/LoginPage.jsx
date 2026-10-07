@@ -25,11 +25,15 @@ export function LoginPage() {
       navigate(homeForRole(user.role))
     } catch (err) {
       setSubmitted(false)
-      setError(
-        err.status === 401
-          ? 'Email atau kata sandi salah.'
-          : 'Tidak bisa terhubung ke server. Coba lagi nanti.',
-      )
+      if (err.status === 401 || err.status === 404) {
+        setError('Akun tidak ditemukan atau kata sandi salah. Periksa kembali email dan kata sandi.')
+      } else if (err.status === 403) {
+        setError(err.message || 'Role akun ini sudah tidak tersedia. Hubungi Super Admin.')
+      } else if (err.status) {
+        setError(err.message || 'Login belum bisa diproses. Periksa data akun Anda.')
+      } else {
+        setError('Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.')
+      }
     }
   }
 
@@ -72,17 +76,9 @@ export function LoginPage() {
             Masuk
           </h1>
           <p className="text-xs sm:text-sm text-gray-400 font-mono mt-1.5 mb-5">
-            Masuk untuk membuka dasbor contoh KawanGizi
+            Masuk sebagai Super Admin, petugas SPPG, atau Validator.
           </p>
 
-
-          {/* Divider */}
-          <div className="relative my-4 flex items-center justify-center">
-            <div className="w-full border-t border-gray-200"></div>
-            <span className="absolute bg-white px-3 text-[11px] uppercase font-mono text-gray-400 tracking-wider">
-              OR
-            </span>
-          </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-3.5">

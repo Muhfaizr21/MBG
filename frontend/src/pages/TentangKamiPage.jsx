@@ -54,8 +54,8 @@ const TRACE_STEPS = [
   { t: 'Dapur menimbang bahan', d: 'Gramur bahan tercatat saat produksi. Gizi dan batch terbentuk di titik ini.' },
   { t: 'Makanan dikirim ke sekolah', d: 'Jam masak mengikuti batch. wherever pun masak, jam tetap tercatat.' },
   { t: 'Validator menyorot porsi', d: 'Kamera menangkap porsi. YOLOv8 menilai kelayakan fisik.' },
-  { t: 'Keputusan di layar', d: 'Layak: sail动. Tidak layak: ditahan, dicatat, masuk dasbor satgas.' },
-  { t: 'Dapur asal bisa ditunjuk', d: 'Dari satu temuan di satu sekolah, satgas bisa melihat batch asal yang sama masih berjalan di sekolah lain.' },
+  { t: 'Keputusan di layar', d: 'Layak: dilanjutkan. Tidak layak: ditahan, dicatat, masuk dasbor Super Admin.' },
+  { t: 'Dapur asal bisa ditunjuk', d: 'Dari satu temuan di satu sekolah, Super Admin bisa melihat batch asal yang sama masih berjalan di sekolah lain.' },
 ]
 
 export function TentangKamiPage() {

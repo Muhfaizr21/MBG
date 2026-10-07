@@ -27,7 +27,7 @@ func newFakeRepo(t *testing.T) *fakeUserRepo {
 			FullName:     "Test User",
 			Email:        "test@kawangizi.id",
 			PasswordHash: string(hash),
-			Role:         models.RoleSatgas,
+			Role:         models.RoleSuperadmin,
 			Status:       models.StatusActive,
 		},
 		storedRefresh: map[string]string{},
@@ -86,8 +86,8 @@ func TestLoginSuccess(t *testing.T) {
 	if access == "" || rawRefresh == "" {
 		t.Fatal("Login() returned empty tokens")
 	}
-	if user.Role != models.RoleSatgas {
-		t.Errorf("role = %q, want satgas", user.Role)
+	if user.Role != models.RoleSuperadmin {
+		t.Errorf("role = %q, want superadmin", user.Role)
 	}
 	if !expires.After(time.Now()) {
 		t.Error("refresh expiry must be in the future")
@@ -213,8 +213,8 @@ func TestParseAccessTokenRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseAccessToken() error = %v", err)
 	}
-	if userID != "usr-test" || role != models.RoleSatgas {
-		t.Errorf("got (%q, %q), want (usr-test, satgas)", userID, role)
+	if userID != "usr-test" || role != models.RoleSuperadmin {
+		t.Errorf("got (%q, %q), want (usr-test, superadmin)", userID, role)
 	}
 
 	if _, _, err := svc.ParseAccessToken("garbage-token"); err == nil {
@@ -263,7 +263,7 @@ func TestPermissionMatrixIsolation(t *testing.T) {
 		models.PermValidatorsManage, models.PermKillswitch,
 		models.PermAiOverride, models.PermPaymentClearance, models.PermUsersCreate,
 	}
-	for _, role := range []string{models.RoleSatgas, models.RoleSppg, models.RoleValidator, models.RoleSiswa} {
+	for _, role := range []string{models.RoleSppg, models.RoleValidator} {
 		for _, perm := range sensitive {
 			if models.HasPermission(role, perm) {
 				t.Errorf("role %s must not have %s", role, perm)

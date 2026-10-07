@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   QrCode,
   Camera,
@@ -19,6 +19,7 @@ import { useAuth } from '../../context/AuthContext'
 import { guardAdminAction } from '../../lib/adminActions'
 import { scanRequest } from '../../lib/api'
 import { HACCP_TIMER, SCAN_STAGES, SCAN_SAMPLE_RESULTS } from '../../data/validatorData'
+import { ImageCapturePanel } from '../../components/shared/ImageCapturePanel'
 
 /**
  * ==============================================================================
@@ -92,7 +93,7 @@ export function ValidatorScanPage() {
   const [holdingTemp, setHoldingTemp] = useState('63.2')
   const [releaseTemp, setReleaseTemp] = useState('76.4')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const fileInputRef = useRef(null)
+  const [capturedBlob, setCapturedBlob] = useState(null)
 
   const locked = secondsLeft <= 0
 
@@ -147,36 +148,48 @@ export function ValidatorScanPage() {
 
   const nextMockResult = () => SCAN_SAMPLE_RESULTS[pendingIdx % SCAN_SAMPLE_RESULTS.length]
 
-  // Tahap visual: pilih/pambil foto, kirim ke POST /api/scans (AI service Go → Python).
-  // Fallback ke mock bila offline atau AI service tidak terjangkau (demo tetap jalan).
-  const handleFileChange = async (event) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
+  // Callback dari ImageCapturePanel: simpan blob WebP yang sudah siap dikirim.
+  const handleCapture = (blob, previewUrl) => {
+    setCapturedBlob(blob)
+    setCapturedPreview(previewUrl)
+  }
+
+  // Kirim foto (WebP) ke POST /api/scans (AI service Go → Python).
+  const submitVisualScan = async () => {
+    if (!capturedBlob) {
+      setToast('Ambil atau upload foto makanan terlebih dahulu.')
+      return
+    }
     if (locked) {
       setToast('Jendela HACCP 4 jam berakhir. Pemindaian dikunci sampai boks baru tiba.')
       return
     }
-
+    const webpFile = new File([capturedBlob], 'scan.webp', { type: 'image/webp' })
     setIsAnalyzing(true)
     try {
       if (isOffline) {
         setToast('Mode offline aktif — hasil analisis memakai simulasi lokal di perangkat.')
         finishWithResult(nextMockResult(), true)
+        setCapturedBlob(null)
+        setCapturedPreview(null)
         return
       }
       try {
         const body = await scanRequest({
-          image: file,
+          image: webpFile,
           qrToken: qrToken.trim(),
           holdingTempC: holdingTemp,
           releaseTempC: releaseTemp,
           items: SCAN_MENU_ITEMS,
         })
         finishWithResult(normalizeScanResult(body.data), false)
+        setCapturedBlob(null)
+        setCapturedPreview(null)
       } catch (err) {
         setToast(`AI service tidak terhubung (${err.message}) — menampilkan hasil simulasi.`)
         finishWithResult(nextMockResult(), false)
+        setCapturedBlob(null)
+        setCapturedPreview(null)
       }
     } finally {
       setIsAnalyzing(false)
@@ -192,8 +205,6 @@ export function ValidatorScanPage() {
       setStage('visual')
       return
     }
-    // Tahap visual: buka pemilih foto (analisis dijalankan di handleFileChange).
-    fileInputRef.current?.click()
   }
 
   const decide = (decision) => {
@@ -233,6 +244,18 @@ export function ValidatorScanPage() {
           <p className="leading-relaxed font-medium">{toast}</p>
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={() => navigate('/validator/foodscan')}
+        className="flex w-full items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition hover:bg-amber-100"
+      >
+        <span>
+          <span className="block text-xs font-bold text-amber-950">Butuh rincian kandungan gizi?</span>
+          <span className="mt-0.5 block text-[11px] text-amber-800">Buka analisis foto dan hitung makro berdasarkan bahan makanan.</span>
+        </span>
+        <span className="shrink-0 text-xs font-bold text-amber-900">Analisis gizi →</span>
+      </button>
 
       {/* Status strip: HACCP + mode offline */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -404,33 +427,43 @@ export function ValidatorScanPage() {
             </label>
           )}
 
-          {/* Input tahap 2: sinyal suhu (dari termometer lapangan) */}
+          {/* Input tahap 2: kamera/upload foto + sinyal suhu */}
           {stage === 'visual' && (
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  Suhu lepas dapur (°C)
-                </span>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={releaseTemp}
-                  onChange={(e) => setReleaseTemp(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 focus:border-amber-400 focus:bg-white focus:outline-none"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  Suhu holding boks (°C)
-                </span>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={holdingTemp}
-                  onChange={(e) => setHoldingTemp(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 focus:border-amber-400 focus:bg-white focus:outline-none"
-                />
-              </label>
+            <div className="mt-4 space-y-4">
+              {/* Panel kamera & upload WebP */}
+              <ImageCapturePanel
+                onCapture={handleCapture}
+                disabled={locked || isAnalyzing}
+                label="Foto isi boks (YOLOv8 inspection)"
+                hint="Buka tutup boks, sorot piring — kamera atau upload foto. Otomatis WebP."
+              />
+              {/* Sinyal suhu dari termometer lapangan */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Suhu lepas dapur (°C)
+                  </span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={releaseTemp}
+                    onChange={(e) => setReleaseTemp(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 focus:border-amber-400 focus:bg-white focus:outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Suhu holding boks (°C)
+                  </span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={holdingTemp}
+                    onChange={(e) => setHoldingTemp(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 focus:border-amber-400 focus:bg-white focus:outline-none"
+                  />
+                </label>
+              </div>
             </div>
           )}
 
@@ -467,35 +500,39 @@ export function ValidatorScanPage() {
               </>
             ) : (
               <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-                <button
-                  type="button"
-                  onClick={stage === 'qr' ? startScan : advance}
-                  disabled={locked || isAnalyzing}
-                  className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-bold transition shadow-sm ${
-                    locked || isAnalyzing
-                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      : stage === 'qr'
-                        ? 'bg-amber-600 text-white hover:bg-amber-700 cursor-pointer'
-                        : 'bg-slate-900 text-white hover:bg-slate-800 cursor-pointer'
-                  }`}
-                >
-                  <Lock className="h-4 w-4" />
-                  {locked
-                    ? 'Pemindaian Terkunci (HACCP berakhir)'
-                    : isAnalyzing
-                      ? 'Menganalisis dengan AI…'
-                      : stage === 'qr'
-                        ? 'Mulai Pindai Boks Berikutnya'
-                        : 'Pilih Foto & Analisis AI'}
-                </button>
+                {stage === 'qr' ? (
+                  <button
+                    type="button"
+                    onClick={startScan}
+                    disabled={locked || isAnalyzing}
+                    className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-bold transition shadow-sm ${
+                      locked
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'bg-amber-600 text-white hover:bg-amber-700 cursor-pointer'
+                    }`}
+                  >
+                    <Lock className="h-4 w-4" />
+                    {locked ? 'Pemindaian Terkunci (HACCP berakhir)' : 'Mulai Pindai Boks Berikutnya'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={submitVisualScan}
+                    disabled={locked || isAnalyzing || !capturedBlob}
+                    className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-bold transition shadow-sm ${
+                      locked || isAnalyzing || !capturedBlob
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'bg-emerald-700 text-white hover:bg-emerald-800 cursor-pointer'
+                    }`}
+                  >
+                    <ScanLine className="h-4 w-4" />
+                    {isAnalyzing
+                      ? 'Menganalisis YOLOv8...'
+                      : !capturedBlob
+                        ? 'Foto belum diambil'
+                        : 'Analisis AI — Kirim ke Backend'}
+                  </button>
+                )}
               </>
             )}
           </div>

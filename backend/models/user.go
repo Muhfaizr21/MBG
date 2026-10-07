@@ -3,10 +3,8 @@ package models
 // Role identifiers for the RBAC system.
 const (
 	RoleSuperadmin = "superadmin"
-	RoleSatgas     = "satgas"
 	RoleSppg       = "sppg"
 	RoleValidator  = "validator"
-	RoleSiswa      = "siswa"
 )
 
 // Account status values.
@@ -37,7 +35,7 @@ type LoginRequest struct {
 }
 
 // RegisterRequest is the public payload for POST /api/auth/register.
-// Hanya role validator/siswa yang diizinkan mendaftar sendiri (dipaksa di service).
+// Only validator accounts may self-register.
 type RegisterRequest struct {
 	FullName   string `json:"fullName"`
 	Email      string `json:"email"`
@@ -83,7 +81,7 @@ const (
 )
 
 // rolePermissions maps each role to its granted permission set.
-// superadmin ⊃ satgas (tier inheritance applied explicitly below).
+// These are the only active roles; superadmin has access across all portals.
 var rolePermissions = map[string][]string{
 	RoleSuperadmin: {
 		PermDashboardRead, PermValidatorsRead, PermValidatorsManage,
@@ -92,13 +90,6 @@ var rolePermissions = map[string][]string{
 		PermCalendarRead, PermReportsDownload, PermFeedbackTriage,
 		PermAiOverride, PermPaymentClearance, PermKillswitch,
 		PermHandoverBast, PermIncidentSubmit, PermKitchenOps, PermUsersCreate,
-	},
-	RoleSatgas: {
-		PermDashboardRead, PermValidatorsRead, PermSppgRead,
-		PermDeliveriesRead, PermAttendanceRead, PermSchoolsRead,
-		PermScheduleRead, PermNoticesRead, PermCalendarRead,
-		PermReportsDownload, PermFeedbackTriage, PermHandoverBast,
-		PermIncidentSubmit,
 	},
 	RoleSppg: {
 		PermDashboardRead, PermSppgRead, PermSppgManage, PermDeliveriesRead,
@@ -111,10 +102,6 @@ var rolePermissions = map[string][]string{
 		PermAttendanceRead, PermSchoolsRead, PermScheduleRead, PermNoticesRead,
 		PermCalendarRead, PermFeedbackTriage, PermScanSubmit,
 		PermHandoverBast, PermIncidentSubmit,
-	},
-	RoleSiswa: {
-		PermAttendanceRead, PermSchoolsRead, PermNoticesRead,
-		PermCalendarRead, PermFeedbackTriage, PermIncidentSubmit,
 	},
 }
 

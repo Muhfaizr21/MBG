@@ -34,10 +34,12 @@ var ErrValidation = errors.New("data pendaftaran tidak valid")
 // ErrUnsupportedRole is returned when a role is not allowed to self-register.
 var ErrUnsupportedRole = errors.New("role tidak dapat didaftarkan sendiri")
 
+// ErrRoleInactive is returned when a legacy account uses a retired role.
+var ErrRoleInactive = errors.New("role akun ini sudah tidak tersedia, hubungi administrator")
+
 // publicRegisterRoles lists roles that may self-register via the public endpoint.
 var publicRegisterRoles = map[string]bool{
 	models.RoleValidator: true,
-	models.RoleSiswa:     true,
 }
 
 const refreshTokenBytes = 32
@@ -149,6 +151,9 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*model
 	if user.Status != models.StatusActive {
 		return nil, "", "", time.Time{}, ErrAccountDisabled
 	}
+	if !models.ValidRole(user.Role) {
+		return nil, "", "", time.Time{}, ErrRoleInactive
+	}
 
 	return s.newSession(ctx, user)
 }
@@ -182,6 +187,9 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*models
 	if user.Status != models.StatusActive {
 		return nil, "", "", time.Time{}, ErrAccountDisabled
 	}
+	if !models.ValidRole(user.Role) {
+		return nil, "", "", time.Time{}, ErrRoleInactive
+	}
 
 	if err := s.users.RevokeRefreshToken(ctx, hash); err != nil {
 		return nil, "", "", time.Time{}, err
@@ -207,6 +215,9 @@ func (s *AuthService) Me(ctx context.Context, userID string) (*models.User, erro
 		}
 		return nil, err
 	}
+	if !models.ValidRole(user.Role) {
+		return nil, ErrRoleInactive
+	}
 	return user, nil
 }
 
@@ -227,7 +238,7 @@ func (s *AuthService) ParseAccessToken(tokenString string) (userID string, role 
 	}
 	sub, _ := claims["sub"].(string)
 	userRole, _ := claims["role"].(string)
-	if sub == "" {
+	if sub == "" || !models.ValidRole(userRole) {
 		return "", "", ErrInvalidToken
 	}
 	return sub, userRole, nil

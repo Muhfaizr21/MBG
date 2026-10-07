@@ -8,7 +8,7 @@ const ARCHITECTURE = [
   { layer: 'React Native', runsOn: 'Ponsel validator', job: 'Buka kamera, kirim citra, tampilkan hasil layak atau tidak.' },
   { layer: 'Golang', runsOn: 'API gateway', job: 'Terima antrean pemindaian, auth, teruskan ke inferensi.' },
   { layer: 'Python + YOLOv8', runsOn: 'Backend AI terisolasi', job: 'Deteksi anomali fisik porsi dan hitung estimasi gizi.' },
-  { layer: 'Next.js', runsOn: 'Dasbor satgas', job: 'Petakan hasil per sekolah, tandai dapur bermasalah.' },
+  { layer: 'Next.js', runsOn: 'Dasbor Super Admin', job: 'Petakan hasil per sekolah, tandai dapur bermasalah.' },
 ]
 
 const COMPARISON = [
@@ -30,7 +30,7 @@ const COMPARISON = [
   {
     aspect: 'Tindak lanjut temuan',
     old: 'Laporan kertas berjenjang. Dapur bermasalah ketahuan berminggu kemudian.',
-    now: 'Hasil masuk dasbor satgas detik itu juga. Distribusi batch bermasalah bisa dihentikan hari yang sama.',
+    now: 'Hasil masuk dasbor Super Admin detik itu juga. Distribusi batch bermasalah bisa dihentikan hari yang sama.',
   },
   {
     aspect: 'Data untuk kebijakan',

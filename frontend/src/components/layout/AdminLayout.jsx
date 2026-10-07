@@ -31,7 +31,6 @@ import { useAuth } from '../../context/AuthContext'
 
 const ROLE_LABELS = {
   superadmin: 'Superadmin Satgas MBG',
-  satgas: 'Satgas MBG Pusat',
   sppg: 'Petugas SPPG',
 }
 

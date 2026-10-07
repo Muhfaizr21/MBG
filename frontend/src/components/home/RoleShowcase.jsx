@@ -14,7 +14,7 @@ export function RoleShowcase() {
             Solusi Spesifik untuk <em className="font-serif italic font-normal text-gray-700">Setiap Aktor</em>
           </h2>
           <p className="mt-3 text-sm sm:text-base text-gray-500 leading-relaxed">
-            Mulai dari validator lapangan yang memindai porsi sebelum dibagikan, hingga Satuan Tugas MBG yang memantau dari pusat komando.
+            Validator memeriksa porsi di sekolah, petugas SPPG mengelola dapur, dan Super Admin mengawasi seluruh operasional.
           </p>
         </div>
 

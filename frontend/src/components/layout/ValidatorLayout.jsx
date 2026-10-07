@@ -20,8 +20,8 @@ import { useAuth } from '../../context/AuthContext'
 
 export const VALIDATOR_SIDEBAR_MENU = [
   { id: 'dashboard', label: 'Beranda & Kuota', icon: LayoutDashboard, href: '/validator' },
-  { id: 'scan', label: 'Pemindai AI & Mutu', icon: ScanLine, href: '/validator/scan' },
-  { id: 'handover', label: 'Serah Terima BAST', icon: ClipboardCheck, href: '/validator/handover' },
+  { id: 'scan', label: 'Skrining QR & AI', icon: ScanLine, href: '/validator/scan' },
+  { id: 'handover', label: 'Distribusi & Serah Terima', icon: ClipboardCheck, href: '/validator/handover' },
   { id: 'incidents', label: 'Lapor Insiden', icon: Siren, href: '/validator/incidents' },
   { id: 'history', label: 'Riwayat & Presensi', icon: History, href: '/validator/history' },
 ]
@@ -58,7 +58,7 @@ const VALIDATOR_NOTIFICATIONS = [
 
 /**
  * Portal Validator layout: sidebar + topbar + notifikasi.
- * Pola identik dengan SiswaLayout — tema amber (validator lapangan).
+ * Layout portal lapangan dengan tema amber.
  * Dipakai untuk seluruh rute /validator/*.
  */
 export function ValidatorLayout({ activeMenu = 'dashboard', title, badge, children }) {

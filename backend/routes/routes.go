@@ -49,6 +49,9 @@ func SetupRoutes(deps RouterDependencies) http.Handler {
 	// Scan routes — submit & history require scan.submit (role validator)
 	mux.Handle("POST /api/scans", middlewares.RequirePermission(models.PermScanSubmit)(http.HandlerFunc(deps.ScanCtrl.Submit)))
 	mux.Handle("GET /api/scans/recent", middlewares.RequirePermission(models.PermScanSubmit)(http.HandlerFunc(deps.ScanCtrl.Recent)))
+	mux.Handle("PUT /api/scans/{id}", middlewares.RequirePermission(models.PermScanSubmit)(http.HandlerFunc(deps.ScanCtrl.UpdateFeedback)))
+	mux.Handle("DELETE /api/scans/all", middlewares.RequirePermission(models.PermScanSubmit)(http.HandlerFunc(deps.ScanCtrl.DeleteAllScans)))
+	mux.Handle("DELETE /api/scans/{id}", middlewares.RequirePermission(models.PermScanSubmit)(http.HandlerFunc(deps.ScanCtrl.DeleteScan)))
 
 	// Nutrition dataset — any authenticated user may look up item gizi
 	mux.Handle("GET /api/nutrition/items", middlewares.RequireAuth(http.HandlerFunc(deps.NutritionCtrl.Items)))
@@ -72,12 +75,16 @@ func SetupRoutes(deps RouterDependencies) http.Handler {
 		mux.HandleFunc("GET /api/admin/metrics", deps.PortalCtrl.GetAdminMetrics)
 	}
 
-	// Admin portal (superadmin & satgas) — audit log is superadmin-only
-	mux.Handle("GET /api/admin/summary", middlewares.RequireRole(models.RoleSuperadmin, models.RoleSatgas)(http.HandlerFunc(adminSummary)))
+	// Admin portal — superadmin only
+	mux.Handle("GET /api/admin/summary", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(adminSummary)))
 	mux.Handle("GET /api/admin/audit", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(adminSummary)))
 
-	// SPPG portal — superadmin & satgas read, sppg manages its own kitchen
-	mux.Handle("GET /api/sppg/overview", middlewares.RequireRole(models.RoleSuperadmin, models.RoleSatgas, models.RoleSppg)(http.HandlerFunc(sppgOverview)))
+	// SPPG portal — SPPG staff and superadmin
+	mux.Handle("GET /api/sppg/overview", middlewares.RequireRole(models.RoleSuperadmin, models.RoleSppg)(http.HandlerFunc(sppgOverview)))
+
+	// Static uploads — gambar scan yang disimpan server (untuk thumbnail riwayat)
+	uploadDir := "uploads"
+	mux.Handle("GET /uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadDir))))
 
 	handler := middlewares.Logger(deps.AuthMW(middlewares.CORS(deps.CORSOrigins)(mux)))
 

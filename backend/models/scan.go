@@ -26,6 +26,8 @@ type ScanLog struct {
 	Reason       string    `json:"reason"`
 	ActorID      string    `json:"actorId"`
 	CreatedAt    time.Time `json:"createdAt"`
+	Rating       int       `json:"rating,omitempty"`
+	Feedback     string    `json:"feedback,omitempty"`
 }
 
 // ScanCheck is one row on the decision card checklist.
@@ -62,6 +64,8 @@ type ScanResult struct {
 	Macros        *Macros          `json:"macros,omitempty"`
 	Nutrition     []NutritionMatch `json:"nutrition,omitempty"`
 	NutritionNote string           `json:"nutritionNote,omitempty"`
+	Rating        int              `json:"rating,omitempty"`
+	Feedback      string           `json:"feedback,omitempty"`
 	Note          string           `json:"note"`
 	AIClass       string           `json:"aiClass"`
 	AIConfidence  float64          `json:"aiConfidence"`

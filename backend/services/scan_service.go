@@ -5,6 +5,7 @@ import (
 	"backend/repositories"
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,8 +13,11 @@ import (
 	"math"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -55,8 +59,11 @@ type Prediction struct {
 // ScanService defines business logic for the scan endpoint.
 type ScanService interface {
 	Predict(ctx context.Context, image []byte, fileName string) (*Prediction, error)
-	SubmitScan(ctx context.Context, actorID string, image []byte, fileName, qrToken, boxID, batchID, items string, holdingTempC, releaseTempC *float64) (*models.ScanResult, error)
+	SubmitScan(ctx context.Context, actorID string, image []byte, fileName, qrToken, boxID, batchID, items string, holdingTempC, releaseTempC *float64, persist bool, rating int, feedback string) (*models.ScanResult, error)
 	ListRecent(ctx context.Context, limit int) ([]models.ScanLog, error)
+	UpdateFeedback(ctx context.Context, id string, rating int, feedback string, tempC *float64) error
+	DeleteScan(ctx context.Context, actorID, id string) error
+	DeleteAllScans(ctx context.Context, actorID string) error
 }
 
 type scanService struct {
@@ -133,6 +140,9 @@ func (s *scanService) SubmitScan(
 	image []byte,
 	fileName, qrToken, boxID, batchID, items string,
 	holdingTempC, releaseTempC *float64,
+	persist bool,
+	rating int,
+	feedback string,
 ) (*models.ScanResult, error) {
 	qrToken = strings.TrimSpace(qrToken)
 	if len(image) == 0 {
@@ -140,6 +150,12 @@ func (s *scanService) SubmitScan(
 	}
 	if fileName == "" {
 		fileName = "capture.jpg"
+	}
+
+	// Cek deduplikasi: jika scan identik dikirim dalam 5 detik, jangan duplikasi database
+	dedupKey := fmt.Sprintf("%s:%x", actorID, md5.Sum(image))
+	if cached := getCachedScan(dedupKey); cached != nil {
+		return cached, nil
 	}
 
 	pred, err := s.Predict(ctx, image, fileName)
@@ -154,17 +170,18 @@ func (s *scanService) SubmitScan(
 	var reasons []string
 	checks := []models.ScanCheck{}
 
-	// 1. Verifikasi QR (Tahap 1).
-	qrNote := "Token " + qrToken + " valid"
-	if qrToken == "" {
-		qrNote = "Token QR tidak disertai pada permintaan"
-	}
-	if !qrValid && qrToken != "" {
-		qrNote = "Token " + qrToken + " tidak cocok format MBG-..."
-	}
-	checks = append(checks, models.ScanCheck{Label: "Verifikasi token QR boks", OK: qrValid, Note: qrNote})
-	if !qrValid {
-		reasons = append(reasons, "QR boks gagal verifikasi")
+	// 1. Verifikasi QR (Tahap 1) — hanya dijalankan bila token disertai.
+	// Pemindaian foto makanan (tanpa boks) tidak menyertakan QR, sehingga
+	// keputusan diambil dari hasil AI + suhu saja (konsisten dengan cek suhu opsional).
+	if qrToken != "" {
+		qrNote := "Token " + qrToken + " valid"
+		if !qrValid {
+			qrNote = "Token " + qrToken + " tidak cocok format MBG-..."
+		}
+		checks = append(checks, models.ScanCheck{Label: "Verifikasi token QR boks", OK: qrValid, Note: qrNote})
+		if !qrValid {
+			reasons = append(reasons, "QR boks gagal verifikasi")
+		}
 	}
 
 	// 2. Suhu lepas dapur (opsional).
@@ -238,37 +255,52 @@ func (s *scanService) SubmitScan(
 		boxID = "BOK-TANPA-QR"
 	}
 
-	scanID, err := s.nextScanID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("membuat id scan: %w", err)
-	}
+	now := time.Now().In(wib)
+	scanID := "TEMP-PREVIEW"
+	savedFileName := ""
 
-	now := time.Now()
-	entry := &models.ScanLog{
-		ID:           scanID,
-		BoxID:        boxID,
-		QRToken:      qrToken,
-		BatchID:      strings.TrimSpace(batchID),
-		ImageRef:     fileName,
-		AIClass:      pred.ClassName,
-		AIConfidence: pred.Confidence,
-		VisualScore:  score,
-		HoldingTempC: holdingTempC,
-		ReleaseTempC: releaseTempC,
-		Verdict:      verdict,
-		Reason:       note,
-		ActorID:      actorID,
-		CreatedAt:    now,
-	}
-	if err := s.repo.InsertScan(ctx, entry); err != nil {
-		return nil, fmt.Errorf("menyimpan scan log: %w", err)
+	if persist {
+		var err error
+		scanID, err = s.nextScanID(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("membuat id scan: %w", err)
+		}
+
+		// Simpan gambar ke folder uploads/
+		savedFileName = scanID + ".webp"
+		if err := saveUploadedImage(image, savedFileName); err != nil {
+			// Tidak fatal — lanjutkan meski gagal simpan file
+			savedFileName = fileName
+		}
+
+		entry := &models.ScanLog{
+			ID:           scanID,
+			BoxID:        boxID,
+			QRToken:      qrToken,
+			BatchID:      strings.TrimSpace(batchID),
+			ImageRef:     savedFileName,
+			AIClass:      pred.ClassName,
+			AIConfidence: pred.Confidence,
+			VisualScore:  score,
+			HoldingTempC: holdingTempC,
+			ReleaseTempC: releaseTempC,
+			Verdict:      verdict,
+			Reason:       note,
+			ActorID:      actorID,
+			CreatedAt:    now,
+			Rating:       rating,
+			Feedback:     feedback,
+		}
+		if err := s.repo.InsertScan(ctx, entry); err != nil {
+			return nil, fmt.Errorf("menyimpan scan log: %w", err)
+		}
 	}
 
 	result := &models.ScanResult{
-		ID:           entry.ID,
-		BoxID:        entry.BoxID,
-		QRToken:      entry.QRToken,
-		BatchID:      entry.BatchID,
+		ID:           scanID,
+		BoxID:        boxID,
+		QRToken:      qrToken,
+		BatchID:      batchID,
 		ScannedAt:    now.In(wib).Format("15:04") + " WIB",
 		Score:        score,
 		Verdict:      verdict,
@@ -296,12 +328,19 @@ func (s *scanService) SubmitScan(
 		}
 	}
 
+	if persist {
+		setCachedScan(dedupKey, result)
+	}
 	return result, nil
 }
 
 // ListRecent returns the newest scan logs for the validator history view.
 func (s *scanService) ListRecent(ctx context.Context, limit int) ([]models.ScanLog, error) {
 	return s.repo.ListRecentScans(ctx, limit)
+}
+
+func (s *scanService) UpdateFeedback(ctx context.Context, id string, rating int, feedback string, tempC *float64) error {
+	return s.repo.UpdateScanFeedback(ctx, id, rating, feedback, tempC)
 }
 
 func (s *scanService) nextScanID(ctx context.Context) (string, error) {
@@ -366,4 +405,96 @@ func derefFloat(v *float64) float64 {
 		return 0
 	}
 	return *v
+}
+
+func (s *scanService) DeleteScan(ctx context.Context, actorID, id string) error {
+	imageRef, err := s.repo.DeleteScan(ctx, id)
+	if err != nil {
+		return err
+	}
+	if imageRef != "" {
+		deleteUploadedImage(imageRef)
+	}
+	return nil
+}
+
+func (s *scanService) DeleteAllScans(ctx context.Context, actorID string) error {
+	imageRefs, err := s.repo.DeleteAllScans(ctx)
+	if err != nil {
+		return err
+	}
+	for _, ref := range imageRefs {
+		deleteUploadedImage(ref)
+	}
+	cleanUploadsDir()
+	return nil
+}
+
+// saveUploadedImage menyimpan bytes gambar ke folder uploads/ di direktori kerja.
+func saveUploadedImage(data []byte, fileName string) error {
+	const uploadDir = "uploads"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		return fmt.Errorf("membuat folder uploads: %w", err)
+	}
+	dest := filepath.Join(uploadDir, fileName)
+	return os.WriteFile(dest, data, 0644)
+}
+
+func deleteUploadedImage(fileName string) {
+	if fileName == "" {
+		return
+	}
+	cleanName := filepath.Base(fileName)
+	_ = os.Remove(filepath.Join("uploads", cleanName))
+}
+
+func cleanUploadsDir() {
+	entries, err := os.ReadDir("uploads")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			_ = os.Remove(filepath.Join("uploads", e.Name()))
+		}
+	}
+}
+
+type scanDedupEntry struct {
+	result    *models.ScanResult
+	createdAt time.Time
+}
+
+var (
+	dedupMu    sync.Mutex
+	dedupCache = make(map[string]scanDedupEntry)
+)
+
+func getCachedScan(key string) *models.ScanResult {
+	dedupMu.Lock()
+	defer dedupMu.Unlock()
+	entry, ok := dedupCache[key]
+	if !ok {
+		return nil
+	}
+	if time.Since(entry.createdAt) > 5*time.Second {
+		delete(dedupCache, key)
+		return nil
+	}
+	return entry.result
+}
+
+func setCachedScan(key string, res *models.ScanResult) {
+	dedupMu.Lock()
+	defer dedupMu.Unlock()
+	now := time.Now()
+	for k, v := range dedupCache {
+		if now.Sub(v.createdAt) > time.Minute {
+			delete(dedupCache, k)
+		}
+	}
+	dedupCache[key] = scanDedupEntry{
+		result:    res,
+		createdAt: now,
+	}
 }

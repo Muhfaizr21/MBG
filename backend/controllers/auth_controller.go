@@ -26,7 +26,7 @@ func NewAuthController(authSvc *services.AuthService) *AuthController {
 }
 
 // Register godoc
-// @Summary Create a new validator/siswa account
+// @Summary Create a new validator account
 // @Accept json
 // @Produce json
 // @Param payload body models.RegisterRequest true "registration data"
@@ -77,6 +77,8 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case services.ErrInvalidCredentials, services.ErrAccountDisabled:
 			utils.Error(w, http.StatusUnauthorized, err.Error())
+		case services.ErrRoleInactive:
+			utils.Error(w, http.StatusForbidden, err.Error())
 		default:
 			utils.Error(w, http.StatusInternalServerError, "gagal memproses login")
 		}

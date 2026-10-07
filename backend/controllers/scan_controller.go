@@ -4,6 +4,7 @@ import (
 	"backend/middlewares"
 	"backend/services"
 	"backend/utils"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -77,6 +78,10 @@ func (c *ScanController) Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	persist := r.FormValue("persist") != "false" && r.FormValue("preview") != "true"
+	rating, _ := strconv.Atoi(r.FormValue("rating"))
+	feedback := r.FormValue("feedback")
+
 	result, err := c.scanSvc.SubmitScan(
 		r.Context(),
 		middlewares.UserID(r.Context()),
@@ -88,6 +93,9 @@ func (c *ScanController) Submit(w http.ResponseWriter, r *http.Request) {
 		r.FormValue("items"),
 		holdingTempC,
 		releaseTempC,
+		persist,
+		rating,
+		feedback,
 	)
 	if err != nil {
 		switch {
@@ -121,6 +129,61 @@ func (c *ScanController) Recent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	utils.Success(w, http.StatusOK, "riwayat scan terbaru", logs)
+}
+
+type UpdateFeedbackReq struct {
+	Rating   int      `json:"rating"`
+	Feedback string   `json:"feedback"`
+	TempC    *float64 `json:"tempC"`
+}
+
+func (c *ScanController) UpdateFeedback(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		parts := strings.Split(r.URL.Path, "/")
+		id = parts[len(parts)-1]
+	}
+
+	var req UpdateFeedbackReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.Error(w, http.StatusBadRequest, "format JSON tidak valid")
+		return
+	}
+
+	if err := c.scanSvc.UpdateFeedback(r.Context(), id, req.Rating, req.Feedback, req.TempC); err != nil {
+		utils.Error(w, http.StatusInternalServerError, "gagal menyimpan umpan balik scan")
+		return
+	}
+
+	utils.Success(w, http.StatusOK, "catatan berhasil disimpan", nil)
+}
+
+func (c *ScanController) DeleteScan(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		parts := strings.Split(r.URL.Path, "/")
+		id = parts[len(parts)-1]
+	}
+	if id == "all" {
+		c.DeleteAllScans(w, r)
+		return
+	}
+	actorID := middlewares.UserID(r.Context())
+
+	if err := c.scanSvc.DeleteScan(r.Context(), actorID, id); err != nil {
+		utils.Error(w, http.StatusInternalServerError, "gagal menghapus scan")
+		return
+	}
+	utils.Success(w, http.StatusOK, "scan berhasil dihapus", nil)
+}
+
+func (c *ScanController) DeleteAllScans(w http.ResponseWriter, r *http.Request) {
+	actorID := middlewares.UserID(r.Context())
+	if err := c.scanSvc.DeleteAllScans(r.Context(), actorID); err != nil {
+		utils.Error(w, http.StatusInternalServerError, "gagal menghapus semua scan")
+		return
+	}
+	utils.Success(w, http.StatusOK, "semua riwayat scan berhasil dihapus", nil)
 }
 
 // parseOptionalFloat parses a form value into *float64; empty input yields nil.

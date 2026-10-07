@@ -8,8 +8,22 @@ import {
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [permissions, setPermissions] = useState([])
+  const [user, setUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('mbg_user')
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
+    }
+  })
+  const [permissions, setPermissions] = useState(() => {
+    try {
+      const stored = localStorage.getItem('mbg_permissions')
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
+    }
+  })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -18,11 +32,20 @@ export function AuthProvider({ children }) {
       try {
         const data = await meRequest()
         if (!cancelled) {
-          setUser({ ...data.user, permissions: data.permissions || [] })
+          const userData = { ...data.user, permissions: data.permissions || [] }
+          setUser(userData)
           setPermissions(data.permissions || [])
+          localStorage.setItem('mbg_user', JSON.stringify(userData))
+          localStorage.setItem('mbg_permissions', JSON.stringify(data.permissions || []))
         }
       } catch {
-        // Not logged in (or session expired) — stay anonymous.
+        if (!cancelled) {
+          // If meRequest fails (e.g. token expired and couldn't refresh), clear local storage
+          setUser(null)
+          setPermissions([])
+          localStorage.removeItem('mbg_user')
+          localStorage.removeItem('mbg_permissions')
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -34,8 +57,11 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const data = await loginRequest(email, password)
-    setUser({ ...data.user, permissions: data.permissions || [] })
+    const userData = { ...data.user, permissions: data.permissions || [] }
+    setUser(userData)
     setPermissions(data.permissions || [])
+    localStorage.setItem('mbg_user', JSON.stringify(userData))
+    localStorage.setItem('mbg_permissions', JSON.stringify(data.permissions || []))
     return data.user
   }, [])
 
@@ -43,6 +69,8 @@ export function AuthProvider({ children }) {
     await logoutRequest()
     setUser(null)
     setPermissions([])
+    localStorage.removeItem('mbg_user')
+    localStorage.removeItem('mbg_permissions')
   }, [])
 
   const can = useCallback(

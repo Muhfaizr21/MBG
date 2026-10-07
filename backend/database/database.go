@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS users (
 	full_name     TEXT NOT NULL,
 	email         TEXT UNIQUE NOT NULL,
 	password_hash TEXT NOT NULL,
-	role          TEXT NOT NULL CHECK (role IN ('superadmin','satgas','sppg','validator','siswa')),
+	role          TEXT NOT NULL CHECK (role IN ('superadmin','sppg','validator')),
 	npsn          TEXT NOT NULL DEFAULT '',
 	school_name   TEXT NOT NULL DEFAULT '',
 	sppg_id       TEXT NOT NULL DEFAULT '',
@@ -111,6 +111,11 @@ func Migrate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("migrasi schema gagal: %w", err)
 	}
+
+	// Tambahkan kolom baru tanpa menghancurkan data
+	_, _ = pool.Exec(ctx, "ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS rating INT DEFAULT 0;")
+	_, _ = pool.Exec(ctx, "ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS feedback TEXT DEFAULT '';")
+
 	return nil
 }
 
@@ -130,10 +135,8 @@ func Seed(ctx context.Context) error {
 
 	seeds := []seedUser{
 		{ID: "usr-superadmin-001", FullName: "Bambang Soediro", Email: "superadmin@kawangizi.id", Password: "SuperAdmin123!", Role: models.RoleSuperadmin},
-		{ID: "usr-satgas-001", FullName: "Dr. Hendra Prasetyo", Email: "satgas@kawangizi.id", Password: "Satgas123!", Role: models.RoleSatgas},
 		{ID: "usr-sppg-001", FullName: "SPPG 01 Menteng Jaya Mandiri", Email: "dapur@sppg01.id", Password: "Sppg123!", Role: models.RoleSppg, SppgID: "SPPG-01"},
 		{ID: "usr-validator-001", FullName: "Ibu Siti Aminah, S.Pd.", Email: "validator@sdn01menteng.sch.id", Password: "Validator123!", Role: models.RoleValidator, NPSN: "33.210.130", SchoolName: "SDN Menteng 01 Pagi", SppgID: "SPPG-01"},
-		{ID: "usr-siswa-001", FullName: "Budi Pratama", Email: "siswa@sdn01menteng.sch.id", Password: "Siswa123!", Role: models.RoleSiswa, NPSN: "33.210.130", SchoolName: "SDN Menteng 01 Pagi", SppgID: "SPPG-01"},
 	}
 
 	for _, s := range seeds {

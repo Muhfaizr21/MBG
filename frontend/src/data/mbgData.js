@@ -83,11 +83,11 @@ export const ROLES_DATA = [
     highlight: 'Pertama kali validasi kelayakan fisik jadi objektif, terukur, dan tak bergantung pada observasi manual.'
   },
   {
-    id: 'satgas',
-    role: 'Satuan Tugas MBG',
-    tag: 'Dinas & BGN',
+    id: 'superadmin',
+    role: 'Super Admin',
+    tag: 'BGN & Pengelola Sistem',
     title: 'Pemantauan Nasional & Peringatan Dini Anomali',
-    desc: 'Satgas MBG memantau sebaran distribusi, kepatuhan SPPG, dan anomali kesegaran via dasbor web real-time. Server-side rendering memastikan peta dan grafik muat instan tanpa membebani browser.',
+    desc: 'Super Admin memantau sebaran distribusi, kepatuhan SPPG, dan anomali kesegaran melalui dasbor web.',
     points: [
       'Peta geospasial sekolah, SPPG, dan status logistik harian',
       'Notifikasi otomatis saat lonjakan temuan tidak layak di satu titik',
@@ -899,5 +899,4 @@ export const OPERATIONAL_MATRIX = [
     tempRange: '24.1°C',
   },
 ]
-
 
