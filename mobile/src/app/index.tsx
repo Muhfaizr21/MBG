@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { GuruDashboardView } from '../components/dashboard/GuruDashboardView';
-import { ExploreTabContent } from '../components/dashboard/ExploreTabContent';
 import { HistoryScreen } from '../components/dashboard/HistoryScreen';
 import { CommunityTabContent } from '../components/dashboard/CommunityTabContent';
 import { ProfileTabContent } from '../components/dashboard/ProfileTabContent';
@@ -53,8 +52,6 @@ export default function MobileAppEntry() {
             onOpenProfile={() => setActiveTab('profile')}
           />
         );
-      case 'explore':
-        return <ExploreTabContent onOpenProfile={() => setActiveTab('profile')} />;
       case 'action':
         return (
           <ScannerScreen
