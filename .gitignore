@@ -25,3 +25,12 @@ backend/model_ai/token.json
 .env.*
 !.env.example
 .aider*
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
