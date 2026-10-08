@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
+import { useState, useMemo, useEffect, useRef, Fragment, useCallback } from 'react'
 import L from 'leaflet'
 import {
   School,
@@ -7,21 +7,34 @@ import {
   Phone,
   MapPin,
   ChevronDown,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Users,
+  Edit3,
+  Send,
+  Building2,
+  MessageSquare,
+  AlertCircle,
+  Plus,
+  Trash2,
 } from 'lucide-react'
-import { ASSIGNED_SCHOOLS_MANIFEST, SPPG_PROFILE } from '../../data/sppgPortalData'
-import { SCHOOL_COORDS, DEPOT } from '../../data/sppgLogisticsData'
+import { useAuth } from '../../context/AuthContext'
 import {
-  ATTENDANCE_DEADLINE,
-  SCHOOL_PROFILES,
-  attendanceStatus,
-  packingQuota,
-} from '../../data/sppgSchoolsData'
+  fetchSppgSchoolsBundle,
+  updateSppgSchoolAttendance,
+  updateSppgSchoolDroppoint,
+  sendSppgSchoolReminder,
+  fetchSppgList,
+} from '../../lib/api'
 
 const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#23259C]'
-const BTN = `inline-flex items-center gap-1.5 rounded-xl bg-[#23259C] px-5 py-2.5 text-xs font-bold text-white shadow-[0_10px_20px_-10px_rgba(27,29,125,0.7)] transition hover:bg-[#1b1d7d] active:scale-[0.98] ${FOCUS}`
+const BTN = `inline-flex items-center gap-1.5 rounded-xl bg-[#23259C] px-4 py-2 text-xs font-bold text-white shadow-[0_10px_20px_-10px_rgba(27,29,125,0.7)] transition hover:bg-[#1b1d7d] active:scale-[0.98] ${FOCUS}`
+const BTN_SECONDARY = `inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98] ${FOCUS}`
 const CARD = 'rounded-2xl border border-slate-200 bg-white shadow-[0_14px_30px_-22px_rgba(27,29,125,0.4)]'
 const THEAD = 'border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-600'
-const GHOST = `rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 active:scale-[0.97] ${FOCUS}`
+const GHOST = `rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 active:scale-[0.97] ${FOCUS}`
 
 function dot(color) {
   return L.divIcon({
@@ -33,287 +46,735 @@ function dot(color) {
 }
 
 export function SppgSchoolsPanel() {
-  const [openId, setOpenId] = useState('sch-02')
+  const { user, isSuperadmin } = useAuth()
+  const [kitchens, setKitchens] = useState([])
+  const [activeSppgId, setActiveSppgId] = useState(user?.sppgId || 'SPPG-01')
+
+  const [bundle, setBundle] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  // Accordion & Modals
+  const [openId, setOpenId] = useState('')
   const [guideId, setGuideId] = useState(null)
   const [contactId, setContactId] = useState(null)
+  const [attendanceModalId, setAttendanceModalId] = useState(null)
+  const [editDroppointId, setEditDroppointId] = useState(null)
   const [copied, setCopied] = useState(false)
   const [printGuide, setPrintGuide] = useState(null)
+
+  // Attendance Form State
+  const [attPresent, setAttPresent] = useState(0)
+  const [attReduce, setAttReduce] = useState(0)
+  const [attAbsenceNote, setAttAbsenceNote] = useState('')
+  const [attUpdateTime, setAttUpdateTime] = useState('')
+  const [attSpecials, setAttSpecials] = useState([])
+  const [attSubmitting, setAttSubmitting] = useState(false)
+
+  // Droppoint Form State
+  const [dpLocation, setDpLocation] = useState('')
+  const [dpValidator, setDpValidator] = useState('')
+  const [dpPhone, setDpPhone] = useState('')
+  const [dpPrincipal, setDpPrincipal] = useState('')
+  const [dpSubmitting, setDpSubmitting] = useState(false)
+
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
 
-  const schools = useMemo(
-    () =>
-      ASSIGNED_SCHOOLS_MANIFEST.map((m) => ({
-        ...m,
-        ...(SCHOOL_PROFILES.find((p) => p.id === m.id) || {}),
-      })),
-    []
+  // 1. Load Kitchen list for Superadmin switcher
+  useEffect(() => {
+    let mounted = true
+    async function loadKitchens() {
+      try {
+        const list = await fetchSppgList()
+        if (mounted && Array.isArray(list) && list.length > 0) {
+          setKitchens(list)
+        }
+      } catch (err) {
+        console.warn('Gagal memuat daftar dapur SPPG:', err)
+      }
+    }
+    loadKitchens()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  // 2. Load Schools Bundle from Database
+  const loadBundle = useCallback(
+    async (isManualRefresh = false) => {
+      if (isManualRefresh) setRefreshing(true)
+      else setLoading(true)
+      setError('')
+
+      try {
+        const data = await fetchSppgSchoolsBundle(activeSppgId)
+        if (data) {
+          setBundle(data)
+          if (!openId && data.schools?.length > 0) {
+            setOpenId(data.schools[0].id)
+          }
+        }
+      } catch (err) {
+        console.error('Gagal mengambil data sekolah binaan:', err)
+        setError(err.message || 'Gagal terhubung ke database sekolah SPPG.')
+      } finally {
+        setLoading(false)
+        setRefreshing(false)
+      }
+    },
+    [activeSppgId, openId]
   )
 
-  const totals = useMemo(() => {
-    const present = schools.reduce((s, x) => s + (x.presentUpdatedAt ? x.present : 0), 0)
-    const quota = schools.reduce((s, x) => s + packingQuota(x), 0)
-    const updated = schools.filter((x) => x.presentUpdatedAt).length
-    const specials = schools.reduce((s, x) => s + (x.specials || []).reduce((a, b) => a + b.count, 0), 0)
-    return { present, quota, updated, total: schools.length, specials }
-  }, [schools])
-
   useEffect(() => {
-    if (!mapRef.current || mapInstance.current) return
+    loadBundle()
+  }, [loadBundle])
+
+  const schools = useMemo(() => bundle?.schools || [], [bundle])
+  const totals = useMemo(() => {
+    if (bundle?.totals) return bundle.totals
+    return {
+      quota: 0,
+      present: 0,
+      updated: 0,
+      total: schools.length,
+      specials: 0,
+    }
+  }, [bundle, schools])
+
+  const depot = useMemo(
+    () =>
+      bundle?.depot || {
+        name: bundle?.kitchenName || 'Dapur SPPG',
+        lat: -6.1983,
+        lng: 106.845,
+      },
+    [bundle]
+  )
+
+  // 3. Leaflet Map Rendering
+  useEffect(() => {
+    if (!mapRef.current || loading) return
+
+    if (mapInstance.current) {
+      mapInstance.current.remove()
+      mapInstance.current = null
+    }
+
     const map = L.map(mapRef.current, {
-      center: [DEPOT.lat, DEPOT.lng],
+      center: [depot.lat, depot.lng],
       zoom: 13,
       scrollWheelZoom: false,
       attributionControl: false,
     })
-    L.control.attribution({ position: 'bottomright', prefix: 'Esri GIS' }).addTo(map)
+
+    L.control.attribution({ position: 'bottomright', prefix: 'Esri GIS & MBG Database' }).addTo(map)
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       { maxZoom: 16 }
     ).addTo(map)
+
     const layers = L.layerGroup().addTo(map)
-    L.marker([DEPOT.lat, DEPOT.lng], { icon: dot('#23259C') })
-      .bindPopup(`<b>${DEPOT.name}</b>`)
+
+    // Marker Dapur SPPG
+    L.marker([depot.lat, depot.lng], { icon: dot('#23259C') })
+      .bindPopup(`<b>${depot.name}</b><br><span style="font-size:11px;color:#64748b">Depot Dapur Sentral</span>`)
       .addTo(layers)
+
+    // Markers Sekolah
     schools.forEach((s) => {
-      const c = SCHOOL_COORDS[s.id]
-      if (!c) return
-      const st = attendanceStatus(s.presentUpdatedAt)
-      L.marker([c.lat, c.lng], { icon: dot(st.onTime ? '#059669' : '#D97706') })
-        .bindPopup(`<b>${s.name}</b><br>Kuota cetak ${packingQuota(s)} · ${st.label}`)
+      if (!s.lat || !s.lng) return
+      const isOntime = s.status?.onTime
+      const markerColor = isOntime ? '#059669' : '#D97706'
+
+      L.marker([s.lat, s.lng], { icon: dot(markerColor) })
+        .bindPopup(
+          `<b>${s.name}</b><br><span style="font-size:11px;color:#475569">Kuota cetak: <b>${s.packingQuota} boks</b></span><br><span style="font-size:10px;color:#64748b">${s.status?.label || 'Presensi'}</span>`
+        )
         .addTo(layers)
     })
+
     mapInstance.current = map
     const t = setTimeout(() => map.invalidateSize(), 200)
+
     return () => {
       clearTimeout(t)
-      map.remove()
-      mapInstance.current = null
+      if (mapInstance.current) {
+        mapInstance.current.remove()
+        mapInstance.current = null
+      }
     }
-  }, [schools])
+  }, [schools, depot, loading])
 
+  // Keydown escape for modals
   useEffect(() => {
-    if (!guideId && !contactId) return
+    if (!guideId && !contactId && !attendanceModalId && !editDroppointId) return
     const onKey = (e) => {
       if (e.key === 'Escape') {
         setGuideId(null)
         setContactId(null)
+        setAttendanceModalId(null)
+        setEditDroppointId(null)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [guideId, contactId])
+  }, [guideId, contactId, attendanceModalId, editDroppointId])
 
+  // Print Guide effect
   useEffect(() => {
     if (!printGuide) return
     const t = setTimeout(() => window.print(), 150)
     return () => clearTimeout(t)
   }, [printGuide])
 
+  // Handlers for Modals
   const guideSchool = schools.find((s) => s.id === guideId) || null
   const contactSchool = schools.find((s) => s.id === contactId) || null
   const printed = schools.find((s) => s.id === printGuide) || null
+  const attendanceSchool = schools.find((s) => s.id === attendanceModalId) || null
+  const editDroppointSchool = schools.find((s) => s.id === editDroppointId) || null
+
+  const openAttendanceModal = (s) => {
+    setAttPresent(s.present || s.enrolled || 0)
+    setAttReduce(s.reduceSpecial || 0)
+    setAttAbsenceNote(s.absenceNote || '')
+    setAttUpdateTime(s.presentUpdatedAt || '')
+    setAttSpecials(Array.isArray(s.specials) ? JSON.parse(JSON.stringify(s.specials)) : [])
+    setAttendanceModalId(s.id)
+  }
+
+  const handleSaveAttendance = async (e) => {
+    e.preventDefault()
+    if (!attendanceSchool) return
+    setAttSubmitting(true)
+    setError('')
+    try {
+      await updateSppgSchoolAttendance(
+        attendanceSchool.id,
+        {
+          present: Number(attPresent),
+          reduceSpecial: Number(attReduce),
+          absenceNote: attAbsenceNote.trim(),
+          presentUpdatedAt: attUpdateTime.trim(),
+          specials: attSpecials,
+        },
+        activeSppgId
+      )
+      setAttendanceModalId(null)
+      setNotice(`Presensi harian ${attendanceSchool.name} berhasil diperbarui di database.`)
+      setTimeout(() => setNotice(''), 4000)
+      await loadBundle(true)
+    } catch (err) {
+      setError(err.message || 'Gagal menyimpan pembaruan presensi sekolah.')
+    } finally {
+      setAttSubmitting(false)
+    }
+  }
+
+  const openEditDroppointModal = (s) => {
+    setDpLocation(s.droppoint || '')
+    setDpValidator(s.validator || '')
+    setDpPhone(s.validatorPhone || '')
+    setDpPrincipal(s.principal || '')
+    setEditDroppointId(s.id)
+  }
+
+  const handleSaveDroppoint = async (e) => {
+    e.preventDefault()
+    if (!editDroppointSchool) return
+    setDpSubmitting(true)
+    setError('')
+    try {
+      await updateSppgSchoolDroppoint(
+        editDroppointSchool.id,
+        {
+          droppoint: dpLocation.trim(),
+          validator: dpValidator.trim(),
+          validatorPhone: dpPhone.trim(),
+          principal: dpPrincipal.trim(),
+        },
+        activeSppgId
+      )
+      setEditDroppointId(null)
+      setNotice(`Panduan drop-point & PIC ${editDroppointSchool.name} berhasil diperbarui.`)
+      setTimeout(() => setNotice(''), 4000)
+      await loadBundle(true)
+    } catch (err) {
+      setError(err.message || 'Gagal memperbarui panduan drop-point.')
+    } finally {
+      setDpSubmitting(false)
+    }
+  }
+
+  const handleRemindValidator = async (school) => {
+    try {
+      await sendSppgSchoolReminder(
+        school.id,
+        {
+          customMessage: `Peringatan: Presensi ${school.name} belum dimutakhirkan. Harap segera perbarui kehadiran siswa sebelum batas waktu ${bundle?.deadline || '05:00'} WIB.`,
+        },
+        activeSppgId
+      )
+      setNotice(`Peringatan penagihan presensi berhasil dicatat untuk ${school.name}.`)
+      setTimeout(() => setNotice(''), 4000)
+    } catch (err) {
+      setError('Gagal mengirim peringatan: ' + err.message)
+    }
+  }
+
+  const addSpecialRow = () => {
+    setAttSpecials([...attSpecials, { type: '', count: 1, note: '' }])
+  }
+
+  const updateSpecialRow = (index, field, value) => {
+    const updated = [...attSpecials]
+    updated[index][field] = field === 'count' ? Number(value) : value
+    setAttSpecials(updated)
+  }
+
+  const removeSpecialRow = (index) => {
+    setAttSpecials(attSpecials.filter((_, i) => i !== index))
+  }
 
   return (
     <div className="space-y-5">
       <style>{`@page{size:A5;margin:8mm}.guide-print-sheet{display:none}@media print{body *{visibility:hidden}.guide-print-sheet,.guide-print-sheet *{visibility:visible}.guide-print-sheet{display:block !important;position:absolute;inset:0}}`}</style>
 
+      {/* Superadmin Multi-Tenant Kitchen Switcher */}
+      {isSuperadmin && (
+        <section className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
+            <Building2 className="h-5 w-5 text-amber-800 shrink-0" />
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                Superadmin Multi-Tenant Kitchen Switcher
+              </p>
+              <p className="text-[11px] text-amber-700">
+                Pilih Dapur SPPG untuk menginspeksi alokasi sekolah binaan dan kepatuhan presensi di seluruh Indonesia.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="kitchen-select" className="text-xs font-semibold text-amber-900">
+              Dapur:
+            </label>
+            <select
+              id="kitchen-select"
+              value={activeSppgId}
+              onChange={(e) => setActiveSppgId(e.target.value)}
+              className="rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 shadow-sm focus:border-[#23259C] focus:outline-none"
+            >
+              {kitchens.length > 0 ? (
+                kitchens.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.name} ({k.id})
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="SPPG-01">SPPG Sentral Menteng 01</option>
+                  <option value="SPPG-02">SPPG Kebayoran Baru Mandiri</option>
+                </>
+              )}
+            </select>
+            <button
+              type="button"
+              onClick={() => loadBundle(true)}
+              disabled={refreshing}
+              className={`rounded-xl border border-amber-300 bg-white p-2 text-amber-900 shadow-sm hover:bg-amber-100 ${FOCUS}`}
+              title="Segarkan data database"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Notifications / Errors */}
+      {notice && (
+        <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-xs font-semibold text-emerald-800">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+          <span>{notice}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-xs font-semibold text-rose-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Hero Banner: Kuota Cetak & Batas Waktu Presensi */}
       <section className="overflow-hidden rounded-2xl bg-[#1B1D7D] text-white shadow-[0_18px_40px_-20px_rgba(27,29,125,0.65)]">
         <div className="flex flex-col gap-5 p-5 sm:p-7 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-xl">
-            <p className="text-[11px] font-bold tracking-[0.18em] text-amber-300">
-              SPPG-01 · 4 SEKOLAH BINAAN · BATAS UPDATE {ATTENDANCE_DEADLINE} WIB
-            </p>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-amber-400/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-amber-300 border border-amber-300/30">
+                {bundle?.kitchenCode || activeSppgId} · {schools.length} SEKOLAH BINAAN
+              </span>
+              <span className="flex items-center gap-1 text-[11px] font-bold text-amber-300">
+                <Clock className="h-3.5 w-3.5" /> Batas Presensi {bundle?.deadline || '05:00'} WIB
+              </span>
+            </div>
             <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-              Sekolah binaan dan kuota
+              Sekolah binaan dan kuota harian
             </h1>
             <p className="mt-2 max-w-lg text-xs leading-relaxed text-white/70">
-              Kuota cetak mengikuti presensi pagi. Sekolah yang belum update memakai data
-              terdaftar dan ditandai supaya dapur menagih ulang.
+              Alokasi porsi cetak MBG diproses secara presisi mengikuti kehadiran riil siswa yang dimutakhirkan sekolah
+              pagi ini. Sekolah yang belum update memakai kuota terdaftar kemarin agar operasional dapur tidak terhenti.
             </p>
           </div>
           <div className="shrink-0 lg:text-right">
             <p className="text-[11px] font-bold tracking-[0.18em] text-white/60">KUOTA CETAK HARI INI</p>
             <p className="mt-1 text-5xl font-extrabold tabular-nums tracking-tight text-white">
-              {totals.quota.toLocaleString('id-ID')}
+              {loading ? '...' : totals.quota.toLocaleString('id-ID')}
             </p>
             <p className="mt-2 text-[11px] font-medium text-white/70">
-              {totals.present.toLocaleString('id-ID')} hadir · {totals.updated} dari {totals.total} sekolah update ·{' '}
+              {totals.present.toLocaleString('id-ID')} siswa hadir · {totals.updated} dari {totals.total} sekolah update ·{' '}
               {totals.specials} porsi khusus
             </p>
           </div>
         </div>
       </section>
 
+      {/* SLIP 01: Peta Drop-Point Serah Terima */}
       <div className={`overflow-hidden text-xs ${CARD}`}>
-        <div className="px-5 pt-5">
-          <p className="text-[11px] font-bold tracking-wide text-slate-500">SLIP 01 · TITIK SERAH TERIMA</p>
-          <h2 className="mt-1 text-base font-extrabold tracking-tight text-slate-900">
-            Peta drop-point sekolah
-          </h2>
+        <div className="px-5 pt-5 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-bold tracking-wide text-slate-500">SLIP 01 · TITIK SERAH TERIMA</p>
+            <h2 className="mt-1 text-base font-extrabold tracking-tight text-slate-900">
+              Peta drop-point sekolah binaan
+            </h2>
+          </div>
+          <span className="text-[11px] font-semibold text-slate-500">
+            Dapur: <b className="text-slate-800">{depot.name}</b>
+          </span>
         </div>
         <div aria-hidden="true" className="mx-5 my-3 border-t border-dashed border-slate-300" />
         <div className="px-5 pb-2">
-          <div ref={mapRef} className="h-[320px] w-full rounded-xl border border-slate-200" role="img" aria-label="Peta lokasi sekolah binaan" />
-          <div className="flex flex-wrap gap-x-5 gap-y-1 py-3 text-[11px] text-slate-600">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#23259C]" /> Dapur SPPG-01
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" /> Presensi tepat waktu
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> Telat atau belum update
-            </span>
+          <div
+            ref={mapRef}
+            className="h-[320px] w-full rounded-xl border border-slate-200"
+            role="img"
+            aria-label="Peta lokasi sekolah binaan"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 py-3 text-[11px] text-slate-600">
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#23259C]" /> Dapur SPPG ({activeSppgId})
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-600" /> Presensi tepat waktu (≤ {bundle?.deadline || '05:00'})
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-600" /> Telat atau belum update
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadBundle(true)}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#23259C] hover:underline"
+            >
+              <RefreshCw className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`} /> Sinkronkan Database
+            </button>
           </div>
         </div>
       </div>
 
+      {/* SLIP 02: Rekapitulasi Presensi & Kuota per Sekolah */}
       <div className={`overflow-hidden text-xs ${CARD}`}>
-        <div className="px-5 pt-5">
-          <p className="text-[11px] font-bold tracking-wide text-slate-500">SLIP 02 · PRESENSI PAGI</p>
-          <h2 className="mt-1 text-base font-extrabold tracking-tight text-slate-900">
-            Kuota per sekolah
-          </h2>
+        <div className="px-5 pt-5 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-bold tracking-wide text-slate-500">SLIP 02 · PRESENSI PAGI</p>
+            <h2 className="mt-1 text-base font-extrabold tracking-tight text-slate-900">
+              Kuota per sekolah binaan
+            </h2>
+          </div>
+          <div className="text-right">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-[#23259C]">
+              <Users className="h-3.5 w-3.5" /> Total {schools.length} Sekolah
+            </span>
+          </div>
         </div>
         <div aria-hidden="true" className="mx-5 my-3 border-t border-dashed border-slate-300" />
+
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-xs">
             <thead className={THEAD}>
               <tr>
-                <th scope="col" className="w-10 px-4 py-2.5 text-right">No</th>
-                <th scope="col" className="px-3 py-2.5">Sekolah</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Terdaftar</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Hadir</th>
-                <th scope="col" className="px-3 py-2.5 text-right">Kuota cetak</th>
-                <th scope="col" className="px-3 py-2.5 text-center">Presensi</th>
-                <th scope="col" className="px-4 py-2.5 text-center">Aksi</th>
+                <th scope="col" className="w-10 px-4 py-2.5 text-right">
+                  No
+                </th>
+                <th scope="col" className="px-3 py-2.5">
+                  Sekolah Binaan
+                </th>
+                <th scope="col" className="px-3 py-2.5 text-right">
+                  Terdaftar
+                </th>
+                <th scope="col" className="px-3 py-2.5 text-right">
+                  Hadir
+                </th>
+                <th scope="col" className="px-3 py-2.5 text-right">
+                  Kuota Cetak
+                </th>
+                <th scope="col" className="px-3 py-2.5 text-center">
+                  Presensi Pagi
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-center">
+                  Aksi Operasional
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {schools.map((s, i) => {
-                const st = attendanceStatus(s.presentUpdatedAt)
-                const open = openId === s.id
-                return (
-                  <Fragment key={s.id}>
-                    <tr className="transition hover:bg-[#23259C]/[0.03]">
-                      <td className="px-4 py-3 text-right text-[11px] font-semibold tabular-nums text-slate-500">
-                        {String(i + 1).padStart(2, '0')}
-                      </td>
-                      <td className="px-3 py-3">
-                        <p className="font-bold text-slate-800">{s.name}</p>
-                        <p className="mt-0.5 font-mono text-[11px] text-slate-500">
-                          NPSN {s.npsn} · {s.level}
-                        </p>
-                      </td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-900">
-                        {s.enrolled.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-900">
-                        {s.presentUpdatedAt ? s.present.toLocaleString('id-ID') : '-'}
-                      </td>
-                      <td className="px-3 py-3 text-right font-mono text-[11px] font-bold tabular-nums text-[#23259C]">
-                        {packingQuota(s).toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${st.tone}`}>
-                          {st.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setOpenId(open ? '' : s.id)}
-                            aria-expanded={open}
-                            className={GHOST}
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                    <RefreshCw className="mx-auto h-6 w-6 animate-spin text-[#23259C]" />
+                    <p className="mt-2 font-semibold">Memuat data sekolah binaan dari database PostgreSQL...</p>
+                  </td>
+                </tr>
+              ) : schools.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-slate-500">
+                    Belum ada sekolah binaan yang terdaftar pada dapur ini di database.
+                  </td>
+                </tr>
+              ) : (
+                schools.map((s, i) => {
+                  const open = openId === s.id
+                  const isPending = !s.presentUpdatedAt
+                  return (
+                    <Fragment key={s.id}>
+                      <tr className="transition hover:bg-[#23259C]/[0.03]">
+                        <td className="px-4 py-3 text-right text-[11px] font-semibold tabular-nums text-slate-500">
+                          {String(i + 1).padStart(2, '0')}
+                        </td>
+                        <td className="px-3 py-3">
+                          <p className="font-bold text-slate-800">{s.name}</p>
+                          <p className="mt-0.5 font-mono text-[11px] text-slate-500">
+                            NPSN {s.npsn} · {s.level}
+                          </p>
+                        </td>
+                        <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-900">
+                          {s.enrolled?.toLocaleString('id-ID')}
+                        </td>
+                        <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-900">
+                          {s.presentUpdatedAt ? s.present?.toLocaleString('id-ID') : '-'}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-[11px] font-bold tabular-nums text-[#23259C]">
+                          {s.packingQuota?.toLocaleString('id-ID')}
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-[11px] font-semibold ${
+                              s.status?.tone || 'bg-slate-100 text-slate-600'
+                            }`}
                           >
-                            <span className="inline-flex items-center gap-1">
-                              Detail
-                              <ChevronDown className={`h-3 w-3 transition ${open ? 'rotate-180' : ''}`} />
-                            </span>
-                          </button>
-                          <button type="button" onClick={() => setGuideId(s.id)} className={GHOST}>
-                            Panduan
-                          </button>
-                          <button type="button" onClick={() => { setContactId(s.id); setCopied(false) }} className={GHOST}>
-                            Hubungi
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {open && (
-                      <tr>
-                        <td colSpan={7} className="bg-slate-50/60 px-8 py-4">
-                          <div className="grid gap-4 md:grid-cols-3">
-                            <div>
-                              <p className="text-[11px] font-bold tracking-wide text-slate-500">PROFIL</p>
-                              <p className="mt-1 text-xs text-slate-700">{s.address}</p>
-                              <p className="mt-1 font-mono text-[11px] text-slate-500">
-                                {SCHOOL_COORDS[s.id] ? `${SCHOOL_COORDS[s.id].lat}, ${SCHOOL_COORDS[s.id].lng}` : 'koordinat belum dipetakan'}
-                              </p>
-                              <p className="mt-1 text-[11px] text-slate-500">Armada: {s.fleet}</p>
-                            </div>
-                            <div>
-                              <p className="text-[11px] font-bold tracking-wide text-slate-500">SELISIH PRESENSI</p>
-                              <p className="mt-1 text-xs leading-relaxed text-slate-700">{s.absenceNote}</p>
-                              {(s.specials || []).length > 0 ? (
-                                <ul className="mt-2 space-y-1">
-                                  {(s.specials || []).map((sp) => (
-                                    <li key={sp.type} className="text-[11px] text-slate-600">
-                                      <span className="font-bold text-slate-800">{sp.count} porsi {sp.type}</span>
-                                      {' · '}{sp.note}
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="mt-2 text-[11px] text-slate-500">Tidak ada porsi khusus.</p>
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-[11px] font-bold tracking-wide text-slate-500">KONTAK</p>
-                              <p className="mt-1 text-xs text-slate-700">Kepsek: {s.principal}</p>
-                              <p className="mt-1 text-xs text-slate-700">Validator: {s.validator}</p>
-                              <p className="mt-1 font-mono text-[11px] text-slate-500">{s.validatorPhone}</p>
-                            </div>
+                            {s.status?.label || 'Belum update'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setOpenId(open ? '' : s.id)}
+                              aria-expanded={open}
+                              className={GHOST}
+                              title="Tampilkan rincian profil dan porsi khusus"
+                            >
+                              <span className="inline-flex items-center gap-1">
+                                Detail
+                                <ChevronDown className={`h-3 w-3 transition ${open ? 'rotate-180' : ''}`} />
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openAttendanceModal(s)}
+                              className="rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 transition active:scale-[0.97]"
+                              title="Perbarui presensi kehadiran siswa pagi ini"
+                            >
+                              Presensi
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGuideId(s.id)}
+                              className={GHOST}
+                              title="Lihat petunjuk lokasi drop-point"
+                            >
+                              Panduan
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setContactId(s.id)
+                                setCopied(false)
+                              }}
+                              className={GHOST}
+                              title="Hubungi PIC guru validator"
+                            >
+                              Hubungi
+                            </button>
+                            {isPending && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemindValidator(s)}
+                                className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition"
+                                title="Kirim peringatan penagihan presensi pagi"
+                              >
+                                Ingatkan
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                )
-              })}
+                      {open && (
+                        <tr>
+                          <td colSpan={7} className="bg-slate-50/70 px-8 py-4 border-b border-slate-200">
+                            <div className="grid gap-5 md:grid-cols-3">
+                              <div>
+                                <p className="text-[11px] font-bold tracking-wide text-slate-500">PROFIL & ARMADA</p>
+                                <p className="mt-1 text-xs text-slate-700">{s.address}</p>
+                                <p className="mt-1 font-mono text-[11px] text-slate-500">
+                                  {s.lat && s.lng ? `${s.lat}, ${s.lng}` : 'Koordinat belum disetel'}
+                                </p>
+                                <p className="mt-1.5 text-[11px] font-medium text-slate-700">
+                                  Armada Ditugaskan: <b className="text-slate-900">{s.fleet || 'Belum teralokasi'}</b>
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-bold tracking-wide text-slate-500">SELISIH PRESENSI</p>
+                                <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                                  {s.absenceNote || 'Tidak ada catatan absensi khusus.'}
+                                </p>
+                                {(s.specials || []).length > 0 ? (
+                                  <ul className="mt-2 space-y-1">
+                                    {(s.specials || []).map((sp, idx) => (
+                                      <li key={idx} className="text-[11px] text-slate-600">
+                                        <span className="font-bold text-slate-800">
+                                          {sp.count} porsi {sp.type}
+                                        </span>
+                                        {' · '}
+                                        {sp.note}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="mt-2 text-[11px] text-slate-500 italic">Tidak ada menu porsi khusus.</p>
+                                )}
+                              </div>
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <p className="text-[11px] font-bold tracking-wide text-slate-500">KONTAK VALIDASI</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditDroppointModal(s)}
+                                    className="text-[11px] font-semibold text-[#23259C] hover:underline inline-flex items-center gap-1"
+                                  >
+                                    <Edit3 className="h-3 w-3" /> Edit Panduan/PIC
+                                  </button>
+                                </div>
+                                <p className="mt-1 text-xs text-slate-700">Kepsek: <b>{s.principal || '-'}</b></p>
+                                <p className="mt-1 text-xs text-slate-700">Validator: <b>{s.validator || '-'}</b></p>
+                                <p className="mt-1 font-mono text-[11px] font-bold text-slate-900">{s.validatorPhone || '-'}</p>
+                                <p className="mt-1.5 text-[11px] text-slate-500 line-clamp-2" title={s.droppoint}>
+                                  Drop-point: {s.droppoint || 'Belum diatur'}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
+      {/* MODAL 1: Panduan Drop-Point Modal */}
       {guideSchool && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-          <div role="dialog" aria-modal="true" aria-label={`Panduan drop-point ${guideSchool.name}`} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Panduan drop-point ${guideSchool.name}`}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          >
             <div className="flex items-start justify-between pb-1">
               <div>
-                <p className="text-[11px] font-bold tracking-wide text-slate-500">PANDUAN DROP-POINT</p>
+                <p className="text-[11px] font-bold tracking-wide text-slate-500">PANDUAN DROP-POINT KURIR</p>
                 <h2 className="mt-1 flex items-center gap-2 text-base font-extrabold tracking-tight text-slate-900">
                   <MapPin className="h-4 w-4 text-[#23259C]" />
                   {guideSchool.name}
                 </h2>
               </div>
-              <button type="button" onClick={() => setGuideId(null)} aria-label="Tutup panduan" className={`rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 ${FOCUS}`}>
+              <button
+                type="button"
+                onClick={() => setGuideId(null)}
+                aria-label="Tutup panduan"
+                className={`rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 ${FOCUS}`}
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div aria-hidden="true" className="my-3 border-t border-dashed border-slate-300" />
-            <p className="text-xs leading-relaxed text-slate-700">{guideSchool.droppoint}</p>
-            <p className="mt-2 text-[11px] text-slate-500">
-              Kuota turun {packingQuota(guideSchool)} boks · Armada {guideSchool.fleet}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setPrintGuide(guideSchool.id); setGuideId(null) }} className={BTN}>
+            <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-200">
+              <p className="text-xs font-semibold text-slate-800 leading-relaxed">
+                {guideSchool.droppoint || 'Lokasi drop-point belum ditentukan. Silakan hubungi pihak sekolah.'}
+              </p>
+            </div>
+            <div className="mt-3 space-y-1.5 text-xs text-slate-600">
+              <p>
+                Alamat: <span className="font-semibold text-slate-800">{guideSchool.address}</span>
+              </p>
+              <p>
+                Target Kuota Turun:{' '}
+                <span className="font-mono font-bold text-[#23259C]">{guideSchool.packingQuota} boks</span>
+              </p>
+              <p>
+                Armada Pengirim: <span className="font-semibold text-slate-800">{guideSchool.fleet}</span>
+              </p>
+              <p>
+                PIC Lapangan:{' '}
+                <span className="font-semibold text-slate-800">
+                  {guideSchool.validator} ({guideSchool.validatorPhone})
+                </span>
+              </p>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPrintGuide(guideSchool.id)
+                  setGuideId(null)
+                }}
+                className={BTN}
+              >
                 <Printer className="h-4 w-4" />
-                Cetak panduan
+                Cetak Lembar Panduan
               </button>
-              <button type="button" onClick={() => setGuideId(null)} className={`rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 ${FOCUS}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setGuideId(null)
+                  openEditDroppointModal(guideSchool)
+                }}
+                className={BTN_SECONDARY}
+              >
+                <Edit3 className="h-4 w-4" />
+                Ubah Petunjuk
+              </button>
+              <button
+                type="button"
+                onClick={() => setGuideId(null)}
+                className={`rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 ${FOCUS}`}
+              >
                 Tutup
               </button>
             </div>
@@ -321,35 +782,71 @@ export function SppgSchoolsPanel() {
         </div>
       )}
 
+      {/* MODAL 2: Hubungi Validator Modal */}
       {contactSchool && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-          <div role="dialog" aria-modal="true" aria-label={`Hubungi ${contactSchool.name}`} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <p className="text-[11px] font-bold tracking-wide text-slate-500">HUBUNGI VALIDATOR</p>
-            <h2 className="mt-1 flex items-center gap-2 text-base font-extrabold tracking-tight text-slate-900">
-              <Phone className="h-4 w-4 text-[#23259C]" />
-              {contactSchool.name}
-            </h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Hubungi ${contactSchool.name}`}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-start justify-between pb-1">
+              <div>
+                <p className="text-[11px] font-bold tracking-wide text-slate-500">DIREKTORI KONTAK SEKOLAH</p>
+                <h2 className="mt-1 flex items-center gap-2 text-base font-extrabold tracking-tight text-slate-900">
+                  <Phone className="h-4 w-4 text-[#23259C]" />
+                  {contactSchool.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setContactId(null)}
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
             <div aria-hidden="true" className="my-3 border-t border-dashed border-slate-300" />
-            <dl className="space-y-2 text-xs">
+            <dl className="space-y-2.5 text-xs">
               <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">Guru validator</dt>
-                <dd className="font-semibold text-slate-900">{contactSchool.validator}</dd>
+                <dt className="text-slate-500">Guru Validator / PIC</dt>
+                <dd className="font-semibold text-slate-900">{contactSchool.validator || '-'}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">Telepon piket</dt>
-                <dd className="font-mono text-[11px] font-bold text-slate-900">{contactSchool.validatorPhone}</dd>
+                <dt className="text-slate-500">Nomor Telepon Piket</dt>
+                <dd className="font-mono text-[11px] font-bold text-slate-900">
+                  {contactSchool.validatorPhone || '-'}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-slate-500">Kepala Sekolah</dt>
+                <dd className="font-semibold text-slate-900">{contactSchool.principal || '-'}</dd>
               </div>
             </dl>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-              Nomor masih placeholder di data sesi, jadi tombol panggil langsung nonaktif.
-              Salin nomor untuk dihubungi manual setelah nomor resmi terdaftar.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              {contactSchool.validatorPhone && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const clean = contactSchool.validatorPhone.replace(/[^0-9]/g, '')
+                    const waNum = clean.startsWith('0') ? '62' + clean.slice(1) : clean
+                    window.open(`https://wa.me/${waNum}`, '_blank')
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Chat WhatsApp
+                </button>
+              )}
               <button
                 type="button"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(`${contactSchool.validator} ${contactSchool.name}: ${contactSchool.validatorPhone}`)
+                    await navigator.clipboard.writeText(
+                      `${contactSchool.validator} (${contactSchool.name}): ${contactSchool.validatorPhone}`
+                    )
                     setCopied(true)
                   } catch {
                     setCopied(false)
@@ -357,9 +854,13 @@ export function SppgSchoolsPanel() {
                 }}
                 className={BTN}
               >
-                {copied ? 'Tersalin' : 'Salin kontak'}
+                {copied ? 'Tersalin!' : 'Salin Kontak'}
               </button>
-              <button type="button" onClick={() => setContactId(null)} className={`rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 ${FOCUS}`}>
+              <button
+                type="button"
+                onClick={() => setContactId(null)}
+                className={`rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 ${FOCUS}`}
+              >
                 Tutup
               </button>
             </div>
@@ -367,25 +868,337 @@ export function SppgSchoolsPanel() {
         </div>
       )}
 
+      {/* MODAL 3: Update Presensi Pagi Modal */}
+      {attendanceSchool && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Update Presensi ${attendanceSchool.name}`}
+            className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-start justify-between pb-1">
+              <div>
+                <p className="text-[11px] font-bold tracking-wide text-slate-500">MUTASI PRESENSI & KUOTA PAGI</p>
+                <h2 className="mt-1 text-base font-extrabold tracking-tight text-slate-900">
+                  {attendanceSchool.name}
+                </h2>
+                <p className="text-xs text-slate-500 font-mono">
+                  Terdaftar di database: {attendanceSchool.enrolled} siswa
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAttendanceModalId(null)}
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div aria-hidden="true" className="my-3 border-t border-dashed border-slate-300" />
+
+            <form onSubmit={handleSaveAttendance} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="att-present" className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                    Siswa Hadir Riil
+                  </label>
+                  <input
+                    id="att-present"
+                    type="number"
+                    min="0"
+                    max={attendanceSchool.enrolled + 50}
+                    value={attPresent}
+                    onChange={(e) => setAttPresent(e.target.value)}
+                    required
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-[#23259C] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="att-reduce" className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                    Pengurangan Khusus
+                  </label>
+                  <input
+                    id="att-reduce"
+                    type="number"
+                    min="0"
+                    max={attPresent}
+                    value={attReduce}
+                    onChange={(e) => setAttReduce(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-900 focus:border-[#23259C] focus:outline-none"
+                  />
+                  <p className="mt-0.5 text-[10px] text-slate-400">Misal porsi study tour / kegiatan luar</p>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="att-time" className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Waktu Pemutakhiran (HH:MM WIB)
+                </label>
+                <input
+                  id="att-time"
+                  type="text"
+                  placeholder="Contoh: 04:50 (Kosong = waktu sekarang)"
+                  value={attUpdateTime}
+                  onChange={(e) => setAttUpdateTime(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono text-slate-900 focus:border-[#23259C] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="att-note" className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Catatan Selisih Absensi
+                </label>
+                <textarea
+                  id="att-note"
+                  rows="2"
+                  value={attAbsenceNote}
+                  onChange={(e) => setAttAbsenceNote(e.target.value)}
+                  placeholder="Misal: 10 siswa sakit flu, 40 siswa kelas 2 study tour ke kebun binatang."
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-[#23259C] focus:outline-none"
+                />
+              </div>
+
+              {/* Special Portions List */}
+              <div className="border-t border-slate-200 pt-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                    Kebutuhan Porsi Khusus / Alergen
+                  </p>
+                  <button
+                    type="button"
+                    onClick={addSpecialRow}
+                    className="text-[11px] font-semibold text-[#23259C] hover:underline inline-flex items-center gap-1"
+                  >
+                    <Plus className="h-3 w-3" /> Tambah Diet
+                  </button>
+                </div>
+
+                {attSpecials.length === 0 ? (
+                  <p className="mt-1.5 text-[11px] text-slate-400 italic">Tidak ada rincian diet khusus.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {attSpecials.map((sp, idx) => (
+                      <div key={idx} className="flex items-center gap-2 rounded-xl bg-slate-50 p-2 border border-slate-200">
+                        <input
+                          type="text"
+                          placeholder="Alergen (misal: Alergi kacang)"
+                          value={sp.type}
+                          onChange={(e) => updateSpecialRow(idx, 'type', e.target.value)}
+                          className="flex-1 rounded-lg border border-slate-300 px-2 py-1 text-[11px] focus:outline-none"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Jml"
+                          min="1"
+                          value={sp.count}
+                          onChange={(e) => updateSpecialRow(idx, 'count', e.target.value)}
+                          className="w-14 rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-bold text-center focus:outline-none"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Catatan pengganti lauk"
+                          value={sp.note}
+                          onChange={(e) => updateSpecialRow(idx, 'note', e.target.value)}
+                          className="flex-1 rounded-lg border border-slate-300 px-2 py-1 text-[11px] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeSpecialRow(idx)}
+                          className="text-slate-400 hover:text-rose-600 p-1"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Preview Kuota Cetak */}
+              <div className="rounded-xl bg-indigo-50/80 p-3 border border-indigo-100 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Preview Kuota Cetak</p>
+                  <p className="text-[11px] text-indigo-900">
+                    Siswa Hadir ({attPresent}) - Pengurangan ({attReduce})
+                  </p>
+                </div>
+                <p className="text-xl font-extrabold text-[#23259C] tabular-nums">
+                  {Math.max(0, Number(attPresent) - Number(attReduce))} boks
+                </p>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAttendanceModalId(null)}
+                  disabled={attSubmitting}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button type="submit" disabled={attSubmitting} className={BTN}>
+                  {attSubmitting ? 'Menyimpan...' : 'Simpan Presensi ke Database'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Edit Panduan Drop-Point Modal */}
+      {editDroppointSchool && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Ubah Panduan ${editDroppointSchool.name}`}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-start justify-between pb-1">
+              <div>
+                <p className="text-[11px] font-bold tracking-wide text-slate-500">PANDUAN DROP-POINT & PIC</p>
+                <h2 className="mt-1 text-base font-extrabold tracking-tight text-slate-900">
+                  {editDroppointSchool.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditDroppointId(null)}
+                className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div aria-hidden="true" className="my-3 border-t border-dashed border-slate-300" />
+
+            <form onSubmit={handleSaveDroppoint} className="space-y-3.5">
+              <div>
+                <label htmlFor="dp-location" className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Instruksi Lokasi Drop-Point
+                </label>
+                <textarea
+                  id="dp-location"
+                  rows="3"
+                  value={dpLocation}
+                  onChange={(e) => setDpLocation(e.target.value)}
+                  required
+                  placeholder="Misal: Gerbang belakang dekat ruang UKS lantai 1. Kurir wajib lapor satpam pos 2."
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-[#23259C] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="dp-validator" className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Nama Guru Validator / PIC
+                </label>
+                <input
+                  id="dp-validator"
+                  type="text"
+                  value={dpValidator}
+                  onChange={(e) => setDpValidator(e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-900 focus:border-[#23259C] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="dp-phone" className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Nomor WhatsApp / Telepon Piket
+                </label>
+                <input
+                  id="dp-phone"
+                  type="text"
+                  value={dpPhone}
+                  onChange={(e) => setDpPhone(e.target.value)}
+                  required
+                  placeholder="0812-xxxx-xxxx"
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:border-[#23259C] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="dp-principal" className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Nama Kepala Sekolah
+                </label>
+                <input
+                  id="dp-principal"
+                  type="text"
+                  value={dpPrincipal}
+                  onChange={(e) => setDpPrincipal(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 focus:border-[#23259C] focus:outline-none"
+                />
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditDroppointId(null)}
+                  disabled={dpSubmitting}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button type="submit" disabled={dpSubmitting} className={BTN}>
+                  {dpSubmitting ? 'Menyimpan...' : 'Perbarui Panduan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* PRINT SHEET: Lembar Panduan Drop-Point Driver Kurir */}
       <div className="guide-print-sheet" aria-hidden="true">
         {printed && (
-          <div style={{ color: '#000', background: '#fff', padding: 16, fontFamily: 'sans-serif' }}>
-            <p style={{ fontSize: 18, fontWeight: 800 }}>PANDUAN DROP-POINT</p>
-            <p style={{ fontSize: 12 }}>{SPPG_PROFILE.code} · 29 September 2026</p>
-            <hr />
-            <p style={{ fontSize: 14, fontWeight: 700 }}>{printed.name}</p>
-            <p style={{ fontSize: 12 }}>{printed.address}</p>
-            <p style={{ fontSize: 13 }}>{printed.droppoint}</p>
-            <p style={{ fontSize: 13 }}>Kuota turun: {packingQuota(printed)} boks · Armada {printed.fleet}</p>
-            <p style={{ fontSize: 12 }}>PIC: {printed.validator} · {printed.validatorPhone}</p>
+          <div style={{ color: '#000', background: '#fff', padding: 20, fontFamily: 'sans-serif' }}>
+            <div style={{ borderBottom: '2px solid #000', paddingBottom: 8, marginBottom: 12 }}>
+              <p style={{ fontSize: 18, fontWeight: 900, margin: 0 }}>LEMBAR PANDUAN DROP-POINT KURIR MBG</p>
+              <p style={{ fontSize: 11, color: '#444', margin: '4px 0 0 0' }}>
+                {bundle?.kitchenCode || activeSppgId} · {bundle?.kitchenName} · Dicetak:{' '}
+                {new Date().toLocaleDateString('id-ID')}
+              </p>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <p style={{ fontSize: 16, fontWeight: 800, margin: '0 0 4px 0' }}>{printed.name}</p>
+              <p style={{ fontSize: 12, margin: '0 0 2px 0' }}>{printed.address}</p>
+              <p style={{ fontSize: 11, color: '#555', margin: 0 }}>
+                NPSN: {printed.npsn} · Jenjang: {printed.level}
+              </p>
+            </div>
+            <div style={{ background: '#f5f5f5', padding: 12, borderRadius: 6, marginBottom: 12 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, margin: '0 0 4px 0', textTransform: 'uppercase' }}>
+                Petunjuk Akses Drop-Point:
+              </p>
+              <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>{printed.droppoint}</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div style={{ border: '1px solid #ddd', padding: 8, borderRadius: 4 }}>
+                <p style={{ fontSize: 10, color: '#666', margin: 0 }}>KUOTA PENURUNAN</p>
+                <p style={{ fontSize: 18, fontWeight: 800, margin: '2px 0 0 0' }}>{printed.packingQuota} BOKS</p>
+              </div>
+              <div style={{ border: '1px solid #ddd', padding: 8, borderRadius: 4 }}>
+                <p style={{ fontSize: 10, color: '#666', margin: 0 }}>ARMADA DITUGASKAN</p>
+                <p style={{ fontSize: 16, fontWeight: 700, margin: '2px 0 0 0' }}>{printed.fleet}</p>
+              </div>
+            </div>
+            <div style={{ borderTop: '1px dashed #aaa', paddingTop: 8 }}>
+              <p style={{ fontSize: 11, margin: '2px 0' }}>
+                <b>PIC Validator:</b> {printed.validator} ({printed.validatorPhone})
+              </p>
+              <p style={{ fontSize: 11, margin: '2px 0' }}>
+                <b>Kepala Sekolah:</b> {printed.principal}
+              </p>
+            </div>
           </div>
         )}
       </div>
 
       <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
         <School className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        Alamat dan koordinat mengikuti data sesi dapur. Presensi dihitung dari jam update
-        terhadap batas {ATTENDANCE_DEADLINE} WIB.
+        Data sekolah binaan, titik koordinat GPS, dan rekapitulasi kuota presensi disinkronkan secara langsung dari
+        database PostgreSQL. Kuota cetak dihitung otomatis berdasarkan kehadiran siswa terhadap batas waktu{' '}
+        {bundle?.deadline || '05:00'} WIB.
       </p>
     </div>
   )

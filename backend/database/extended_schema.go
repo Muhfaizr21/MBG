@@ -548,6 +548,384 @@ ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL
 ALTER TABLE forensic_audit_findings ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'safeguarded';
 CREATE INDEX IF NOT EXISTS idx_vendor_invoices_status ON vendor_invoices(status);
 CREATE INDEX IF NOT EXISTS idx_forensic_findings_status ON forensic_audit_findings(status);
+
+-- ============================================================================
+-- SPPG RECIPES & MULTI-TENANT KITCHEN SPACE
+-- ============================================================================
+
+-- 1. Resep & Paket Menu SPPG (Mendukung Multi-Tenant & Template Nasional BGN)
+CREATE TABLE IF NOT EXISTS sppg_menu_packages (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) REFERENCES sppg_kitchens(id) ON DELETE CASCADE, -- NULL jika Template Nasional BGN
+	code VARCHAR(50) NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	tagline VARCHAR(255) NOT NULL DEFAULT '',
+	day_name VARCHAR(100) NOT NULL DEFAULT '',
+	cycle VARCHAR(100) NOT NULL DEFAULT 'Siklus Menu Nasional Minggu I',
+	description TEXT NOT NULL DEFAULT '',
+	allergens JSONB NOT NULL DEFAULT '[]',
+	haccp_point TEXT NOT NULL DEFAULT '',
+	serving_temp_standard TEXT NOT NULL DEFAULT '',
+	calories DOUBLE PRECISION NOT NULL DEFAULT 0,
+	protein DOUBLE PRECISION NOT NULL DEFAULT 0,
+	carbs DOUBLE PRECISION NOT NULL DEFAULT 0,
+	fat DOUBLE PRECISION NOT NULL DEFAULT 0,
+	fiber DOUBLE PRECISION NOT NULL DEFAULT 0,
+	iron DOUBLE PRECISION NOT NULL DEFAULT 0,
+	calcium DOUBLE PRECISION NOT NULL DEFAULT 0,
+	ingredients JSONB NOT NULL DEFAULT '[]',
+	is_national BOOLEAN NOT NULL DEFAULT false,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sppg_menu_packages_sppg ON sppg_menu_packages(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_menu_packages_national ON sppg_menu_packages(is_national);
+
+-- 2. State Operasional Harian Resep per-SPPG
+CREATE TABLE IF NOT EXISTS sppg_recipe_daily_states (
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	date DATE NOT NULL DEFAULT CURRENT_DATE,
+	selected_package_id VARCHAR(64) NOT NULL,
+	active_cohort VARCHAR(32) NOT NULL DEFAULT 'sd_atas',
+	portion_count INT NOT NULL DEFAULT 2500,
+	is_locked BOOLEAN NOT NULL DEFAULT false,
+	locked_at TIMESTAMPTZ,
+	locked_by VARCHAR(150),
+	verified_by VARCHAR(255) NOT NULL DEFAULT 'Satgas MBG Wilayah Pusat',
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	PRIMARY KEY (sppg_id, date)
+);
+
+-- 3. Log Penelusuran Batch Bahan Baku per Gudang Dapur
+CREATE TABLE IF NOT EXISTS sppg_ingredient_batches (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	commodity VARCHAR(150) NOT NULL,
+	batch_no VARCHAR(100) NOT NULL,
+	supplier VARCHAR(255) NOT NULL,
+	nkv_number VARCHAR(100) NOT NULL DEFAULT '',
+	halal_cert_no VARCHAR(100) NOT NULL DEFAULT '',
+	incoming_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	expiry_date VARCHAR(100) NOT NULL,
+	storage_temp VARCHAR(100) NOT NULL DEFAULT '',
+	qc_inspector VARCHAR(150) NOT NULL DEFAULT '',
+	qc_result TEXT NOT NULL DEFAULT '',
+	qc_status VARCHAR(32) NOT NULL DEFAULT 'VERIFIED',
+	quantity_received VARCHAR(100) NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sppg_ing_batches_sppg ON sppg_ingredient_batches(sppg_id);
+
+-- 4. Penguatan relasi menu_substitutions dengan sppg_id
+ALTER TABLE menu_substitutions ADD COLUMN IF NOT EXISTS sppg_id VARCHAR(64) REFERENCES sppg_kitchens(id) ON DELETE CASCADE;
+ALTER TABLE menu_substitutions ADD COLUMN IF NOT EXISTS menu_code VARCHAR(50) NOT NULL DEFAULT '';
+ALTER TABLE menu_substitutions ADD COLUMN IF NOT EXISTS evidence_photo_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE menu_substitutions ADD COLUMN IF NOT EXISTS evidence_file_name VARCHAR(255) NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_menu_substitutions_sppg ON menu_substitutions(sppg_id);
+
+-- 5. Penguatan tabel sppg_batches untuk modul Batch & Label QR
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS token VARCHAR(120) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS seq INT NOT NULL DEFAULT 1;
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS school_id VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS school_code VARCHAR(32) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS school_name VARCHAR(150) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS menu_code VARCHAR(50) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS menu_name VARCHAR(200) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS box_count INT NOT NULL DEFAULT 0;
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS cooked_at VARCHAR(20) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS consume_by VARCHAR(20) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS cook_temp DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS allergens JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'draft';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS checksum VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS quarantine_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS quarantined_by VARCHAR(150) NOT NULL DEFAULT '';
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS quarantined_at TIMESTAMPTZ;
+ALTER TABLE sppg_batches ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+CREATE INDEX IF NOT EXISTS idx_sppg_batches_token ON sppg_batches(token);
+CREATE INDEX IF NOT EXISTS idx_sppg_batches_date ON sppg_batches(cooking_date);
+CREATE INDEX IF NOT EXISTS idx_sppg_batches_status ON sppg_batches(status);
+
+-- 6. Tabel Kontrol Mutu HACCP & Uji Sensori SPPG
+CREATE TABLE IF NOT EXISTS sppg_quality_temp_logs (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	point_id VARCHAR(32) NOT NULL,
+	batch_token VARCHAR(120) NOT NULL,
+	value DOUBLE PRECISION NOT NULL,
+	hold_minutes INT NOT NULL DEFAULT 0,
+	measured_at VARCHAR(20) NOT NULL,
+	measured_by VARCHAR(150) NOT NULL,
+	evidence_name VARCHAR(255) NOT NULL DEFAULT 'tanpa foto',
+	pass BOOLEAN NOT NULL DEFAULT true,
+	verdict VARCHAR(32) NOT NULL DEFAULT 'LOLOS',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_quality_temp_sppg ON sppg_quality_temp_logs(sppg_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sppg_quality_temp_token ON sppg_quality_temp_logs(batch_token);
+
+CREATE TABLE IF NOT EXISTS sppg_quality_signoffs (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	batch_token VARCHAR(120) NOT NULL,
+	aspects JSONB NOT NULL DEFAULT '{}',
+	note TEXT NOT NULL DEFAULT '',
+	signer VARCHAR(150) NOT NULL,
+	signed_at VARCHAR(50) NOT NULL,
+	layak BOOLEAN NOT NULL DEFAULT true,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_quality_signoffs_sppg ON sppg_quality_signoffs(sppg_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sppg_quality_samples (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	batch_token VARCHAR(120) NOT NULL,
+	rack_no VARCHAR(32) NOT NULL,
+	stored_at VARCHAR(50) NOT NULL,
+	stored_by VARCHAR(150) NOT NULL,
+	status VARCHAR(32) NOT NULL DEFAULT 'tersimpan',
+	destroyed_at TIMESTAMPTZ,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_quality_samples_sppg ON sppg_quality_samples(sppg_id, created_at DESC);
+
+-- 7. Tabel Logistik Rute & Armada SPPG
+CREATE TABLE IF NOT EXISTS sppg_fleets (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	plate VARCHAR(32) NOT NULL,
+	vehicle_type VARCHAR(100) NOT NULL,
+	driver_name VARCHAR(150) NOT NULL,
+	driver_phone VARCHAR(50) NOT NULL DEFAULT '',
+	emergency_phone VARCHAR(50) NOT NULL DEFAULT '',
+	school_id VARCHAR(64) NOT NULL DEFAULT '',
+	school_name VARCHAR(255) NOT NULL DEFAULT '',
+	school_lat DOUBLE PRECISION NOT NULL DEFAULT 0,
+	school_lng DOUBLE PRECISION NOT NULL DEFAULT 0,
+	batch_token VARCHAR(120) NOT NULL DEFAULT '',
+	box_count INT NOT NULL DEFAULT 0,
+	distance_km DOUBLE PRECISION NOT NULL DEFAULT 0,
+	speed_kph INT NOT NULL DEFAULT 0,
+	depart_at VARCHAR(20) NOT NULL DEFAULT '',
+	progress DOUBLE PRECISION NOT NULL DEFAULT 0,
+	status VARCHAR(32) NOT NULL DEFAULT 'jalan',
+	box_temp_c DOUBLE PRECISION NOT NULL DEFAULT 63.5,
+	is_backup BOOLEAN NOT NULL DEFAULT FALSE,
+	current_lat DOUBLE PRECISION NOT NULL DEFAULT 0,
+	current_lng DOUBLE PRECISION NOT NULL DEFAULT 0,
+	temp_series JSONB NOT NULL DEFAULT '[]',
+	dispatched_at TIMESTAMPTZ,
+	dispatched_by VARCHAR(150) NOT NULL DEFAULT '',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_fleets_sppg ON sppg_fleets(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_fleets_status ON sppg_fleets(status);
+
+CREATE TABLE IF NOT EXISTS sppg_delivery_notifications (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	fleet_id VARCHAR(64) NOT NULL REFERENCES sppg_fleets(id) ON DELETE CASCADE,
+	school_id VARCHAR(64) NOT NULL DEFAULT '',
+	school_name VARCHAR(255) NOT NULL,
+	recipient_phone VARCHAR(50) NOT NULL DEFAULT '',
+	message TEXT NOT NULL,
+	sent_by VARCHAR(150) NOT NULL,
+	sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_deliv_notif_sppg ON sppg_delivery_notifications(sppg_id);
+
+CREATE TABLE IF NOT EXISTS sppg_school_quotas (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	school_id VARCHAR(64) NOT NULL,
+	npsn VARCHAR(32) NOT NULL,
+	school_name VARCHAR(255) NOT NULL,
+	address TEXT NOT NULL DEFAULT '',
+	level VARCHAR(64) NOT NULL DEFAULT 'SD',
+	lat DOUBLE PRECISION NOT NULL DEFAULT 0,
+	lng DOUBLE PRECISION NOT NULL DEFAULT 0,
+	enrolled INT NOT NULL DEFAULT 0,
+	present INT NOT NULL DEFAULT 0,
+	reduce_special INT NOT NULL DEFAULT 0,
+	absence_note TEXT NOT NULL DEFAULT '',
+	present_updated_at VARCHAR(10) NOT NULL DEFAULT '',
+	specials JSONB NOT NULL DEFAULT '[]'::jsonb,
+	principal_name VARCHAR(150) NOT NULL DEFAULT '',
+	validator_name VARCHAR(150) NOT NULL DEFAULT '',
+	validator_phone VARCHAR(50) NOT NULL DEFAULT '',
+	droppoint TEXT NOT NULL DEFAULT '',
+	fleet_assigned VARCHAR(64) NOT NULL DEFAULT '',
+	date DATE NOT NULL DEFAULT CURRENT_DATE,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_school_quotas_sppg ON sppg_school_quotas(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_school_quotas_npsn ON sppg_school_quotas(npsn);
+CREATE INDEX IF NOT EXISTS idx_sppg_school_quotas_date ON sppg_school_quotas(date);
+
+CREATE TABLE IF NOT EXISTS sppg_handovers (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	school_id VARCHAR(64) NOT NULL,
+	school_npsn VARCHAR(32) NOT NULL,
+	school_name VARCHAR(255) NOT NULL,
+	batch_token VARCHAR(100) NOT NULL,
+	sent INT NOT NULL DEFAULT 0,
+	scanned INT NOT NULL DEFAULT 0,
+	stage VARCHAR(32) NOT NULL DEFAULT 'menunggu',
+	rejected JSONB NOT NULL DEFAULT '[]'::jsonb,
+	courier_sign VARCHAR(150) NOT NULL DEFAULT '',
+	teacher_sign VARCHAR(150) NOT NULL DEFAULT '',
+	bast_no VARCHAR(100) NOT NULL DEFAULT '',
+	bast_at VARCHAR(20) NOT NULL DEFAULT '',
+	bast_hash VARCHAR(255) NOT NULL DEFAULT '',
+	date DATE NOT NULL DEFAULT CURRENT_DATE,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_handovers_sppg ON sppg_handovers(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_handovers_date ON sppg_handovers(date);
+CREATE INDEX IF NOT EXISTS idx_sppg_handovers_stage ON sppg_handovers(stage);
+
+CREATE TABLE IF NOT EXISTS sppg_handover_settings (
+	sppg_id VARCHAR(64) PRIMARY KEY REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	safety_stock INT NOT NULL DEFAULT 40,
+	bast_seq INT NOT NULL DEFAULT 1,
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 8. Modul Insiden & Respon Aduan SPPG (SPPG.md Bab 8)
+CREATE TABLE IF NOT EXISTS sppg_incident_tickets (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	school_id VARCHAR(64) NOT NULL DEFAULT '',
+	school_name VARCHAR(255) NOT NULL,
+	batch_token VARCHAR(100) NOT NULL,
+	level INT NOT NULL DEFAULT 1,
+	category VARCHAR(100) NOT NULL,
+	message TEXT NOT NULL,
+	created_at_clock VARCHAR(20) NOT NULL DEFAULT '07:00',
+	status VARCHAR(32) NOT NULL DEFAULT 'baru',
+	responses JSONB NOT NULL DEFAULT '[]'::jsonb,
+	resolution TEXT NOT NULL DEFAULT '',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_inc_tickets_sppg ON sppg_incident_tickets(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_inc_tickets_status ON sppg_incident_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_sppg_inc_tickets_token ON sppg_incident_tickets(batch_token);
+
+CREATE TABLE IF NOT EXISTS sppg_incident_recalls (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	batch_token VARCHAR(100) NOT NULL,
+	reason TEXT NOT NULL DEFAULT '',
+	recalled_by VARCHAR(150) NOT NULL DEFAULT '',
+	recalled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	status VARCHAR(32) NOT NULL DEFAULT 'active'
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_inc_recalls_sppg ON sppg_incident_recalls(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_inc_recalls_token ON sppg_incident_recalls(batch_token);
+
+-- 9. Modul Klaim & Penagihan Invoice SPPG (SPPG.md Bab 9)
+CREATE TABLE IF NOT EXISTS sppg_invoices (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	invoice_no VARCHAR(100) NOT NULL,
+	period_label VARCHAR(100) NOT NULL DEFAULT '',
+	stage VARCHAR(32) NOT NULL DEFAULT 'draft',
+	notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+	tax_slip VARCHAR(255) NOT NULL DEFAULT '',
+	sp2d_number VARCHAR(100) NOT NULL DEFAULT '',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_invoices_sppg ON sppg_invoices(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_invoices_stage ON sppg_invoices(stage);
+
+CREATE TABLE IF NOT EXISTS sppg_billing_rows (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	school_id VARCHAR(64) NOT NULL DEFAULT '',
+	school_name VARCHAR(255) NOT NULL,
+	bast_no VARCHAR(100) NOT NULL DEFAULT '',
+	batch_token VARCHAR(100) NOT NULL,
+	valid_portions INT NOT NULL DEFAULT 0,
+	late_minutes INT NOT NULL DEFAULT 0,
+	invoice_id VARCHAR(64) REFERENCES sppg_invoices(id) ON DELETE SET NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_billing_rows_sppg ON sppg_billing_rows(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_billing_rows_invoice ON sppg_billing_rows(invoice_id);
+
+CREATE TABLE IF NOT EXISTS sppg_billing_settings (
+	sppg_id VARCHAR(64) PRIMARY KEY REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	rate_per_portion INT NOT NULL DEFAULT 15000,
+	late_tolerance_minutes INT NOT NULL DEFAULT 30,
+	late_penalty_pct INT NOT NULL DEFAULT 5,
+	inv_seq INT NOT NULL DEFAULT 2,
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 10. Modul Sertifikasi & Sanitasi Dapur SPPG (SPPG.md Bab 10)
+CREATE TABLE IF NOT EXISTS sppg_compliance_docs (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	name VARCHAR(255) NOT NULL,
+	issuer VARCHAR(255) NOT NULL DEFAULT '',
+	number VARCHAR(100) NOT NULL DEFAULT '',
+	expiry DATE NOT NULL,
+	file_name VARCHAR(255) NOT NULL DEFAULT '',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_compliance_docs_sppg ON sppg_compliance_docs(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_compliance_docs_expiry ON sppg_compliance_docs(expiry);
+
+CREATE TABLE IF NOT EXISTS sppg_compliance_handlers (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	name VARCHAR(255) NOT NULL,
+	role VARCHAR(100) NOT NULL DEFAULT '',
+	health_expiry DATE NOT NULL,
+	health_file VARCHAR(255) NOT NULL DEFAULT '',
+	trained BOOLEAN NOT NULL DEFAULT false,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_compliance_handlers_sppg ON sppg_compliance_handlers(sppg_id);
+
+CREATE TABLE IF NOT EXISTS sppg_compliance_labs (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	test_date DATE NOT NULL DEFAULT CURRENT_DATE,
+	kind VARCHAR(32) NOT NULL DEFAULT 'swab',
+	target VARCHAR(255) NOT NULL,
+	param VARCHAR(100) NOT NULL,
+	value DOUBLE PRECISION NOT NULL DEFAULT 0,
+	unit VARCHAR(50) NOT NULL DEFAULT 'koloni/cm2',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_compliance_labs_sppg ON sppg_compliance_labs(sppg_id);
+CREATE INDEX IF NOT EXISTS idx_sppg_compliance_labs_date ON sppg_compliance_labs(test_date);
+
+CREATE TABLE IF NOT EXISTS sppg_compliance_audits (
+	id VARCHAR(64) PRIMARY KEY,
+	sppg_id VARCHAR(64) NOT NULL REFERENCES sppg_kitchens(id) ON DELETE CASCADE,
+	purpose VARCHAR(255) NOT NULL,
+	preferred_date DATE NOT NULL,
+	note TEXT NOT NULL DEFAULT '',
+	status VARCHAR(50) NOT NULL DEFAULT 'Diajukan',
+	filed_at VARCHAR(50) NOT NULL DEFAULT '28 Sept 2026',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sppg_compliance_audits_sppg ON sppg_compliance_audits(sppg_id);
 `
 
 // MigrateExtended menjalankan migrasi untuk seluruh tabel ekosistem KawanGizi MBG.

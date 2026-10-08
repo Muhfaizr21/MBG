@@ -78,8 +78,16 @@ export function AuthProvider({ children }) {
     [permissions],
   )
 
+  const isSuperadmin = user?.role === 'superadmin'
+  const isSppg = user?.role === 'sppg'
+  const isValidator = user?.role === 'validator'
+
   const value = {
     user,
+    role: user?.role || null,
+    isSuperadmin,
+    isSppg,
+    isValidator,
     permissions,
     loading,
     login,

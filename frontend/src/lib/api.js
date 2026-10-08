@@ -680,3 +680,590 @@ export async function fetchAdminDashboard() {
   const res = await api('/api/admin/dashboard')
   return res?.data || null
 }
+
+/* ============================================================================
+ * SPPG RECIPES & MULTI-TENANT KITCHEN SPACE APIS
+ * ============================================================================ */
+
+export async function fetchSppgRecipeBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/bundle${query}`)
+  return res?.data || null
+}
+
+export async function fetchSppgMenuPackages(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/packages${query}`)
+  return res?.data || []
+}
+
+export async function fetchSppgMenuPackage(id) {
+  const res = await api(`/api/sppg/recipes/packages/${id}`)
+  return res?.data || null
+}
+
+export async function createSppgMenuPackage(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/packages${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function fetchSppgDailyRecipeState(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/state${query}`)
+  return res?.data || null
+}
+
+export async function updateSppgDailyRecipeState(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/state${query}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function toggleSppgMenuLock(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/lock${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function fetchSppgSubstitutions(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/substitutions${query}`)
+  return res?.data || []
+}
+
+export async function submitSppgSubstitution(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/substitutions${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function fetchSppgBatchLogs(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/batches${query}`)
+  return res?.data || []
+}
+
+export async function createSppgBatchLog(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/recipes/batches${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+/**
+ * =========================================================================
+ * SPPG BATCHES & THERMAL QR PRINTING (Multi-tenant & Superadmin Connected)
+ * =========================================================================
+ */
+
+export async function fetchSppgBatchesBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/batches/bundle${query}`)
+  return res?.data || null
+}
+
+export async function fetchSppgBatches(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/batches${query}`)
+  return res?.data || []
+}
+
+export async function createSppgBatch(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/batches${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function updateSppgBatchStatus(id, status, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/batches/${encodeURIComponent(id)}/status${query}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  })
+  return res?.data || null
+}
+
+export async function verifySppgBatchToken(token, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/batches/verify${query}`, {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  })
+  return res?.data || null
+}
+
+export async function quarantineSppgBatch(id, reason) {
+  const res = await api(`/api/sppg/batches/${encodeURIComponent(id)}/quarantine`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+  return res?.data || null
+}
+
+export async function deleteSppgBatch(id, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/batches/${encodeURIComponent(id)}${query}`, {
+    method: 'DELETE',
+  })
+  return res?.data || null
+}
+
+/**
+ * =========================================================================
+ * SPPG QUALITY HACCP & SENSORY EVALUATION (Multi-tenant & Superadmin Connected)
+ * =========================================================================
+ */
+
+export async function fetchSppgQualityBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/quality/bundle${query}`)
+  return res?.data || null
+}
+
+export async function createSppgTempLog(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/quality/temp-logs${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function createSppgSignoff(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/quality/signoffs${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function createSppgSample(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/quality/samples${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function updateSppgSampleStatus(id, status, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/quality/samples/${encodeURIComponent(id)}/status${query}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  })
+  return res?.data || null
+}
+
+export async function submitSppgQualityIntervention(payload) {
+  const res = await api('/api/sppg/quality/intervention', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+// -----------------------------------------------------------------------------
+// Modul SPPG Logistik & Manajemen Armada Pengantaran
+// -----------------------------------------------------------------------------
+
+export async function fetchSppgLogisticsBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/logistics/bundle${query}`)
+  return res?.data || null
+}
+
+export async function fetchSppgFleets(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/logistics/fleets${query}`)
+  return res?.data || []
+}
+
+export async function createSppgFleet(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/logistics/fleets${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function updateSppgFleetTelemetry(fleetId, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/logistics/fleets/${encodeURIComponent(fleetId)}/telemetry${query}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function dispatchSppgBackupFleet(troubledFleetId, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/logistics/fleets/${encodeURIComponent(troubledFleetId)}/dispatch-backup${query}`, {
+    method: 'POST',
+  })
+  return res?.data || null
+}
+
+export async function sendSppgDeliveryNotification(fleetId, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/logistics/fleets/${encodeURIComponent(fleetId)}/notify${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function submitSppgLogisticsIntervention(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/logistics/intervention${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+/**
+ * =========================================================================
+ * SPPG SCHOOLS BINAAN & DAILY QUOTAS (Multi-tenant & Superadmin Connected)
+ * =========================================================================
+ */
+
+export async function fetchSppgSchoolsBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/schools/bundle${query}`)
+  return res?.data || null
+}
+
+export async function fetchSppgSchoolsList(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/schools${query}`)
+  return res?.data || []
+}
+
+export async function fetchSppgSchoolDetail(id, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/schools/${encodeURIComponent(id)}${query}`)
+  return res?.data || null
+}
+
+export async function updateSppgSchoolAttendance(id, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/schools/${encodeURIComponent(id)}/attendance${query}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function updateSppgSchoolDroppoint(id, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/schools/${encodeURIComponent(id)}/droppoint${query}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function sendSppgSchoolReminder(id, payload = {}, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/schools/${encodeURIComponent(id)}/remind${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res || null
+}
+
+/**
+ * =========================================================================
+ * SPPG HANDOVER & BAST DIGITAL (SPPG.md Bab 7 - Strictly Database-Driven)
+ * =========================================================================
+ */
+
+export async function fetchSppgHandoverBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/handover/bundle${query}`)
+  return res?.data || null
+}
+
+export async function fetchSppgHandoverList(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/handover${query}`)
+  return res?.data || []
+}
+
+export async function fetchSppgHandoverDetail(id, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/handover/${encodeURIComponent(id)}${query}`)
+  return res?.data || null
+}
+
+export async function advanceSppgHandoverStage(id, payload = {}, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/handover/${encodeURIComponent(id)}/stage${query}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function finishSppgHandoverScan(id, payload = { perfect: true }, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/handover/${encodeURIComponent(id)}/finish-scan${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function rejectSppgHandoverBoxes(id, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/handover/${encodeURIComponent(id)}/reject${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function replaceSppgHandoverRejected(id, rejectIndex, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/handover/${encodeURIComponent(id)}/replace${query}`, {
+    method: 'POST',
+    body: JSON.stringify({ rejectIndex }),
+  })
+  return res?.data || null
+}
+
+export async function signSppgHandoverBast(id, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/handover/${encodeURIComponent(id)}/sign-bast${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+/**
+ * =========================================================================
+ * SPPG INCIDENTS & TICKET RESPONSE (SPPG.md Bab 8 - Strictly Database-Driven)
+ * =========================================================================
+ */
+
+export async function fetchSppgIncidentsBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/incidents/bundle${query}`)
+  return res?.data || null
+}
+
+export async function fetchSppgIncidentTickets(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/incidents${query}`)
+  return res?.data || []
+}
+
+export async function fetchSppgIncidentTicketDetail(id, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/incidents/${encodeURIComponent(id)}${query}`)
+  return res?.data || null
+}
+
+export async function createSppgIncidentTicket(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/incidents${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function replySppgIncidentTicket(id, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/incidents/${encodeURIComponent(id)}/reply${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function replaceSppgIncidentPortions(id, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/incidents/${encodeURIComponent(id)}/replace${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function recallSppgIncidentBatch(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/incidents/recall${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function closeSppgIncidentTicket(id, payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/incidents/${encodeURIComponent(id)}/close${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+/**
+ * =========================================================================
+ * SPPG BILLING & INVOICE MANAGEMENT (SPPG.md Bab 9 - Strictly Database-Driven)
+ * =========================================================================
+ */
+
+export async function fetchSppgBillingBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/billing/bundle${query}`)
+  return res?.data || null
+}
+
+export async function fetchSppgBillingRows(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/billing/rows${query}`)
+  return res?.data || []
+}
+
+export async function fetchSppgInvoices(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/billing/invoices${query}`)
+  return res?.data || []
+}
+
+export async function fetchSppgInvoiceDetail(id, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/billing/invoices/${encodeURIComponent(id)}${query}`)
+  return res?.data || null
+}
+
+export async function generateSppgInvoice(payload = {}, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/billing/invoices/generate${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function advanceSppgInvoiceStage(id, payload = {}, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/billing/invoices/${encodeURIComponent(id)}/advance${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function attachSppgInvoiceNotes(id, files = [], sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/billing/invoices/${encodeURIComponent(id)}/notes${query}`, {
+    method: 'POST',
+    body: JSON.stringify({ files }),
+  })
+  return res?.data || null
+}
+
+/**
+ * =========================================================================
+ * SPPG COMPLIANCE & SANITATION (SPPG.md Bab 10 - Strictly Database-Driven)
+ * =========================================================================
+ */
+
+export async function fetchSppgComplianceBundle(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/bundle${query}`)
+  return res?.data || null
+}
+
+export async function fetchSppgComplianceDocs(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/docs${query}`)
+  return res?.data || []
+}
+
+export async function renewSppgComplianceDoc(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/docs/renew${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function fetchSppgComplianceHandlers(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/handlers${query}`)
+  return res?.data || []
+}
+
+export async function createSppgComplianceHandler(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/handlers${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function fetchSppgComplianceLabs(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/labs${query}`)
+  return res?.data || []
+}
+
+export async function createSppgComplianceLab(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/labs${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+export async function fetchSppgComplianceAudits(sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/audits${query}`)
+  return res?.data || []
+}
+
+export async function requestSppgComplianceAudit(payload, sppgId = '') {
+  const query = sppgId ? `?sppgId=${encodeURIComponent(sppgId)}` : ''
+  const res = await api(`/api/sppg/compliance/audits${query}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  return res?.data || null
+}
+
+
+
+
+
+
+
+

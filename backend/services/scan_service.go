@@ -108,8 +108,8 @@ type ScanSubmission struct {
 // ScanService defines business logic for the scan endpoint.
 type ScanService interface {
 	Predict(ctx context.Context, image []byte, fileName string) (*Prediction, error)
-	SubmitScan(ctx context.Context, actorID string, image []byte, fileName, qrToken, boxID, batchID, items string, holdingTempC, releaseTempC *float64, persist bool, rating int, feedback string) (*models.ScanResult, error)
-	ListRecent(ctx context.Context, limit int) ([]models.ScanLog, error)
+	SubmitScan(ctx context.Context, in ScanSubmission) (*models.ScanResult, error)
+	ListRecent(ctx context.Context, actorID string, limit int) ([]models.ScanLog, error)
 	UpdateFeedback(ctx context.Context, id string, rating int, feedback string, tempC *float64) error
 	DeleteScan(ctx context.Context, actorID, id string) error
 	DeleteAllScans(ctx context.Context, actorID string) error
@@ -205,6 +205,14 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	image := in.Image
 	fileName := in.FileName
 	qrToken := strings.TrimSpace(in.QRToken)
+	boxID := strings.TrimSpace(in.BoxID)
+	batchID := strings.TrimSpace(in.BatchID)
+	items := strings.TrimSpace(in.Items)
+	holdingTempC := in.HoldingTempC
+	releaseTempC := in.ReleaseTempC
+	durationMS := in.DurationMS
+	rating := in.Rating
+	feedback := in.Feedback
 	if len(image) == 0 {
 		return nil, ErrImageRequired
 	}
@@ -400,7 +408,6 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	}
 
 	// Identitas boks: dari client, atau diturunkan dari token QR.
-	boxID := strings.TrimSpace(in.BoxID)
 	if boxID == "" && qrToken != "" {
 		segments := strings.Split(qrToken, "-")
 		boxID = "BOK-" + segments[len(segments)-1]
@@ -413,7 +420,6 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	scanID := "TEMP-PREVIEW"
 	savedFileName := ""
 
-	batchID := strings.TrimSpace(in.BatchID)
 	if in.Persist {
 		var err error
 		scanID, err = s.nextScanID(ctx)
@@ -432,22 +438,26 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 		_ = os.WriteFile(filepath.Join("uploads", ".gitignore"), []byte("*\n!.gitignore\n"), 0644)
 
 		entry := &models.ScanLog{
-			ID:           scanID,
-			BoxID:        boxID,
-			QRToken:      qrToken,
-			BatchID:      strings.TrimSpace(batchID),
-			ImageRef:     savedFileName,
-			AIClass:      pred.ClassName,
-			AIConfidence: pred.Confidence,
-			VisualScore:  score,
-			HoldingTempC: holdingTempC,
-			ReleaseTempC: releaseTempC,
-			Verdict:      verdict,
-			Reason:       note,
-			ActorID:      actorID,
-			CreatedAt:    now,
-			Rating:       rating,
-			Feedback:     feedback,
+			ID:             scanID,
+			BoxID:          boxID,
+			QRToken:        qrToken,
+			BatchID:        strings.TrimSpace(batchID),
+			ImageRef:       savedFileName,
+			AIClass:        freshClass,
+			AIConfidence:   freshConfidence,
+			VisualScore:    score,
+			HoldingTempC:   holdingTempC,
+			ReleaseTempC:   releaseTempC,
+			DurationMS:     durationMS,
+			Verdict:        verdict,
+			Reason:         note,
+			ActorID:        actorID,
+			CreatedAt:      now,
+			Rating:         rating,
+			Feedback:       feedback,
+			MenuName:       menuName,
+			MenuClass:      menuClass,
+			MenuConfidence: menuConfidence,
 		}
 		if err := s.repo.InsertScan(ctx, entry); err != nil {
 			return nil, fmt.Errorf("menyimpan scan log: %w", err)
@@ -455,21 +465,28 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	}
 
 	result := &models.ScanResult{
-		ID:           scanID,
-		BoxID:        boxID,
-		QRToken:      qrToken,
-		BatchID:      batchID,
-		ScannedAt:    now.In(wib).Format("15:04") + " WIB",
-		Score:        score,
-		Verdict:      verdict,
-		VerdictLabel: verdictLabel,
-		ReleaseTemp:  derefFloat(releaseTempC),
-		HoldTemp:     derefFloat(holdingTempC),
-		Checks:       checks,
-		Note:         note,
-		AIClass:      pred.ClassName,
-		AIConfidence: pred.Confidence,
-		AILatencyMS:  pred.LatencyMS,
+		ID:                  scanID,
+		BoxID:               boxID,
+		QRToken:             qrToken,
+		BatchID:             batchID,
+		MenuName:            menuName,
+		MenuClass:           menuClass,
+		MenuConfidence:      menuConfidence,
+		FreshnessClass:      freshClass,
+		FreshnessConfidence: freshConfidence,
+		BatchInfo:           batchInfo,
+		ScannedAt:           now.In(wib).Format("15:04") + " WIB",
+		Score:               score,
+		Verdict:             verdict,
+		VerdictLabel:        verdictLabel,
+		ReleaseTemp:         derefFloat(releaseTempC),
+		HoldTemp:            derefFloat(holdingTempC),
+		Checks:              checks,
+		Compartments:        compartments,
+		Note:                note,
+		AIClass:             freshClass,
+		AIConfidence:        freshConfidence,
+		AILatencyMS:         pred.LatencyMS,
 	}
 
 	// Makronutrien dari dataset gizi (opsional): bila client mengirim `items`
@@ -484,6 +501,15 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 			result.Nutrition = matches
 			result.NutritionNote = nutritionNote
 		}
+	} else if len(batchNutrition) > 0 {
+		result.Nutrition = batchNutrition
+		result.NutritionNote = batchNutritionNote
+	}
+	if result.Macros == nil && batchInfo != nil && batchInfo.Macros != nil {
+		result.Macros = batchInfo.Macros
+	}
+	if result.NutritionNote == "" && batchNutritionNote != "" {
+		result.NutritionNote = batchNutritionNote
 	}
 
 	if in.Persist {

@@ -45,7 +45,12 @@ func scanServiceWithPrediction(t *testing.T, prediction map[string]any, status i
 
 func submitTestScan(t *testing.T, service ScanService) (*models.ScanResult, error) {
 	t.Helper()
-	return service.SubmitScan(context.Background(), "validator-1", []byte("image"), "scan.jpg", "", "", "BTH-01", "", nil, nil, false, 0, "")
+	return service.SubmitScan(context.Background(), ScanSubmission{
+		ActorID:  "validator-1",
+		Image:    []byte("image"),
+		FileName: "scan.jpg",
+		BatchID:  "BTH-01",
+	})
 }
 
 func TestSubmitScanSeparatesMenuAndCookedFreshnessModels(t *testing.T) {

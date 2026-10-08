@@ -29,7 +29,16 @@ type RouterDependencies struct {
 	ReportCtrl     *controllers.ReportController
 	FeedbackCtrl   *controllers.FeedbackController
 	DashboardCtrl  *controllers.DashboardController
-	AuthMW         func(http.Handler) http.Handler
+	SppgRecipeCtrl *controllers.SppgRecipeController
+	SppgBatchCtrl  *controllers.SppgBatchController
+	SppgQualityCtrl *controllers.SppgQualityController
+	SppgLogisticsCtrl *controllers.SppgLogisticsController
+	SppgSchoolCtrl *controllers.SppgSchoolController
+	SppgHandoverCtrl  *controllers.SppgHandoverController
+	SppgIncidentCtrl   *controllers.SppgIncidentController
+	SppgBillingCtrl    *controllers.SppgBillingController
+	SppgComplianceCtrl *controllers.SppgComplianceController
+	AuthMW             func(http.Handler) http.Handler
 	CORSOrigins    []string
 	AppEnv         string
 }
@@ -87,6 +96,114 @@ func SetupRoutes(deps RouterDependencies) http.Handler {
 		mux.Handle("POST /api/sppg/{id}/reinstate", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.SppgCtrl.Reinstate)))
 		mux.Handle("PUT /api/sppg/{id}/quota", middlewares.RequirePermission(models.PermSppgManage)(http.HandlerFunc(deps.SppgCtrl.UpdateQuota)))
 		mux.Handle("POST /api/sppg/{id}/recipe-audit", middlewares.RequirePermission(models.PermSppgManage)(http.HandlerFunc(deps.SppgCtrl.RecordRecipeAudit)))
+	}
+
+	// SPPG Recipes, Daily Operational States, Substitutions & Batch Traceability (Multi-Tenant)
+	if deps.SppgRecipeCtrl != nil {
+		mux.Handle("GET /api/sppg/recipes/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgRecipeCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/recipes/packages", middlewares.RequireAuth(http.HandlerFunc(deps.SppgRecipeCtrl.ListPackages)))
+		mux.Handle("GET /api/sppg/recipes/packages/{id}", middlewares.RequireAuth(http.HandlerFunc(deps.SppgRecipeCtrl.GetPackageByID)))
+		mux.Handle("POST /api/sppg/recipes/packages", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgRecipeCtrl.CreatePackage)))
+		mux.Handle("GET /api/sppg/recipes/state", middlewares.RequireAuth(http.HandlerFunc(deps.SppgRecipeCtrl.GetDailyState)))
+		mux.Handle("PUT /api/sppg/recipes/state", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgRecipeCtrl.UpdateDailyState)))
+		mux.Handle("POST /api/sppg/recipes/lock", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgRecipeCtrl.ToggleLock)))
+		mux.Handle("GET /api/sppg/recipes/substitutions", middlewares.RequireAuth(http.HandlerFunc(deps.SppgRecipeCtrl.ListSubstitutions)))
+		mux.Handle("POST /api/sppg/recipes/substitutions", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgRecipeCtrl.CreateSubstitution)))
+		mux.Handle("GET /api/sppg/recipes/batches", middlewares.RequireAuth(http.HandlerFunc(deps.SppgRecipeCtrl.ListBatches)))
+		mux.Handle("POST /api/sppg/recipes/batches", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgRecipeCtrl.CreateBatch)))
+	}
+
+	// SPPG Batches, HACCP Thermal QR Printing & Superadmin Safety Intervention
+	if deps.SppgBatchCtrl != nil {
+		mux.Handle("GET /api/sppg/batches/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgBatchCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/batches", middlewares.RequireAuth(http.HandlerFunc(deps.SppgBatchCtrl.List)))
+		mux.Handle("POST /api/sppg/batches", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgBatchCtrl.Create)))
+		mux.Handle("PUT /api/sppg/batches/{id}/status", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgBatchCtrl.UpdateStatus)))
+		mux.Handle("POST /api/sppg/batches/verify", middlewares.RequireAuth(http.HandlerFunc(deps.SppgBatchCtrl.VerifyToken)))
+		mux.Handle("POST /api/sppg/batches/{id}/quarantine", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.SppgBatchCtrl.Quarantine)))
+		mux.Handle("DELETE /api/sppg/batches/{id}", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgBatchCtrl.Delete)))
+	}
+
+	// SPPG Quality HACCP, Critical Control Points, Sensory Release & Food Retention Samples
+	if deps.SppgQualityCtrl != nil {
+		mux.Handle("GET /api/sppg/quality/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgQualityCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/quality/temp-logs", middlewares.RequireAuth(http.HandlerFunc(deps.SppgQualityCtrl.ListTempLogs)))
+		mux.Handle("POST /api/sppg/quality/temp-logs", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgQualityCtrl.CreateTempLog)))
+		mux.Handle("GET /api/sppg/quality/signoffs", middlewares.RequireAuth(http.HandlerFunc(deps.SppgQualityCtrl.ListSignoffs)))
+		mux.Handle("POST /api/sppg/quality/signoffs", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgQualityCtrl.CreateSignoff)))
+		mux.Handle("GET /api/sppg/quality/samples", middlewares.RequireAuth(http.HandlerFunc(deps.SppgQualityCtrl.ListSamples)))
+		mux.Handle("POST /api/sppg/quality/samples", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgQualityCtrl.CreateSample)))
+		mux.Handle("PUT /api/sppg/quality/samples/{id}/status", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgQualityCtrl.UpdateSampleStatus)))
+		mux.Handle("POST /api/sppg/quality/intervention", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.SppgQualityCtrl.SuperadminIntervention)))
+	}
+
+	// SPPG Logistics & Fleet Management
+	if deps.SppgLogisticsCtrl != nil {
+		mux.Handle("GET /api/sppg/logistics/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgLogisticsCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/logistics/fleets", middlewares.RequireAuth(http.HandlerFunc(deps.SppgLogisticsCtrl.ListFleets)))
+		mux.Handle("POST /api/sppg/logistics/fleets", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgLogisticsCtrl.CreateFleet)))
+		mux.Handle("PUT /api/sppg/logistics/fleets/{id}/telemetry", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgLogisticsCtrl.UpdateTelemetry)))
+		mux.Handle("POST /api/sppg/logistics/fleets/{id}/dispatch-backup", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgLogisticsCtrl.DispatchBackup)))
+		mux.Handle("POST /api/sppg/logistics/fleets/{id}/notify", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgLogisticsCtrl.SendNotification)))
+		mux.Handle("POST /api/sppg/logistics/intervention", middlewares.RequireRole(models.RoleSuperadmin)(http.HandlerFunc(deps.SppgLogisticsCtrl.SuperadminIntervention)))
+	}
+
+	// SPPG Schools & Daily Quotas
+	if deps.SppgSchoolCtrl != nil {
+		mux.Handle("GET /api/sppg/schools/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgSchoolCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/schools", middlewares.RequireAuth(http.HandlerFunc(deps.SppgSchoolCtrl.ListSchools)))
+		mux.Handle("GET /api/sppg/schools/{id}", middlewares.RequireAuth(http.HandlerFunc(deps.SppgSchoolCtrl.GetSchool)))
+		mux.Handle("PUT /api/sppg/schools/{id}/attendance", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgSchoolCtrl.UpdateAttendance)))
+		mux.Handle("PUT /api/sppg/schools/{id}/droppoint", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgSchoolCtrl.UpdateDroppoint)))
+		mux.Handle("POST /api/sppg/schools/{id}/remind", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgSchoolCtrl.RemindAttendance)))
+	}
+
+	// SPPG Serah Terima BAST Digital & Kontrol Porsi (SPPG.md Bab 7)
+	if deps.SppgHandoverCtrl != nil {
+		mux.Handle("GET /api/sppg/handover/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgHandoverCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/handover", middlewares.RequireAuth(http.HandlerFunc(deps.SppgHandoverCtrl.ListHandovers)))
+		mux.Handle("GET /api/sppg/handover/{id}", middlewares.RequireAuth(http.HandlerFunc(deps.SppgHandoverCtrl.GetHandover)))
+		mux.Handle("PATCH /api/sppg/handover/{id}/stage", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgHandoverCtrl.AdvanceStage)))
+		mux.Handle("POST /api/sppg/handover/{id}/finish-scan", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgHandoverCtrl.FinishScan)))
+		mux.Handle("POST /api/sppg/handover/{id}/reject", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgHandoverCtrl.RejectBoxes)))
+		mux.Handle("POST /api/sppg/handover/{id}/replace", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgHandoverCtrl.ReplaceRejected)))
+		mux.Handle("POST /api/sppg/handover/{id}/sign-bast", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgHandoverCtrl.SignBast)))
+	}
+
+	// SPPG Insiden, Respon Aduan & Karantina Batch (SPPG.md Bab 8)
+	if deps.SppgIncidentCtrl != nil {
+		mux.Handle("GET /api/sppg/incidents/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgIncidentCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/incidents", middlewares.RequireAuth(http.HandlerFunc(deps.SppgIncidentCtrl.ListTickets)))
+		mux.Handle("POST /api/sppg/incidents", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgIncidentCtrl.CreateTicket)))
+		mux.Handle("GET /api/sppg/incidents/{id}", middlewares.RequireAuth(http.HandlerFunc(deps.SppgIncidentCtrl.GetTicket)))
+		mux.Handle("POST /api/sppg/incidents/{id}/reply", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgIncidentCtrl.ReplyTicket)))
+		mux.Handle("POST /api/sppg/incidents/{id}/replace", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgIncidentCtrl.ReplacePortions)))
+		mux.Handle("POST /api/sppg/incidents/{id}/close", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgIncidentCtrl.CloseTicket)))
+		mux.Handle("POST /api/sppg/incidents/recall", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgIncidentCtrl.RecallBatch)))
+	}
+
+	// SPPG Klaim & Penagihan Invoice ke BGN (SPPG.md Bab 9)
+	if deps.SppgBillingCtrl != nil {
+		mux.Handle("GET /api/sppg/billing/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgBillingCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/billing/rows", middlewares.RequireAuth(http.HandlerFunc(deps.SppgBillingCtrl.ListRows)))
+		mux.Handle("GET /api/sppg/billing/invoices", middlewares.RequireAuth(http.HandlerFunc(deps.SppgBillingCtrl.ListInvoices)))
+		mux.Handle("GET /api/sppg/billing/invoices/{id}", middlewares.RequireAuth(http.HandlerFunc(deps.SppgBillingCtrl.GetInvoice)))
+		mux.Handle("POST /api/sppg/billing/invoices/generate", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgBillingCtrl.GenerateInvoice)))
+		mux.Handle("POST /api/sppg/billing/invoices/{id}/advance", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgBillingCtrl.AdvanceInvoice)))
+		mux.Handle("POST /api/sppg/billing/invoices/{id}/notes", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgBillingCtrl.AttachNotes)))
+	}
+
+	// SPPG Sertifikasi Akreditasi, Sanitasi & Uji Lab (SPPG.md Bab 10)
+	if deps.SppgComplianceCtrl != nil {
+		mux.Handle("GET /api/sppg/compliance/bundle", middlewares.RequireAuth(http.HandlerFunc(deps.SppgComplianceCtrl.GetBundle)))
+		mux.Handle("GET /api/sppg/compliance/docs", middlewares.RequireAuth(http.HandlerFunc(deps.SppgComplianceCtrl.ListDocs)))
+		mux.Handle("POST /api/sppg/compliance/docs/renew", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgComplianceCtrl.RenewDoc)))
+		mux.Handle("GET /api/sppg/compliance/handlers", middlewares.RequireAuth(http.HandlerFunc(deps.SppgComplianceCtrl.ListHandlers)))
+		mux.Handle("POST /api/sppg/compliance/handlers", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgComplianceCtrl.CreateHandler)))
+		mux.Handle("GET /api/sppg/compliance/labs", middlewares.RequireAuth(http.HandlerFunc(deps.SppgComplianceCtrl.ListLabs)))
+		mux.Handle("POST /api/sppg/compliance/labs", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgComplianceCtrl.CreateLab)))
+		mux.Handle("GET /api/sppg/compliance/audits", middlewares.RequireAuth(http.HandlerFunc(deps.SppgComplianceCtrl.ListAudits)))
+		mux.Handle("POST /api/sppg/compliance/audits", middlewares.RequirePermission(models.PermKitchenOps)(http.HandlerFunc(deps.SppgComplianceCtrl.RequestAudit)))
 	}
 
 	// Validator resource routes.

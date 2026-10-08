@@ -85,6 +85,15 @@ func main() {
 	reportRepo := repositories.NewReportRepository(database.Pool())
 	feedbackRepo := repositories.NewPostgresFeedbackRepository(database.Pool())
 	dashboardRepo := repositories.NewDashboardRepository(database.Pool())
+	sppgRecipeRepo := repositories.NewSppgRecipeRepository()
+	sppgBatchRepo := repositories.NewSppgBatchRepository()
+	sppgQualityRepo := repositories.NewSppgQualityRepository()
+	sppgLogisticsRepo := repositories.NewSppgLogisticsRepository()
+	sppgSchoolRepo := repositories.NewSppgSchoolRepository()
+	sppgHandoverRepo := repositories.NewSppgHandoverRepository()
+	sppgIncidentRepo := repositories.NewSppgIncidentRepository()
+	sppgBillingRepo := repositories.NewSppgBillingRepository()
+	sppgComplianceRepo := repositories.NewSppgComplianceRepository()
 
 	// 4. Initialize Services (Business Logic Layer - Dependency Inversion)
 	itemService := services.NewItemService(itemRepo)
@@ -108,6 +117,15 @@ func main() {
 	reportService := services.NewReportService(reportRepo)
 	feedbackService := services.NewFeedbackService(feedbackRepo)
 	dashboardService := services.NewDashboardService(dashboardRepo)
+	sppgRecipeService := services.NewSppgRecipeService(sppgRecipeRepo)
+	sppgBatchService := services.NewSppgBatchService(sppgBatchRepo)
+	sppgQualityService := services.NewSppgQualityService(sppgQualityRepo)
+	sppgLogisticsService := services.NewSppgLogisticsService(sppgLogisticsRepo)
+	sppgSchoolService := services.NewSppgSchoolService(sppgSchoolRepo)
+	sppgHandoverService := services.NewSppgHandoverService(sppgHandoverRepo)
+	sppgIncidentService := services.NewSppgIncidentService(sppgIncidentRepo)
+	sppgBillingService := services.NewSppgBillingService(sppgBillingRepo)
+	sppgComplianceService := services.NewSppgComplianceService(sppgComplianceRepo)
 
 	// 5. Initialize Controllers (Presentation / HTTP Layer)
 	healthCtrl := controllers.NewHealthController()
@@ -127,29 +145,47 @@ func main() {
 	reportCtrl := controllers.NewReportController(reportService)
 	feedbackCtrl := controllers.NewFeedbackController(feedbackService)
 	dashboardCtrl := controllers.NewDashboardController(dashboardService)
+	sppgRecipeCtrl := controllers.NewSppgRecipeController(sppgRecipeService)
+	sppgBatchCtrl := controllers.NewSppgBatchController(sppgBatchService)
+	sppgQualityCtrl := controllers.NewSppgQualityController(sppgQualityService)
+	sppgLogisticsCtrl := controllers.NewSppgLogisticsController(sppgLogisticsService)
+	sppgSchoolCtrl := controllers.NewSppgSchoolController(sppgSchoolService)
+	sppgHandoverCtrl := controllers.NewSppgHandoverController(sppgHandoverService)
+	sppgIncidentCtrl := controllers.NewSppgIncidentController(sppgIncidentService)
+	sppgBillingCtrl := controllers.NewSppgBillingController(sppgBillingService)
+	sppgComplianceCtrl := controllers.NewSppgComplianceController(sppgComplianceService)
 
 	// 6. Initialize Routes & Middlewares
 	routerDeps := routes.RouterDependencies{
-		HealthCtrl:     healthCtrl,
-		ItemCtrl:       itemCtrl,
-		AuthCtrl:       authCtrl,
-		ScanCtrl:       scanCtrl,
-		NutritionCtrl:  nutritionCtrl,
-		PortalCtrl:     portalCtrl,
-		ValidatorCtrl:  validatorCtrl,
-		SppgCtrl:       sppgCtrl,
-		DeliveryCtrl:   deliveryCtrl,
-		AttendanceCtrl: attendanceCtrl,
-		SchoolCtrl:     schoolCtrl,
-		ScheduleCtrl:   scheduleCtrl,
-		NoticeCtrl:     noticeCtrl,
-		CalendarCtrl:   calendarCtrl,
-		ReportCtrl:     reportCtrl,
-		FeedbackCtrl:   feedbackCtrl,
-		DashboardCtrl:  dashboardCtrl,
-		AuthMW:         middlewares.Auth(authService),
-		CORSOrigins:    cfg.CORSOrigins,
-		AppEnv:         cfg.AppEnv,
+		HealthCtrl:         healthCtrl,
+		ItemCtrl:           itemCtrl,
+		AuthCtrl:           authCtrl,
+		ScanCtrl:           scanCtrl,
+		NutritionCtrl:      nutritionCtrl,
+		PortalCtrl:         portalCtrl,
+		ValidatorCtrl:      validatorCtrl,
+		SppgCtrl:           sppgCtrl,
+		DeliveryCtrl:       deliveryCtrl,
+		AttendanceCtrl:     attendanceCtrl,
+		SchoolCtrl:         schoolCtrl,
+		ScheduleCtrl:       scheduleCtrl,
+		NoticeCtrl:         noticeCtrl,
+		CalendarCtrl:       calendarCtrl,
+		ReportCtrl:         reportCtrl,
+		FeedbackCtrl:       feedbackCtrl,
+		DashboardCtrl:      dashboardCtrl,
+		SppgRecipeCtrl:     sppgRecipeCtrl,
+		SppgBatchCtrl:      sppgBatchCtrl,
+		SppgQualityCtrl:    sppgQualityCtrl,
+		SppgLogisticsCtrl:  sppgLogisticsCtrl,
+		SppgSchoolCtrl:     sppgSchoolCtrl,
+		SppgHandoverCtrl:   sppgHandoverCtrl,
+		SppgIncidentCtrl:   sppgIncidentCtrl,
+		SppgBillingCtrl:    sppgBillingCtrl,
+		SppgComplianceCtrl: sppgComplianceCtrl,
+		AuthMW:             middlewares.Auth(authService),
+		CORSOrigins:        cfg.CORSOrigins,
+		AppEnv:             cfg.AppEnv,
 	}
 	handler := routes.SetupRoutes(routerDeps)
 

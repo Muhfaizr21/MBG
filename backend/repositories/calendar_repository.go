@@ -531,7 +531,7 @@ func (r *postgresCalendarRepository) ReviewSubstitution(ctx context.Context, id 
 	defer tx.Rollback(ctx)
 
 	var subDate string
-	err = tx.QueryRow(ctx, "SELECT date FROM menu_substitutions WHERE id = $1", id).Scan(&subDate)
+	err = tx.QueryRow(ctx, "SELECT date::text FROM menu_substitutions WHERE id = $1", id).Scan(&subDate)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("substitusi %s tidak ditemukan", id)

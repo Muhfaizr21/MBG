@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   Printer,
@@ -9,7 +9,22 @@ import {
   Thermometer,
   Clock,
   AlertTriangle,
+  Building2,
+  ShieldAlert,
+  RefreshCw,
+  Trash2,
+  ShieldCheck,
+  AlertOctagon,
 } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
+import {
+  fetchSppgBatchesBundle,
+  createSppgBatch,
+  updateSppgBatchStatus,
+  verifySppgBatchToken,
+  quarantineSppgBatch,
+  deleteSppgBatch,
+} from '../../lib/api'
 import { ASSIGNED_SCHOOLS_MANIFEST, SPPG_PROFILE } from '../../data/sppgPortalData'
 import { NATIONAL_MENU_PACKAGES } from '../../data/sppgRecipesData'
 import {
@@ -28,11 +43,33 @@ import {
 
 const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#23259C]'
 
+const SPPG_SPACES = [
+  { id: 'SPPG-01', name: 'SPPG 01 Menteng Jaya Mandiri' },
+  { id: 'SPPG-02', name: 'SPPG 02 Kebayoran Baru Mandiri' },
+  { id: 'SPPG-03', name: 'SPPG 03 Cikini Mitra Gizi' },
+]
+
 function shortHash(hash) {
   return hash ? hash.slice(0, 12).toUpperCase() : 'MENGHITUNG'
 }
 
 function StatusPill({ status }) {
+  if (status === 'quarantined') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+        <AlertOctagon className="h-3 w-3 text-rose-600" />
+        DIKARANTINA
+      </span>
+    )
+  }
+  if (status === 'recalled') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold bg-red-200 text-red-900 border border-red-400">
+        <AlertTriangle className="h-3 w-3 text-red-700" />
+        DITARIK DARURAT
+      </span>
+    )
+  }
   const meta = BATCH_STATUSES[status] || BATCH_STATUSES.draft
   return (
     <span className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${meta.tone}`}>
@@ -42,55 +79,106 @@ function StatusPill({ status }) {
 }
 
 export function SppgBatchesPanel() {
+  const { user, isSuperadmin } = useAuth()
+
+  // Ruang dapur aktif (multi-tenant per SPPG)
+  const [activeSppgId, setActiveSppgId] = useState(() => {
+    if (user?.sppgId) return user.sppgId
+    return 'SPPG-01'
+  })
+
+  const [isLoadingBundle, setIsLoadingBundle] = useState(false)
+  const [kitchenName, setKitchenName] = useState(SPPG_PROFILE.name)
+  const [kitchenCode, setKitchenCode] = useState(SPPG_PROFILE.code)
+  const [targetBoxes, setTargetBoxes] = useState(2500)
+  const [cookingDate, setCookingDate] = useState('2026-10-08')
+
   const [batches, setBatches] = useState(SEED_BATCHES)
+  const [availableSchools, setAvailableSchools] = useState(ASSIGNED_SCHOOLS_MANIFEST)
+  const [availableMenus, setAvailableMenus] = useState(NATIONAL_MENU_PACKAGES)
+
   const [hashReady, setHashReady] = useState(false)
   const [form, setForm] = useState({
-    schoolId: 'sch-02',
-    menuId: 'paket-a',
+    schoolId: 'sch-01',
+    menuId: 'PAKET-A-01',
     boxCount: '',
     cookedAt: '06:00',
     cookTemp: '78.5',
   })
   const [formError, setFormError] = useState('')
   const [formOk, setFormOk] = useState('')
-  const [queue, setQueue] = useState(['batch-20260929-02'])
+  const [queue, setQueue] = useState(['batch-20261008-02'])
   const [previewId, setPreviewId] = useState(null)
   const [printTargets, setPrintTargets] = useState([])
-  const [toteBatchId, setToteBatchId] = useState('batch-20260929-01')
+  const [toteBatchId, setToteBatchId] = useState('batch-20261008-01')
   const [checkToken, setCheckToken] = useState('')
   const [checkResult, setCheckResult] = useState(null)
   const [copiedToken, setCopiedToken] = useState('')
 
-  // Stempel checksum batch bawaan dihitung sekali saat panel dibuka.
-  useEffect(() => {
-    let cancelled = false
-    async function stamp() {
-      const stamped = await Promise.all(
-        SEED_BATCHES.map(async (b) => ({
-          ...b,
-          checksum: b.checksum || (await sha256Hex(canonicalPayload(b))) || 'TIDAK-TERSEDIA',
-        }))
-      )
-      if (!cancelled) {
-        setBatches(stamped)
-        setHashReady(true)
+  // State untuk Intervensi Keamanan Pangan Superadmin (Karantina / Tarik Batch)
+  const [quarantineModalBatch, setQuarantineModalBatch] = useState(null)
+  const [quarantineReason, setQuarantineReason] = useState('')
+  const [isSubmittingQuarantine, setIsSubmittingQuarantine] = useState(false)
+  const [quarantineError, setQuarantineError] = useState('')
+
+  // Memuat data bundle lengkap dari backend sesuai dapur yang dipilih
+  const loadBundle = useCallback(async (sppgIdToFetch) => {
+    setIsLoadingBundle(true)
+    try {
+      const data = await fetchSppgBatchesBundle(sppgIdToFetch)
+      if (data) {
+        if (data.batches && Array.isArray(data.batches)) {
+          setBatches(data.batches)
+          // Sinkronkan antrean cetak dari batch yang berstatus 'queued'
+          const queuedIds = data.batches.filter((b) => b.status === 'queued').map((b) => b.id)
+          setQueue(queuedIds)
+          if (data.batches.length > 0) {
+            setToteBatchId(data.batches[0].id)
+          }
+        }
+        if (data.kitchenName) setKitchenName(data.kitchenName)
+        if (data.kitchenCode) setKitchenCode(data.kitchenCode)
+        if (data.cookingDate) setCookingDate(data.cookingDate)
+        if (data.targetBoxes) setTargetBoxes(data.targetBoxes)
+        if (data.availableSchools && data.availableSchools.length > 0) {
+          setAvailableSchools(data.availableSchools)
+          setForm((f) => ({
+            ...f,
+            schoolId: f.schoolId || data.availableSchools[0].id,
+          }))
+        }
+        if (data.availableMenus && data.availableMenus.length > 0) {
+          setAvailableMenus(data.availableMenus)
+          setForm((f) => ({
+            ...f,
+            menuId: f.menuId || data.availableMenus[0].code || data.availableMenus[0].id,
+          }))
+        }
       }
-    }
-    stamp()
-    return () => {
-      cancelled = true
+    } catch (err) {
+      console.warn('Gagal sinkronisasi bundle batch dari backend, gunakan offline buffer:', err)
+    } finally {
+      setIsLoadingBundle(false)
+      setHashReady(true)
     }
   }, [])
 
+  useEffect(() => {
+    loadBundle(activeSppgId)
+  }, [activeSppgId, loadBundle])
+
   // Dialog label tertutup dengan Escape.
   useEffect(() => {
-    if (!previewId) return
+    if (!previewId && !quarantineModalBatch) return
     const onKey = (e) => {
-      if (e.key === 'Escape') setPreviewId(null)
+      if (e.key === 'Escape') {
+        setPreviewId(null)
+        setQuarantineModalBatch(null)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [previewId])
+  }, [previewId, quarantineModalBatch])
 
   // Mencetak berarti membuka dialog cetak sistem. Staf memilih printer
   // Bluetooth atau WiFi dapur dari dialog itu.
@@ -100,25 +188,9 @@ export function SppgBatchesPanel() {
     return () => clearTimeout(t)
   }, [printTargets])
 
-  const schoolById = useMemo(() => {
-    const map = {}
-    ASSIGNED_SCHOOLS_MANIFEST.forEach((s) => {
-      map[s.id] = s
-    })
-    return map
-  }, [])
-
-  const menuById = useMemo(() => {
-    const map = {}
-    NATIONAL_MENU_PACKAGES.forEach((m) => {
-      map[m.id] = m
-    })
-    return map
-  }, [])
-
   const totals = useMemo(() => {
-    const boxes = batches.reduce((sum, b) => sum + b.boxCount, 0)
-    const totes = batches.reduce((sum, b) => sum + totesFor(b.boxCount).length, 0)
+    const boxes = batches.reduce((sum, b) => sum + (b.boxCount || 0), 0)
+    const totes = batches.reduce((sum, b) => sum + totesFor(b.boxCount || 0).length, 0)
     return {
       boxes,
       totes,
@@ -142,11 +214,10 @@ export function SppgBatchesPanel() {
 
   async function handleGenerate(e) {
     e.preventDefault()
-    const school = schoolById[form.schoolId]
-    const menu = menuById[form.menuId]
     const boxCount = parseInt(form.boxCount, 10)
     const cookTemp = parseFloat(form.cookTemp)
-    if (!school || !menu) {
+
+    if (!form.schoolId || !form.menuId) {
       setFormError('Pilih sekolah sasaran dan paket menu.')
       return
     }
@@ -158,42 +229,84 @@ export function SppgBatchesPanel() {
       setFormError('Isi jam selesai masak.')
       return
     }
+    // Standar HACCP: 70C s/d 100C
     if (Number.isNaN(cookTemp) || cookTemp < 70 || cookTemp > 100) {
-      setFormError('Suhu masak inti diisi 70 sampai 100 derajat.')
+      setFormError('Suhu masak inti tidak memenuhi standar HACCP (harus 70 sampai 100 derajat Celsius).')
       return
     }
-    const schoolCode = SCHOOL_CODES[form.schoolId] || 'SCHXX'
-    const seq = batches.filter((b) => b.schoolId === form.schoolId).length + 1
-    const batch = {
-      id: `batch-${Date.now()}`,
-      seq,
-      token: buildBoxToken(schoolCode, seq),
-      schoolId: form.schoolId,
-      schoolCode,
-      schoolName: school.name,
-      menuCode: menu.code,
-      menuName: menu.name,
-      boxCount,
-      cookedAt: form.cookedAt,
-      consumeBy: addMinutesToClock(form.cookedAt, SAFE_WINDOW_MINUTES),
-      cookTemp,
-      allergens: menu.allergens || [],
-      status: 'draft',
-      verified: false,
-      checksum: '',
+
+    try {
+      const payload = {
+        schoolId: form.schoolId,
+        menuCode: form.menuId,
+        menuId: form.menuId,
+        boxCount,
+        cookedAt: form.cookedAt,
+        cookTemp,
+      }
+
+      const res = await createSppgBatch(payload, activeSppgId)
+      if (res) {
+        setBatches((list) => [res, ...list])
+        setToteBatchId(res.id)
+        setForm((f) => ({ ...f, boxCount: '' }))
+        setFormOk(`Batch ${res.token} terbentuk dan tersimpan di database, ${boxCount} boks dalam ${totesFor(boxCount).length} kontainer.`)
+      } else {
+        // Fallback lokal jika offline
+        const schoolCode = SCHOOL_CODES[form.schoolId] || 'SCH01'
+        const seq = batches.filter((b) => b.schoolId === form.schoolId).length + 1
+        const fallbackBatch = {
+          id: `batch-${Date.now()}`,
+          sppgId: activeSppgId,
+          seq,
+          token: buildBoxToken(schoolCode, seq),
+          schoolId: form.schoolId,
+          schoolCode,
+          schoolName: 'Sekolah Sasaran MBG',
+          menuCode: form.menuId,
+          menuName: 'Paket Menu BGN',
+          boxCount,
+          cookedAt: form.cookedAt,
+          consumeBy: addMinutesToClock(form.cookedAt, SAFE_WINDOW_MINUTES),
+          cookTemp,
+          allergens: ['Kedelai (Tahu/Kecap)'],
+          status: 'draft',
+          verified: false,
+          checksum: '',
+        }
+        fallbackBatch.checksum = (await sha256Hex(canonicalPayload(fallbackBatch))) || 'TIDAK-TERSEDIA'
+        setBatches((list) => [fallbackBatch, ...list])
+        setToteBatchId(fallbackBatch.id)
+        setForm((f) => ({ ...f, boxCount: '' }))
+        setFormOk(`Batch ${fallbackBatch.token} terbentuk secara lokal.`)
+      }
+    } catch (err) {
+      setFormError(err.message || 'Gagal generate batch ke server.')
     }
-    batch.checksum = (await sha256Hex(canonicalPayload(batch))) || 'TIDAK-TERSEDIA'
-    setBatches((list) => [batch, ...list])
-    setToteBatchId(batch.id)
-    setForm((f) => ({ ...f, boxCount: '' }))
-    setFormOk(`Batch ${batch.token} terbentuk, ${boxCount} boks dalam ${totesFor(boxCount).length} kontainer.`)
   }
 
-  function toggleQueue(id) {
-    setQueue((q) => (q.includes(id) ? q.filter((x) => x !== id) : [...q, id]))
+  async function toggleQueue(id) {
+    const isQueued = queue.includes(id)
+    const newStatus = isQueued ? 'draft' : 'queued'
+
+    try {
+      await updateSppgBatchStatus(id, newStatus, activeSppgId)
+    } catch (err) {
+      console.warn('Gagal sinkronkan status batch ke server:', err)
+    }
+
+    setQueue((q) => (isQueued ? q.filter((x) => x !== id) : [...q, id]))
+    setBatches((list) =>
+      list.map((b) => (b.id === id ? { ...b, status: newStatus } : b))
+    )
   }
 
-  function removeBatch(id) {
+  async function removeBatch(id) {
+    try {
+      await deleteSppgBatch(id, activeSppgId)
+    } catch (err) {
+      console.warn('Gagal hapus batch di server:', err)
+    }
     setBatches((list) => list.filter((b) => b.id !== id))
     setQueue((q) => q.filter((x) => x !== id))
     if (previewId === id) setPreviewId(null)
@@ -206,6 +319,26 @@ export function SppgBatchesPanel() {
       setCheckResult({ ok: false, message: 'Tempel atau ketik token QR, lalu tekan Verifikasi.' })
       return
     }
+
+    try {
+      const res = await verifySppgBatchToken(token, activeSppgId)
+      if (res) {
+        setCheckResult({
+          ok: res.ok,
+          message: res.message,
+        })
+        if (res.ok && res.batch) {
+          setBatches((list) =>
+            list.map((b) => (b.id === res.batch.id ? { ...b, verified: true } : b))
+          )
+        }
+        return
+      }
+    } catch (err) {
+      console.warn('Gagal verifikasi token via server, fallback ke Web Crypto:', err)
+    }
+
+    // Fallback verifikasi lokal jika server tidak merespon
     const batch = batches.find(
       (b) =>
         b.token === token ||
@@ -230,27 +363,146 @@ export function SppgBatchesPanel() {
     }
   }
 
+  // Eksekusi Karantina / Penarikan Batch oleh Superadmin
+  async function handleQuarantineSubmit(e) {
+    e.preventDefault()
+    if (!quarantineModalBatch) return
+    if (!quarantineReason || quarantineReason.trim().length < 5) {
+      setQuarantineError('Alasan karantina wajib diisi minimal 5 karakter untuk jejak audit forensik.')
+      return
+    }
+
+    setIsSubmittingQuarantine(true)
+    setQuarantineError('')
+    try {
+      const res = await quarantineBatch(quarantineModalBatch.id, quarantineReason.trim())
+      if (res) {
+        setBatches((list) =>
+          list.map((b) =>
+            b.id === quarantineModalBatch.id
+              ? {
+                  ...b,
+                  status: 'quarantined',
+                  quarantineReason: quarantineReason.trim(),
+                  quarantinedBy: user?.fullName || 'Superadmin BGN',
+                  quarantinedAt: new Date().toISOString(),
+                }
+              : b
+          )
+        )
+        // Keluarkan dari antrean cetak jika ada
+        setQueue((q) => q.filter((id) => id !== quarantineModalBatch.id))
+        setQuarantineModalBatch(null)
+        setQuarantineReason('')
+        setFormOk(`Batch ${quarantineModalBatch.token} BERHASIL DIKARANTINA dan tercatat pada audit_logs forensik.`)
+      }
+    } catch (err) {
+      setQuarantineError(err.message || 'Gagal mengeksekusi karantina batch.')
+    } finally {
+      setIsSubmittingQuarantine(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <style>{`@page{size:80mm auto;margin:3mm}.batch-print-sheet{display:none}@media print{body *{visibility:hidden}.batch-print-sheet,.batch-print-sheet *{visibility:visible}.batch-print-sheet{display:block !important;position:absolute;inset:0}}`}</style>
 
+      {/* ========================================================================= */}
+      {/* MULTI-TENANT WORKSPACE & SUPERADMIN INSPECTION HEADER */}
+      {/* ========================================================================= */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg">
+        <div className="flex flex-col gap-3.5 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-amber-400 shadow-inner">
+              <Building2 className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded border border-indigo-400/30 bg-[#23259C] px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-white">
+                  {activeSppgId}
+                </span>
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400"></span>
+                  Ruang Kerja Batch Mandiri
+                </span>
+                {isSuperadmin && (
+                  <span className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                    <ShieldCheck className="h-2.5 w-2.5" />
+                    Otoritas Superadmin BGN
+                  </span>
+                )}
+              </div>
+              <h2 className="mt-0.5 flex items-center gap-2 text-base font-bold tracking-tight text-white">
+                <span>{kitchenName}</span>
+                <span className="text-xs font-normal text-slate-300">
+                  · Target: <strong className="font-bold text-white">{targetBoxes.toLocaleString('id-ID')} Boks</strong>
+                </span>
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {isSuperadmin ? (
+              <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/10 p-1 text-xs">
+                <span className="px-2 font-medium text-[11px] text-slate-300">
+                  Inspeksi Dapur:
+                </span>
+                {SPPG_SPACES.map((space) => {
+                  const isActive = space.id === activeSppgId
+                  return (
+                    <button
+                      key={space.id}
+                      onClick={() => setActiveSppgId(space.id)}
+                      className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                        isActive
+                          ? 'bg-[#23259C] text-white shadow-xs'
+                          : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                      }`}
+                      title={space.name}
+                    >
+                      {space.id}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-slate-300">
+                Unit Terisolasi: <strong className="text-white">{user?.fullName || kitchenName}</strong>
+              </div>
+            )}
+
+            <button
+              onClick={() => loadBundle(activeSppgId)}
+              disabled={isLoadingBundle}
+              className="cursor-pointer rounded-xl border border-white/10 bg-white/10 p-2 text-white transition hover:bg-white/20"
+              title="Sinkronisasi data batch dari server"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoadingBundle ? 'animate-spin text-amber-400' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* HERO BANNER & KPI METRICS */}
+      {/* ========================================================================= */}
       <section className="overflow-hidden rounded-2xl bg-[#1B1D7D] text-white shadow-[0_18px_40px_-20px_rgba(27,29,125,0.65)]">
         <div className="flex flex-col gap-5 p-5 sm:p-7 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-xl">
             <p className="text-[11px] font-bold tracking-[0.18em] text-amber-300">
-              {SPPG_PROFILE.code} · SELASA, 29 SEPT 2026 · SHIFT 03.30-07.30
+              {kitchenCode} · {cookingDate} · SHIFT 03.30-07.30
             </p>
             <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
               Batch dan label QR
             </h1>
             <p className="mt-2 max-w-lg text-xs leading-relaxed text-white/70">
-              Setiap boks mendapat token berformat sistem dan checksum SHA-256 yang dihitung di
-              browser. Lima puluh boks dihimpun dalam satu kontainer master sebelum naik armada.
+              Setiap boks mendapat token berformat sistem dan checksum SHA-256 yang dihitung secara kanonikal.
+              Lima puluh boks dihimpun dalam satu kontainer master sebelum naik armada ke sekolah binaan.
             </p>
           </div>
           <div className="shrink-0 lg:text-right">
             <p className="text-[11px] font-bold tracking-[0.18em] text-white/60">
-              BOKS BERTOKEN / TARGET 2.500
+              BOKS BERTOKEN / TARGET {targetBoxes.toLocaleString('id-ID')}
             </p>
             <p className="mt-1 text-5xl font-extrabold tabular-nums tracking-tight text-white">
               {totals.boxes.toLocaleString('id-ID')}
@@ -258,7 +510,7 @@ export function SppgBatchesPanel() {
             <div className="mt-2 h-1.5 w-56 overflow-hidden rounded-full bg-white/15 lg:ml-auto">
               <div
                 className="h-full rounded-full bg-amber-400"
-                style={{ width: `${Math.min(100, (totals.boxes / 2500) * 100)}%` }}
+                style={{ width: `${Math.min(100, (totals.boxes / targetBoxes) * 100)}%` }}
               />
             </div>
             <p className="mt-2 text-[11px] font-medium text-white/70">
@@ -269,6 +521,9 @@ export function SppgBatchesPanel() {
         </div>
       </section>
 
+      {/* ========================================================================= */}
+      {/* SLIP 01 & SLIP 02: GENERATE BATCH & THERMAL PRINTER QUEUE */}
+      {/* ========================================================================= */}
       <div className="grid gap-5 xl:grid-cols-5">
         <form
           onSubmit={handleGenerate}
@@ -301,9 +556,9 @@ export function SppgBatchesPanel() {
                 onChange={set('schoolId')}
                 className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 ${FOCUS}`}
               >
-                {ASSIGNED_SCHOOLS_MANIFEST.map((s) => (
+                {availableSchools.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.quota} porsi)
+                    {s.name} ({s.quota || s.active_students || 500} porsi)
                   </option>
                 ))}
               </select>
@@ -315,9 +570,9 @@ export function SppgBatchesPanel() {
                 onChange={set('menuId')}
                 className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 ${FOCUS}`}
               >
-                {NATIONAL_MENU_PACKAGES.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.code}
+                {availableMenus.map((m) => (
+                  <option key={m.id || m.code} value={m.code || m.id}>
+                    {m.code} - {m.name ? m.name.slice(0, 24) + '...' : ''}
                   </option>
                 ))}
               </select>
@@ -356,8 +611,7 @@ export function SppgBatchesPanel() {
               />
             </label>
             <div className="rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
-              Batas aman konsumsi dihitung otomatis 4 jam setelah masak selesai. Alergen diambil
-              dari data resep paket terpilih.
+              Batas aman konsumsi dihitung otomatis 4 jam setelah masak selesai. Kontrol suhu inti HACCP wajib &gt;= 70°C.
             </div>
           </div>
           <button
@@ -378,15 +632,15 @@ export function SppgBatchesPanel() {
               <h2 className="text-base font-extrabold tracking-tight text-slate-900">
                 Antrean cetak label
               </h2>
-            <button
-              type="button"
-              disabled={queue.length === 0}
-              onClick={() => setPrintTargets(queue)}
-              className={`inline-flex items-center gap-1.5 rounded-xl bg-[#23259C] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#1b1d7d] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${FOCUS}`}
-            >
-              <Printer className="h-4 w-4" />
-              Cetak {queue.length} batch
-            </button>
+              <button
+                type="button"
+                disabled={queue.length === 0}
+                onClick={() => setPrintTargets(queue)}
+                className={`inline-flex items-center gap-1.5 rounded-xl bg-[#23259C] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#1b1d7d] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${FOCUS}`}
+              >
+                <Printer className="h-4 w-4" />
+                Cetak {queue.length} batch
+              </button>
             </div>
           </div>
           <div aria-hidden="true" className="my-3 border-t border-dashed border-slate-300" />
@@ -432,13 +686,16 @@ export function SppgBatchesPanel() {
         </div>
       </div>
 
+      {/* ========================================================================= */}
+      {/* SLIP 03: REGISTRY SESI HARI INI */}
+      {/* ========================================================================= */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_14px_30px_-22px_rgba(27,29,125,0.4)]">
         <div className="px-5 pt-5">
           <p className="text-[11px] font-bold tracking-wide text-slate-500">
             SLIP 03 · REGISTRY SESI HARI INI
           </p>
           <h2 className="mt-1 text-base font-extrabold tracking-tight text-slate-900">
-            Daftar batch
+            Daftar batch masak & kontrol suhu HACCP
           </h2>
         </div>
         <div aria-hidden="true" className="mx-5 my-3 border-t border-dashed border-slate-300" />
@@ -456,10 +713,10 @@ export function SppgBatchesPanel() {
                   <th scope="col" className="px-3 py-2.5">Sekolah</th>
                   <th scope="col" className="px-3 py-2.5 text-right">Boks</th>
                   <th scope="col" className="px-3 py-2.5 text-right">Tote</th>
-                  <th scope="col" className="px-3 py-2.5">Masak / batas</th>
+                  <th scope="col" className="px-3 py-2.5">Suhu / Jam</th>
                   <th scope="col" className="px-3 py-2.5 text-center">Status</th>
                   <th scope="col" className="px-3 py-2.5 text-center">Uji mandiri</th>
-                  <th scope="col" className="px-3 py-2.5 text-center">Aksi</th>
+                  <th scope="col" className="px-3 py-2.5 text-center">Aksi & Karantina</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -485,7 +742,13 @@ export function SppgBatchesPanel() {
                       {totesFor(b.boxCount).length}
                     </td>
                     <td className="px-3 py-2.5 tabular-nums text-slate-600">
-                      {b.cookedAt} / {b.consumeBy} WIB
+                      <div>
+                        <span className="font-semibold text-slate-800">{b.cookTemp}°C</span>
+                        <span className="text-[10px] text-emerald-600 ml-1 font-bold">HACCP</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {b.cookedAt} - {b.consumeBy} WIB
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <StatusPill status={b.status} />
@@ -508,25 +771,47 @@ export function SppgBatchesPanel() {
                         >
                           Label
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleQueue(b.id)}
-                          aria-pressed={queue.includes(b.id)}
-                          className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${FOCUS} ${
-                            queue.includes(b.id)
-                              ? 'border-[#23259C]/30 bg-[#23259C]/10 text-[#23259C]'
-                              : 'border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          {queue.includes(b.id) ? 'Di antrean' : 'Antrekan'}
-                        </button>
+
+                        {b.status !== 'quarantined' && (
+                          <button
+                            type="button"
+                            onClick={() => toggleQueue(b.id)}
+                            aria-pressed={queue.includes(b.id)}
+                            className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${FOCUS} ${
+                              queue.includes(b.id)
+                                ? 'border-[#23259C]/30 bg-[#23259C]/10 text-[#23259C]'
+                                : 'border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            {queue.includes(b.id) ? 'Di antrean' : 'Antrekan'}
+                          </button>
+                        )}
+
                         {b.status === 'draft' && (
                           <button
                             type="button"
                             onClick={() => removeBatch(b.id)}
                             className={`rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 ${FOCUS}`}
+                            title="Hapus batch draf"
                           >
-                            Hapus
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+
+                        {/* Tombol Intervensi Karantina Keamanan Pangan bagi Superadmin */}
+                        {isSuperadmin && b.status !== 'quarantined' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuarantineModalBatch(b)
+                              setQuarantineReason('')
+                              setQuarantineError('')
+                            }}
+                            className={`rounded-lg border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700 transition hover:bg-rose-100 ${FOCUS}`}
+                            title="Tindakan Superadmin: Karantina / Tarik Batch Darurat"
+                          >
+                            <ShieldAlert className="inline mr-1 h-3 w-3 text-rose-600" />
+                            Karantina
                           </button>
                         )}
                       </div>
@@ -539,6 +824,9 @@ export function SppgBatchesPanel() {
         )}
       </div>
 
+      {/* ========================================================================= */}
+      {/* SLIP 04 & SLIP 05: KONTAINER MASTER & UJI MANDIRI TOKEN QR */}
+      {/* ========================================================================= */}
       <div className="grid gap-5 xl:grid-cols-5">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_14px_30px_-22px_rgba(27,29,125,0.4)] xl:col-span-3">
           <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5">
@@ -655,7 +943,7 @@ export function SppgBatchesPanel() {
           <div aria-hidden="true" className="border-t border-dashed border-slate-300" />
           <p className="text-[11px] leading-relaxed text-slate-500">
             Pindai dengan scanner dapur atau ketik token. Sistem memeriksa token terdaftar dan
-            menghitung ulang checksumnya. Batch yang lolos ditandai otomatis.
+            menghitung ulang checksumnya secara SHA-256. Batch yang lolos ditandai otomatis.
           </p>
           <label className="block">
             <span className="mb-1 block font-semibold text-slate-700">Token QR boks atau master</span>
@@ -692,11 +980,14 @@ export function SppgBatchesPanel() {
             </p>
           )}
           {!hashReady && (
-            <p className="text-[11px] text-slate-500">Menghitung checksum batch, tunggu sebentar.</p>
+            <p className="text-[11px] text-slate-500">Menghubungkan ke server dapur, tunggu sebentar...</p>
           )}
         </form>
       </div>
 
+      {/* ========================================================================= */}
+      {/* THERMAL LABEL PREVIEW MODAL */}
+      {/* ========================================================================= */}
       {previewBatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
           <div
@@ -727,7 +1018,7 @@ export function SppgBatchesPanel() {
             <div className="grid gap-5 md:grid-cols-2">
               <div className="mx-auto w-[76mm] border border-dashed border-slate-300 bg-white p-3 text-center text-black">
                 <p className="text-[11px] font-bold tracking-wide">BGN · KAWANGIZI</p>
-                <p className="text-[11px]">{SPPG_PROFILE.code} · {SPPG_PROFILE.name}</p>
+                <p className="text-[11px]">{kitchenCode} · {kitchenName}</p>
                 <div className="my-2 flex justify-center">
                   <QRCodeSVG value={previewBatch.token} size={160} level="H" role="img" aria-label={`QR ${previewBatch.token}`} />
                 </div>
@@ -738,15 +1029,17 @@ export function SppgBatchesPanel() {
                   Masak {previewBatch.cookedAt} · Habis {previewBatch.consumeBy} WIB
                 </p>
                 <p className="text-[11px]">
-                  Suhu {previewBatch.cookTemp}C · Alergen:{' '}
-                  {previewBatch.allergens.length > 0 ? previewBatch.allergens.join(', ') : 'tidak ada'}
+                  Suhu {previewBatch.cookTemp}°C (HACCP) · Alergen:{' '}
+                  {previewBatch.allergens && previewBatch.allergens.length > 0
+                    ? previewBatch.allergens.join(', ')
+                    : 'tidak ada'}
                 </p>
                 <p className="mt-1 font-mono text-[11px]">SHA {shortHash(previewBatch.checksum)}</p>
               </div>
               <div className="space-y-2 text-xs text-slate-600">
                 <p className="flex items-start gap-1.5">
                   <Thermometer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
-                  Suhu inti {previewBatch.cookTemp}C dicatat dari probe dapur saat batch dikunci.
+                  Suhu inti {previewBatch.cookTemp}°C dicatat dari probe dapur saat batch dikunci memenuhi HACCP.
                 </p>
                 <p className="flex items-start gap-1.5">
                   <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
@@ -754,7 +1047,7 @@ export function SppgBatchesPanel() {
                 </p>
                 <p className="flex items-start gap-1.5">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
-                  Alergen tercetak di setiap label supaya guru validator memeriksanya.
+                  Alergen tercetak di setiap label supaya guru validator memeriksanya saat tiba.
                 </p>
                 <div className="flex flex-wrap gap-2 pt-2">
                   <button
@@ -782,6 +1075,94 @@ export function SppgBatchesPanel() {
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* SUPERADMIN QUARANTINE / RECALL MODAL */}
+      {/* ========================================================================= */}
+      {quarantineModalBatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Karantina Batch Masak"
+            className="w-full max-w-lg rounded-2xl border border-rose-300 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-rose-100">
+              <div className="flex items-center gap-2 text-rose-700">
+                <ShieldAlert className="h-5 w-5" />
+                <h3 className="text-base font-extrabold tracking-tight">
+                  Karantina / Tarik Batch Darurat
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuarantineModalBatch(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuarantineSubmit} className="mt-4 space-y-4 text-xs">
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-900">
+                <p className="font-bold">Perhatian Keamanan Pangan Nasional:</p>
+                <p className="mt-1 text-[11px] leading-relaxed">
+                  Tindakan ini akan mengunci status batch menjadi <strong>DIKARANTINA</strong>,
+                  menghentikan distribusi ke sekolah sasaran, dan mencatat entitas forensik permanen
+                  pada <code>audit_logs</code>.
+                </p>
+                <div className="mt-2 text-[11px]">
+                  <div>Token: <span className="font-mono font-bold">{quarantineModalBatch.token}</span></div>
+                  <div>Sekolah: <span className="font-semibold">{quarantineModalBatch.schoolName}</span> ({quarantineModalBatch.boxCount} boks)</div>
+                  <div>Suhu Terakhir: <span className="font-semibold">{quarantineModalBatch.cookTemp}°C</span></div>
+                </div>
+              </div>
+
+              {quarantineError && (
+                <p role="alert" className="rounded-lg border border-rose-300 bg-rose-100 px-3 py-2 text-[11px] font-bold text-rose-800">
+                  {quarantineError}
+                </p>
+              )}
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Alasan Karantina / Temuan Bahaya HACCP:
+                </label>
+                <textarea
+                  rows="3"
+                  value={quarantineReason}
+                  onChange={(e) => setQuarantineReason(e.target.value)}
+                  placeholder="Contoh: Suhu drop di bawah batas aman / anomali organoleptik / kontaminasi silang kemasan..."
+                  className={`w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 ${FOCUS}`}
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setQuarantineModalBatch(null)}
+                  disabled={isSubmittingQuarantine}
+                  className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingQuarantine}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-5 py-2 font-bold text-white shadow-md hover:bg-rose-700 disabled:bg-slate-300"
+                >
+                  <AlertOctagon className="h-4 w-4" />
+                  {isSubmittingQuarantine ? 'Memproses...' : 'Eksekusi Karantina BGN'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* THERMAL 80MM SHEET PRINTING TARGET (ONLY VISIBLE ON PRINT) */}
+      {/* ========================================================================= */}
       <div className="batch-print-sheet" aria-hidden="true">
         {printBatches.map((b) => (
           <div
@@ -789,7 +1170,7 @@ export function SppgBatchesPanel() {
             style={{ width: '76mm', pageBreakAfter: 'always', color: '#000', background: '#fff', textAlign: 'center', padding: '8px 4px' }}
           >
             <p style={{ fontSize: 11, fontWeight: 700 }}>BGN · KAWANGIZI</p>
-            <p style={{ fontSize: 10 }}>{SPPG_PROFILE.code} · {SPPG_PROFILE.name}</p>
+            <p style={{ fontSize: 10 }}>{kitchenCode} · {kitchenName}</p>
             <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
               <QRCodeSVG value={b.token} size={200} level="H" />
             </div>
@@ -800,7 +1181,7 @@ export function SppgBatchesPanel() {
               Masak {b.cookedAt} · Habis {b.consumeBy} WIB
             </p>
             <p style={{ fontSize: 10 }}>
-              Suhu {b.cookTemp}C · Alergen: {b.allergens.length > 0 ? b.allergens.join(', ') : 'tidak ada'}
+              Suhu {b.cookTemp}°C · Alergen: {b.allergens && b.allergens.length > 0 ? b.allergens.join(', ') : 'tidak ada'}
             </p>
             <p style={{ fontFamily: 'monospace', fontSize: 9 }}>SHA {shortHash(b.checksum)}</p>
           </div>

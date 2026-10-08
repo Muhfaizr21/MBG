@@ -4,7 +4,9 @@ import (
 	"backend/database"
 	"backend/models"
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -29,13 +31,71 @@ func NewScanRepository() ScanRepository {
 }
 
 const scanColumns = `id, box_id, qr_token, batch_id, image_ref, ai_class, ai_confidence,
-	visual_score, holding_temp_c, release_temp_c, verdict, reason, actor_id, created_at, rating, feedback`
+	visual_score, holding_temp_c, release_temp_c, verdict, reason, actor_id, created_at, rating, feedback,
+	menu_name, menu_class, menu_confidence`
+
+func (r *pgScanRepository) FindBatch(ctx context.Context, idOrQR string) (*models.ScanBatchInfo, error) {
+	trimmed := strings.TrimSpace(idOrQR)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	var batch models.ScanBatchInfo
+	var sppgID, menuCode string
+	query := `
+		SELECT b.id, b.sppg_id, b.menu_code, b.menu_name, COALESCE(b.cooking_date, b.cooked_at, CURRENT_DATE::text)
+		FROM sppg_batches b
+		WHERE b.id = $1 OR b.token = $1
+		LIMIT 1
+	`
+	err := database.Pool().QueryRow(ctx, query, trimmed).Scan(
+		&batch.BatchID, &sppgID, &menuCode, &batch.MenuName, &batch.ProductionDate,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Cari nama dapur SPPG
+	if sppgID != "" {
+		_ = database.Pool().QueryRow(ctx, `SELECT name FROM sppg_kitchens WHERE id = $1`, sppgID).Scan(&batch.SPPGName)
+	}
+
+	// Cari resep & komposisi bahan jika ada
+	var ingredientsRaw []byte
+	recipeQuery := `
+		SELECT ingredients
+		FROM sppg_recipes
+		WHERE sppg_id = $1 AND (code = $2 OR name ILIKE $3)
+		LIMIT 1
+	`
+	if err := database.Pool().QueryRow(ctx, recipeQuery, sppgID, menuCode, batch.MenuName).Scan(&ingredientsRaw); err == nil && len(ingredientsRaw) > 0 {
+		batch.RecipeData = ingredientsRaw
+		var ingList []struct {
+			Name    string  `json:"name"`
+			WeightG float64 `json:"weightG"`
+		}
+		if json.Unmarshal(ingredientsRaw, &ingList) == nil && len(ingList) > 0 {
+			for _, ing := range ingList {
+				batch.Ingredients = append(batch.Ingredients, models.BatchIngredient{
+					Name:    ing.Name,
+					WeightG: ing.WeightG,
+				})
+			}
+		}
+	}
+
+	return &batch, nil
+}
 
 func (r *pgScanRepository) scanLog(row pgx.Row) (*models.ScanLog, error) {
 	s := &models.ScanLog{}
 	err := row.Scan(&s.ID, &s.BoxID, &s.QRToken, &s.BatchID, &s.ImageRef,
 		&s.AIClass, &s.AIConfidence, &s.VisualScore, &s.HoldingTempC, &s.ReleaseTempC,
-		&s.Verdict, &s.Reason, &s.ActorID, &s.CreatedAt, &s.Rating, &s.Feedback)
+		&s.Verdict, &s.Reason, &s.ActorID, &s.CreatedAt, &s.Rating, &s.Feedback,
+		&s.MenuName, &s.MenuClass, &s.MenuConfidence)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -52,11 +112,13 @@ func (r *pgScanRepository) InsertScan(ctx context.Context, log *models.ScanLog) 
 	}
 	_, err := database.Pool().Exec(ctx, `
 		INSERT INTO scan_logs (id, box_id, qr_token, batch_id, image_ref, ai_class,
-			ai_confidence, visual_score, holding_temp_c, release_temp_c, verdict, reason, actor_id, created_at, rating, feedback)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+			ai_confidence, visual_score, holding_temp_c, release_temp_c, verdict, reason, actor_id, created_at, rating, feedback,
+			menu_name, menu_class, menu_confidence)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
 		log.ID, log.BoxID, log.QRToken, log.BatchID, log.ImageRef, log.AIClass,
 		log.AIConfidence, log.VisualScore, log.HoldingTempC, log.ReleaseTempC,
-		log.Verdict, log.Reason, log.ActorID, log.CreatedAt, log.Rating, log.Feedback)
+		log.Verdict, log.Reason, log.ActorID, createdAt, log.Rating, log.Feedback,
+		log.MenuName, log.MenuClass, log.MenuConfidence)
 	return err
 }
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   UtensilsCrossed,
   Lock,
@@ -34,6 +34,7 @@ import {
   Building2,
   Layers,
   Trash2,
+  Loader2,
 } from 'lucide-react'
 
 import {
@@ -42,9 +43,41 @@ import {
   INITIAL_SUBSTITUTIONS,
   BATCH_TRACEABILITY_LOGS,
 } from '../../data/sppgRecipesData'
-import { SPPG_PROFILE } from '../../data/sppgPortalData'
+import { useAuth } from '../../context/AuthContext'
+import {
+  fetchSppgRecipeBundle,
+  toggleSppgMenuLock,
+  updateSppgDailyRecipeState,
+  submitSppgSubstitution,
+  createSppgMenuPackage,
+} from '../../lib/api'
+
+// Daftar ruang dapur SPPG binaan nasional untuk simulasi multi-tenant / inspeksi Superadmin
+const SPPG_SPACES = [
+  { id: 'SPPG-01', name: 'SPPG Sentral Menteng 01', city: 'Jakarta Pusat' },
+  { id: 'SPPG-02', name: 'SPPG Kebayoran Baru Mandiri', city: 'Jakarta Selatan' },
+  { id: 'SPPG-03', name: 'SPPG Tebet Timur Raya', city: 'Jakarta Selatan' },
+  { id: 'SPPG-04', name: 'SPPG Cakung Industri Prima', city: 'Jakarta Timur' },
+]
 
 export function SppgRecipesPanel() {
+  const { user } = useAuth()
+  const isSuperadmin = user?.role === 'superadmin'
+
+  // Multi-Tenant Isolation: SPPG staff terikat mutlak ke sppgId miliknya, Superadmin dapat memilih dapur
+  const [activeSppgId, setActiveSppgId] = useState(() => {
+    if (user?.role === 'sppg' && user?.sppgId) return user.sppgId
+    return 'SPPG-01'
+  })
+  const [kitchenName, setKitchenName] = useState('SPPG Sentral Menteng 01')
+
+  // Loading & Async Statuses
+  const [isLoadingBundle, setIsLoadingBundle] = useState(true)
+  const [isLocking, setIsLocking] = useState(false)
+  const [isSavingPortions, setIsSavingPortions] = useState(false)
+  const [isSubmittingSub, setIsSubmittingSub] = useState(false)
+  const [isCreatingMenu, setIsCreatingMenu] = useState(false)
+
   // Menu Packages State (supports adding new custom / cycle recipes)
   const [packages, setPackages] = useState(NATIONAL_MENU_PACKAGES)
   // Active Menu Package Selection (Paket A-D or custom added)
@@ -57,7 +90,8 @@ export function SppgRecipesPanel() {
   const [activeTab, setActiveTab] = useState('recipe')
   // Lock Menu State for Today's Recipe
   const [isLocked, setIsLocked] = useState(true)
-  const [lockTimestamp, setLockTimestamp] = useState('28 Sept 2026, 21:00 WIB')
+  const [lockTimestamp, setLockTimestamp] = useState('Hari ini, 04:09 WIB')
+  const [dailyState, setDailyState] = useState(null)
   // Search query inside ingredients or batch logs
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -69,12 +103,58 @@ export function SppgRecipesPanel() {
     setTimeout(() => setToastMessage(null), 3200)
   }
 
-  // Substitutions State (Can add new submission)
+  // Substitutions & Traceability Logs State
   const [substitutions, setSubstitutions] = useState(INITIAL_SUBSTITUTIONS)
+  const [traceabilityLogs, setTraceabilityLogs] = useState(BATCH_TRACEABILITY_LOGS)
   const [isSubModalOpen, setIsSubModalOpen] = useState(false)
   const [isDetailBatchOpen, setIsDetailBatchOpen] = useState(null)
   const [isRunsheetModalOpen, setIsRunsheetModalOpen] = useState(false)
   const [isAddMenuModalOpen, setIsAddMenuModalOpen] = useState(false)
+
+  // Memuat data bundle lengkap untuk ruang dapur aktif dari backend
+  const loadBundle = useCallback(async (sppgIdToFetch) => {
+    setIsLoadingBundle(true)
+    try {
+      const data = await fetchSppgRecipeBundle(sppgIdToFetch)
+      if (data) {
+        if (data.kitchenName) setKitchenName(data.kitchenName)
+        if (data.packages && data.packages.length > 0) {
+          setPackages(data.packages)
+        }
+        if (data.dailyState) {
+          setDailyState(data.dailyState)
+          if (data.dailyState.selectedPackageId) {
+            setSelectedPackageId(data.dailyState.selectedPackageId)
+          }
+          if (data.dailyState.activeCohort) {
+            setActiveCohortKey(data.dailyState.activeCohort)
+          }
+          if (data.dailyState.portionCount) {
+            setPortionCount(data.dailyState.portionCount)
+          }
+          setIsLocked(Boolean(data.dailyState.isLocked))
+          if (data.dailyState.lockedAt) {
+            const dt = new Date(data.dailyState.lockedAt)
+            setLockTimestamp(dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB')
+          }
+        }
+        if (data.substitutions) {
+          setSubstitutions(data.substitutions)
+        }
+        if (data.traceabilityLogs) {
+          setTraceabilityLogs(data.traceabilityLogs)
+        }
+      }
+    } catch (err) {
+      console.error('Gagal memuat bundle resep dapur:', err)
+    } finally {
+      setIsLoadingBundle(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadBundle(activeSppgId)
+  }, [activeSppgId, loadBundle])
 
   // Substitution Form State
   const [subForm, setSubForm] = useState({
@@ -375,97 +455,169 @@ export function SppgRecipesPanel() {
     )
   }, [currentPackage, searchQuery])
 
-  // Filtered batch logs by search
+  // Filtered batch logs by search (menggunakan data realtime dari backend sesuai SPPG aktif)
   const filteredBatches = useMemo(() => {
-    if (!searchQuery.trim()) return BATCH_TRACEABILITY_LOGS
+    if (!searchQuery.trim()) return traceabilityLogs
     const q = searchQuery.toLowerCase()
-    return BATCH_TRACEABILITY_LOGS.filter(
+    return traceabilityLogs.filter(
       (b) =>
         b.commodity.toLowerCase().includes(q) ||
         b.batchNo.toLowerCase().includes(q) ||
-        b.nkvNumber.toLowerCase().includes(q) ||
+        (b.nkvNumber && b.nkvNumber.toLowerCase().includes(q)) ||
         b.supplier.toLowerCase().includes(q)
     )
-  }, [searchQuery])
+  }, [traceabilityLogs, searchQuery])
 
-  // Handle lock/unlock
-  const handleToggleLock = () => {
+  // Handle lock/unlock dengan proteksi audit BGN di backend
+  const handleToggleLock = async () => {
+    const nextLocked = !isLocked
     if (isLocked) {
       if (
-        window.confirm(
+        !window.confirm(
           'Peringatan: Membuka kunci resep resmi akan mencatat log revisi ke Satgas MBG. Lanjutkan buka kunci?'
         )
       ) {
-        setIsLocked(false)
-        showToast('Kunci menu dibuka. Anda dapat mengedit takaran atau mengajukan substitusi.')
+        return
       }
-    } else {
-      setIsLocked(true)
-      const now = new Date()
-      const timeStr = `${now.getDate()} ${
-        ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sept', 'Okt', 'Nov', 'Des'][
-          now.getMonth()
-        ]
-      } ${now.getFullYear()}, ${String(now.getHours()).padStart(2, '0')}:${String(
-        now.getMinutes()
-      ).padStart(2, '0')} WIB`
-      setLockTimestamp(timeStr)
-      showToast('Menu resmi berhasil dikunci & terverifikasi Satgas MBG!')
+    }
+
+    setIsLocking(true)
+    try {
+      const res = await toggleSppgMenuLock(
+        {
+          sppgId: activeSppgId,
+          isLocked: nextLocked,
+          packageId: selectedPackageId,
+        },
+        activeSppgId
+      )
+
+      setIsLocked(nextLocked)
+      if (res?.lockedAt) {
+        const dt = new Date(res.lockedAt)
+        setLockTimestamp(
+          dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) +
+            ', ' +
+            dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) +
+            ' WIB'
+        )
+      } else if (nextLocked) {
+        const now = new Date()
+        const timeStr = `${now.getDate()} ${
+          ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sept', 'Okt', 'Nov', 'Des'][
+            now.getMonth()
+          ]
+        } ${now.getFullYear()}, ${String(now.getHours()).padStart(2, '0')}:${String(
+          now.getMinutes()
+        ).padStart(2, '0')} WIB`
+        setLockTimestamp(timeStr)
+      }
+
+      showToast(
+        nextLocked
+          ? 'Menu resmi berhasil dikunci & terverifikasi Satgas MBG!'
+          : 'Kunci menu dibuka. Anda dapat mengedit takaran atau mengajukan dispensasi substitusi.'
+      )
+    } catch (err) {
+      showToast('Gagal mengubah status kunci menu: ' + (err.message || 'Kesalahan server'))
+    } finally {
+      setIsLocking(false)
     }
   }
 
-  // Handle submit substitution
-  const handleCreateSubstitution = (e) => {
+  // Handle simpan kuota porsi harian ke database dapur SPPG
+  const handleSaveDailyPortions = async (customPortion = portionCount, customCohort = activeCohortKey) => {
+    setIsSavingPortions(true)
+    try {
+      await updateSppgDailyRecipeState(
+        {
+          sppgId: activeSppgId,
+          selectedPackageId,
+          activeCohort: customCohort,
+          portionCount: Number(customPortion) || 2500,
+        },
+        activeSppgId
+      )
+      showToast(
+        `Alokasi ${Number(customPortion).toLocaleString('id-ID')} porsi tersimpan di ruang ${activeSppgId}!`
+      )
+    } catch (err) {
+      showToast('Gagal menyimpan alokasi porsi: ' + (err.message || 'Kesalahan server'))
+    } finally {
+      setIsSavingPortions(false)
+    }
+  }
+
+  // Handle submit substitution ke backend endpoint /api/sppg/recipes/substitutions
+  const handleCreateSubstitution = async (e) => {
     e.preventDefault()
     if (!subForm.substituteItem.trim() || !subForm.reason.trim()) {
       setFormError('Isi bahan pengganti dan alasan kelangkaan komoditas.')
       return
     }
     setFormError('')
+    setIsSubmittingSub(true)
 
-    const newTicket = {
-      id: `SUB-${Date.now()}`,
-      ticketNo: `DSP/MBG-JKP/2026/${Math.floor(100 + Math.random() * 900)}`,
-      submittedAt: 'Baru saja',
-      approvedAt: null,
-      status: 'PENDING',
-      statusLabel: 'Menunggu Verifikasi Satgas',
-      menuCode: currentPackage.code,
-      originalItem: {
-        name: subForm.originalItem,
-        category: 'Komoditas Terpilih',
-        gramatur: 'Sesuai Standar TKPI',
-        protein: 23.8,
-        calories: 180,
-      },
-      substituteItem: {
-        name: subForm.substituteItem,
-        category: 'Komoditas Pengganti',
-        gramatur: 'Sesuai Takaran Setara',
-        protein: parseFloat(subForm.proteinVal) || 23.5,
-        calories: parseInt(subForm.calorieVal) || 175,
+    try {
+      const payload = {
+        sppgId: activeSppgId,
+        menuCode: currentPackage.code,
+        originalItem: subForm.originalItem,
+        substituteItem: subForm.substituteItem,
         supplier: subForm.supplier,
-      },
-      nutritionalDelta: {
-        proteinDiff: '-0.3g (setara)',
-        caloriesDiff: '-5 kkal (dalam batas toleransi aman)',
-        isCompliant: true,
-      },
-      reason: subForm.reason,
-      evidencePhotoUrl:
-        'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=600&auto=format&fit=crop&q=80',
-      evidenceFileName: subForm.evidenceFileName,
-      reviewerName: 'Antrean Satgas BGN Wilayah Pusat',
-      officialNotes: 'Tiket berhasil dikirim ke dashboard pengawas Satgas MBG.',
+        reason: subForm.reason,
+        proteinVal: parseFloat(subForm.proteinVal) || 23.5,
+        calorieVal: parseInt(subForm.calorieVal) || 175,
+        evidenceFileName: subForm.evidenceFileName,
+      }
+
+      const res = await submitSppgSubstitution(payload, activeSppgId)
+
+      const newTicket = res || {
+        id: `SUB-${Date.now()}`,
+        ticketNo: `DSP/MBG-JKP/2026/${Math.floor(100 + Math.random() * 900)}`,
+        submittedAt: 'Baru saja',
+        status: 'PENDING',
+        statusLabel: 'Menunggu Verifikasi Satgas',
+        menuCode: currentPackage.code,
+        originalItem: {
+          name: subForm.originalItem,
+          category: 'Komoditas Terpilih',
+          gramatur: 'Sesuai Standar TKPI',
+          protein: 23.8,
+          calories: 180,
+        },
+        substituteItem: {
+          name: subForm.substituteItem,
+          category: 'Komoditas Pengganti',
+          gramatur: 'Sesuai Takaran Setara',
+          protein: parseFloat(subForm.proteinVal) || 23.5,
+          calories: parseInt(subForm.calorieVal) || 175,
+          supplier: subForm.supplier,
+        },
+        nutritionalDelta: {
+          proteinDiff: '-0.3g (setara)',
+          caloriesDiff: '-5 kkal (dalam batas toleransi aman)',
+          calorieDiff: '-5 kkal (dalam batas toleransi aman)',
+          isCompliant: true,
+        },
+        reason: subForm.reason,
+        evidenceFileName: subForm.evidenceFileName,
+      }
+
+      setSubstitutions((prev) => [newTicket, ...prev])
+      setIsSubModalOpen(false)
+      showToast('Dispensasi substitusi berhasil diajukan ke Satgas MBG!')
+      setSubForm((prev) => ({
+        ...prev,
+        substituteItem: '',
+        reason: '',
+      }))
+    } catch (err) {
+      setFormError('Gagal mengajukan dispensasi: ' + (err.message || 'Kesalahan server'))
+    } finally {
+      setIsSubmittingSub(false)
     }
-
-    setSubSubmissions([newTicket, ...substitutions])
-    setIsSubModalOpen(false)
-    showToast('Dispensasi substitusi berhasil diajukan ke Satgas MBG!')
-  }
-
-  const setSubSubmissions = (newSubs) => {
-    setSubstitutions(newSubs)
   }
 
   // Handle adding new ingredient row in new menu form
@@ -525,42 +677,55 @@ export function SppgRecipesPanel() {
     setNewMenuForm({ ...newMenuForm, ingredients: updated })
   }
 
-  // Handle submit new menu
-  const handleCreateNewMenu = (e) => {
+  // Handle submit new menu ke backend
+  const handleCreateNewMenu = async (e) => {
     e.preventDefault()
     if (!newMenuForm.name.trim()) {
       setFormError('Masukkan nama menu hidangan.')
       return
     }
     setFormError('')
+    setIsCreatingMenu(true)
 
-    const newPkgId = `paket-${Date.now()}`
-    const newPackage = {
-      id: newPkgId,
-      code: newMenuForm.code.trim() || `PAKET-${packages.length + 1}`,
-      name: newMenuForm.name.trim(),
-      tagline: 'Menu Baru Dapur · Terdaftar Ahli Gizi SPPG',
-      dayName: newMenuForm.dayName,
-      cycle: newMenuForm.cycle,
-      isLocked: false,
-      lockedAt: null,
-      verifiedBy: 'Satgas MBG Wilayah Pusat (Siap Verifikasi)',
-      description:
-        newMenuForm.description.trim() ||
-        'Kombinasi menu bergizi seimbang standar TKPI Kemenkes RI yang disusun oleh Ahli Gizi SPPG.',
-      allergens: newMenuForm.allergens
+    try {
+      const allergenList = newMenuForm.allergens
         ? newMenuForm.allergens.split(',').map((s) => s.trim()).filter(Boolean)
-        : ['Kedelai'],
-      haccpPoint: newMenuForm.haccpPoint,
-      servingStandardTemp: newMenuForm.servingStandardTemp,
-      nutrition: newMenuCalculatedNutrition,
-      ingredients: newMenuForm.ingredients,
-    }
+        : ['Kedelai']
 
-    setPackages([...packages, newPackage])
-    setSelectedPackageId(newPkgId)
-    setIsAddMenuModalOpen(false)
-    showToast(`Menu "${newPackage.name}" berhasil ditambahkan ke siklus dapur!`)
+      const payload = {
+        sppgId: activeSppgId,
+        code: newMenuForm.code.trim() || `PAKET-${packages.length + 1}`,
+        name: newMenuForm.name.trim(),
+        tagline: 'Menu Baru Dapur · Terdaftar Ahli Gizi SPPG',
+        dayName: newMenuForm.dayName,
+        cycle: newMenuForm.cycle,
+        description:
+          newMenuForm.description.trim() ||
+          'Kombinasi menu bergizi seimbang standar TKPI Kemenkes RI yang disusun oleh Ahli Gizi SPPG.',
+        allergens: allergenList,
+        haccpPoint: newMenuForm.haccpPoint,
+        servingTempStandard: newMenuForm.servingStandardTemp,
+        nutrition: newMenuCalculatedNutrition,
+        ingredients: newMenuForm.ingredients,
+        isNational: false,
+      }
+
+      const created = await createSppgMenuPackage(payload, activeSppgId)
+      const finalPkg = created || {
+        ...payload,
+        id: `paket-${Date.now()}`,
+        verifiedBy: 'Satgas MBG Wilayah Pusat (Siap Verifikasi)',
+      }
+
+      setPackages((prev) => [...prev, finalPkg])
+      setSelectedPackageId(finalPkg.id)
+      setIsAddMenuModalOpen(false)
+      showToast(`Menu "${finalPkg.name}" berhasil ditambahkan ke siklus dapur!`)
+    } catch (err) {
+      setFormError('Gagal menyimpan menu: ' + (err.message || 'Kesalahan server'))
+    } finally {
+      setIsCreatingMenu(false)
+    }
   }
 
   return (
@@ -572,6 +737,89 @@ export function SppgRecipesPanel() {
           <span>{toastMessage}</span>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MULTI-TENANT KITCHEN SPACE HEADER (ISOLASI RUANG KERJA SPPG) */}
+      {/* ========================================================================= */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 shadow-md border border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3.5">
+          {/* Active Kitchen Profile */}
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-amber-400 shrink-0 shadow-inner">
+              <Building2 className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[10px] tracking-wider uppercase font-bold bg-[#23259C] text-white px-2 py-0.5 rounded border border-indigo-400/30">
+                  {activeSppgId}
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Ruang Kerja Dapur Mandiri
+                </span>
+                {isLocked ? (
+                  <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Lock className="h-2.5 w-2.5" />
+                    Terkunci Resmi BGN
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Unlock className="h-2.5 w-2.5" />
+                    Mode Draft / Buka Kunci
+                  </span>
+                )}
+              </div>
+              <h2 className="text-base font-bold text-white tracking-tight mt-0.5 flex items-center gap-2">
+                <span>{kitchenName}</span>
+                <span className="text-xs font-normal text-slate-300">
+                  · Target: <strong className="text-white font-bold">{portionCount.toLocaleString('id-ID')} Porsi</strong>
+                </span>
+              </h2>
+            </div>
+          </div>
+
+          {/* Superadmin Tenant Switcher & Live Refresh */}
+          <div className="flex flex-wrap items-center gap-2">
+            {isSuperadmin ? (
+              <div className="flex items-center gap-1.5 bg-white/10 p-1 rounded-xl border border-white/10 text-xs">
+                <span className="text-[11px] text-slate-300 px-2 font-medium">
+                  Inspeksi Dapur:
+                </span>
+                {SPPG_SPACES.map((space) => {
+                  const isActive = space.id === activeSppgId
+                  return (
+                    <button
+                      key={space.id}
+                      onClick={() => setActiveSppgId(space.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        isActive
+                          ? 'bg-[#23259C] text-white shadow-xs'
+                          : 'text-slate-300 hover:text-white hover:bg-white/10'
+                      }`}
+                      title={space.name}
+                    >
+                      {space.id}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-300 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl font-medium">
+                Unit Terisolasi: <strong className="text-white">{user?.fullName || kitchenName}</strong>
+              </div>
+            )}
+
+            <button
+              onClick={() => loadBundle(activeSppgId)}
+              disabled={isLoadingBundle}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/10 transition cursor-pointer"
+              title="Sinkronisasi data resep dari server"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoadingBundle ? 'animate-spin text-amber-400' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* ========================================================================= */}
       {/* TOP HEADER: CONTEXT & CONTROL BAR */}
@@ -606,13 +854,19 @@ export function SppgRecipesPanel() {
             {/* Lock / Unlock Menu Action */}
             <button
               onClick={handleToggleLock}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer ${
+              disabled={isLocking}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-60 ${
                 isLocked
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                   : 'bg-amber-500 hover:bg-amber-600 text-white'
               }`}
             >
-              {isLocked ? (
+              {isLocking ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Memproses...</span>
+                </>
+              ) : isLocked ? (
                 <>
                   <Lock className="h-3.5 w-3.5" />
                   <span>Menu Terkunci (BGN Resmi)</span>
@@ -661,7 +915,7 @@ export function SppgRecipesPanel() {
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
               <span>
                 Resep dikonfirmasi dan diverifikasi oleh{' '}
-                <strong className="text-slate-700">{currentPackage.verifiedBy}</strong> pada{' '}
+                <strong className="text-slate-700">{dailyState?.verifiedBy || currentPackage.verifiedBy || 'Satgas MBG Wilayah Pusat'}</strong> pada{' '}
                 <span className="text-slate-600">{lockTimestamp}</span>
               </span>
             </div>
@@ -1028,7 +1282,7 @@ export function SppgRecipesPanel() {
             </div>
 
             {/* Input Porsi Target */}
-            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+            <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
               <span className="text-xs font-semibold text-slate-600">Alokasi Porsi:</span>
               <div className="relative">
                 <input
@@ -1046,24 +1300,48 @@ export function SppgRecipesPanel() {
               {/* Quick Preset Buttons */}
               <div className="flex items-center gap-1 ml-2 border-l border-slate-200 pl-2">
                 <button
-                  onClick={() => setPortionCount(2000)}
+                  onClick={() => {
+                    setPortionCount(2000)
+                    handleSaveDailyPortions(2000, activeCohortKey)
+                  }}
                   className="px-2 py-0.5 text-[10px] font-semibold bg-white hover:bg-slate-100 rounded border border-slate-200 text-slate-600 cursor-pointer"
                 >
                   2.000
                 </button>
                 <button
-                  onClick={() => setPortionCount(2500)}
+                  onClick={() => {
+                    setPortionCount(2500)
+                    handleSaveDailyPortions(2500, activeCohortKey)
+                  }}
                   className="px-2 py-0.5 text-[10px] font-bold bg-[#23259C] text-white rounded cursor-pointer"
                 >
                   2.500 (Binaan)
                 </button>
                 <button
-                  onClick={() => setPortionCount(3000)}
+                  onClick={() => {
+                    setPortionCount(3000)
+                    handleSaveDailyPortions(3000, activeCohortKey)
+                  }}
                   className="px-2 py-0.5 text-[10px] font-semibold bg-white hover:bg-slate-100 rounded border border-slate-200 text-slate-600 cursor-pointer"
                 >
                   3.000
                 </button>
               </div>
+
+              {/* Simpan Kuota Button */}
+              <button
+                onClick={() => handleSaveDailyPortions(portionCount, activeCohortKey)}
+                disabled={isSavingPortions}
+                className="ml-2 px-2.5 py-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg shadow-xs cursor-pointer flex items-center gap-1 transition"
+                title="Simpan kuota porsi ke server dapur"
+              >
+                {isSavingPortions ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Check className="h-3 w-3" />
+                )}
+                <span>Simpan Kuota</span>
+              </button>
             </div>
           </div>
 
@@ -1349,7 +1627,7 @@ export function SppgRecipesPanel() {
                       ) : (
                         <Clock className="h-3.5 w-3.5 text-amber-600" />
                       )}
-                      <span>{sub.statusLabel}</span>
+                      <span>{sub.statusLabel || (isApproved ? 'Disetujui Satgas' : 'Menunggu Verifikasi')}</span>
                     </span>
                   </div>
 
@@ -1361,10 +1639,10 @@ export function SppgRecipesPanel() {
                         Bahan Utama (Asal)
                       </span>
                       <div className="font-bold text-slate-900 text-sm mt-1">
-                        {sub.originalItem.name}
+                        {sub.originalItem?.name || sub.originalItem}
                       </div>
                       <div className="text-slate-500 text-[11px]">
-                        Gramatur: {sub.originalItem.gramatur} · Protein: {sub.originalItem.protein}g · Energi: {sub.originalItem.calories} kkal
+                        Gramatur: {sub.originalItem?.gramatur || 'Standar TKPI'} · Protein: {sub.originalItem?.protein || 0}g · Energi: {sub.originalItem?.calories || 0} kkal
                       </div>
                     </div>
 
@@ -1374,12 +1652,12 @@ export function SppgRecipesPanel() {
                         Bahan Pengganti Resmi
                       </span>
                       <div className="font-bold text-slate-900 text-sm mt-1">
-                        {sub.substituteItem.name}
+                        {sub.substituteItem?.name || sub.substituteItem}
                       </div>
                       <div className="text-slate-500 text-[11px]">
-                        Gramatur: {sub.substituteItem.gramatur} · Protein: {sub.substituteItem.protein}g · Energi: {sub.substituteItem.calories} kkal
+                        Gramatur: {sub.substituteItem?.gramatur || 'Standar TKPI'} · Protein: {sub.substituteItem?.protein || 0}g · Energi: {sub.substituteItem?.calories || 0} kkal
                       </div>
-                      {sub.substituteItem.supplier && (
+                      {sub.substituteItem?.supplier && (
                         <div className="text-[11px] text-[#23259C] font-semibold">
                           Mitra: {sub.substituteItem.supplier}
                         </div>
@@ -1395,9 +1673,9 @@ export function SppgRecipesPanel() {
                     </div>
                     <div className="flex items-center gap-3 text-[11px] bg-emerald-50/60 p-2 rounded-lg text-emerald-900 border border-emerald-100">
                       <span className="font-bold">Delta Gizi:</span>
-                      <span>Protein: {sub.nutritionalDelta.proteinDiff}</span>
+                      <span>Protein: {sub.nutritionalDelta?.proteinDiff || 'Setara'}</span>
                       <span>·</span>
-                      <span>Kalori: {sub.nutritionalDelta.caloriesDiff}</span>
+                      <span>Kalori: {sub.nutritionalDelta?.caloriesDiff || sub.nutritionalDelta?.calorieDiff || 'Setara'}</span>
                       <span>·</span>
                       <span className="font-semibold text-emerald-700">Memenuhi Standar AKG Satgas</span>
                     </div>
@@ -1407,7 +1685,7 @@ export function SppgRecipesPanel() {
                   <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/60 pt-2">
                     <div className="flex items-center gap-1.5">
                       <Building2 className="h-3.5 w-3.5 text-slate-500" />
-                      <span>Verifikator: <strong className="text-slate-700">{sub.reviewerName}</strong></span>
+                      <span>Verifikator: <strong className="text-slate-700">{sub.approvedBy || sub.reviewerName || 'Satgas MBG Wilayah'}</strong></span>
                     </div>
                     {sub.approvedAt && (
                       <span className="text-emerald-700 font-medium">Disetujui: {sub.approvedAt}</span>

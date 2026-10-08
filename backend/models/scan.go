@@ -33,12 +33,16 @@ type ScanLog struct {
 	VisualScore  float64   `json:"visualScore"`
 	HoldingTempC *float64  `json:"holdingTempC,omitempty"`
 	ReleaseTempC *float64  `json:"releaseTempC,omitempty"`
+	DurationMS   *int      `json:"durationMs,omitempty"`
 	Verdict      string    `json:"verdict"`
 	Reason       string    `json:"reason"`
 	ActorID      string    `json:"actorId"`
 	CreatedAt    time.Time `json:"createdAt"`
 	Rating       int       `json:"rating,omitempty"`
 	Feedback     string    `json:"feedback,omitempty"`
+	MenuName     string    `json:"menuName,omitempty"`
+	MenuClass    string    `json:"menuClass,omitempty"`
+	MenuConfidence float64 `json:"menuConfidence,omitempty"`
 }
 
 // ScanCheck is one row on the decision card checklist.
@@ -71,6 +75,25 @@ type CompartmentMatch struct {
 	Mixed      bool        `json:"mixed,omitempty"`
 	Status     string      `json:"status"`
 	Note       string      `json:"note"`
+}
+
+// BatchIngredient rincian bahan komponen makanan dalam batch produksi.
+type BatchIngredient struct {
+	Name    string  `json:"name"`
+	WeightG float64 `json:"weightG,omitempty"`
+}
+
+// ScanBatchInfo ringkasan batch produksi SPPG yang terikat ke boks makanan.
+type ScanBatchInfo struct {
+	BatchID        string            `json:"batchId"`
+	SPPGName       string            `json:"sppgName,omitempty"`
+	MenuName       string            `json:"menuName,omitempty"`
+	ProductionDate string            `json:"productionDate,omitempty"`
+	Note           string            `json:"note,omitempty"`
+	Components     []string          `json:"components,omitempty"`
+	Ingredients    []BatchIngredient `json:"ingredients,omitempty"`
+	RecipeData     []byte            `json:"recipeData,omitempty"`
+	Macros         *Macros           `json:"macros,omitempty"`
 }
 
 // ScanResult is the classifier and measurement summary returned to web/mobile.
