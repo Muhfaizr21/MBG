@@ -11,6 +11,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import {
   MessageSquare,
@@ -22,6 +23,7 @@ import {
   Clock,
   Pin,
   Trash2,
+  Edit3,
   ImageIcon,
   Play,
   RotateCcw,
@@ -31,6 +33,7 @@ import { CommunityPost, AVAILABLE_TAGS } from '../../types/community';
 import { useCommunity } from '../../context/CommunityContext';
 import { useAuthRole } from '../../context/RoleContext';
 import { CreatePostModal } from './CreatePostModal';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { ThreadDetailScreen } from './ThreadDetailScreen';
 import { fetchMockCommunityPosts } from '../../data/communityData';
 
@@ -49,6 +52,7 @@ export const CommunityTabContent: React.FC<CommunityTabContentProps> = ({ onOpen
     toggleLikePost,
     deletePost,
     createPost,
+    updatePost,
     resetToInitialData,
   } = useCommunity();
   const { user } = useAuthRole();
@@ -56,6 +60,12 @@ export const CommunityTabContent: React.FC<CommunityTabContentProps> = ({ onOpen
   const [selectedTag, setSelectedTag] = useState('Semua');
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<CommunityPost | null>(null);
+
+  // Custom Delete Modal states
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [postToDelete, setPostToDelete] = useState<CommunityPost | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -63,20 +73,33 @@ export const CommunityTabContent: React.FC<CommunityTabContentProps> = ({ onOpen
   const [hasMoreData, setHasMoreData] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // If a thread is selected, show detail screen
-  if (activeThreadPost) {
-    const freshPost = posts.find((p) => p.id === activeThreadPost.id) || activeThreadPost;
-    return (
-      <ThreadDetailScreen
-        post={freshPost}
-        onBack={() => setActiveThreadPost(null)}
-        onOpenProfile={onOpenProfile}
-      />
-    );
-  }
-
   const handleCreatePost = () => {
+    setEditingPost(null);
     setIsCreateModalOpen(true);
+  };
+
+  const handleEditPost = (post: CommunityPost) => {
+    setEditingPost(post);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleOpenDeleteModal = (post: CommunityPost) => {
+    setPostToDelete(post);
+    setIsDeleteModalVisible(true);
+  };
+
+  const handleExecuteDelete = async () => {
+    if (!postToDelete) return;
+    try {
+      setIsDeleting(true);
+      await deletePost(postToDelete.id);
+      setIsDeleteModalVisible(false);
+      setPostToDelete(null);
+    } catch (err) {
+      console.warn('Gagal menghapus postingan:', err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Filter all posts based on tag and query
@@ -329,27 +352,33 @@ export const CommunityTabContent: React.FC<CommunityTabContentProps> = ({ onOpen
               </View>
 
               {isAuthor && (
-                <TouchableOpacity
-                  style={styles.deleteMiniBtn}
-                  onPress={(e) => {
-                    e.stopPropagation?.();
-                    Alert.alert(
-                      'Hapus Diskusi',
-                      'Apakah Anda yakin ingin menghapus topik diskusi ini?',
-                      [
-                        { text: 'Batal', style: 'cancel' },
-                        {
-                          text: 'Hapus',
-                          style: 'destructive',
-                          onPress: () => deletePost(post.id),
-                        },
-                      ],
-                    );
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Trash2 size={13} color="#EF4444" />
-                </TouchableOpacity>
+                <View style={styles.authorActionsRow}>
+                  <TouchableOpacity
+                    style={styles.editMiniBtn}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      handleEditPost(post);
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit Diskusi"
+                  >
+                    <Edit3 size={13} color="#D97706" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deleteMiniBtn}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      handleOpenDeleteModal(post);
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Hapus Diskusi"
+                  >
+                    <Trash2 size={13} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           </View>
@@ -422,6 +451,18 @@ export const CommunityTabContent: React.FC<CommunityTabContentProps> = ({ onOpen
     [user.id, user.name, deletePost, toggleLikePost, setActiveThreadPost],
   );
 
+  // If a thread is selected, show detail screen (rendered after all hooks run)
+  if (activeThreadPost) {
+    const freshPost = posts.find((p) => p.id === activeThreadPost.id) || activeThreadPost;
+    return (
+      <ThreadDetailScreen
+        post={freshPost}
+        onBack={() => setActiveThreadPost(null)}
+        onOpenProfile={onOpenProfile}
+      />
+    );
+  }
+
   return (
     <View style={styles.screen}>
       {/* Universal Clean App Bar Header */}
@@ -450,15 +491,45 @@ export const CommunityTabContent: React.FC<CommunityTabContentProps> = ({ onOpen
         }
       />
 
-      {/* Modal Mulai Diskusi Baru */}
+      {/* Modal Mulai / Edit Diskusi */}
       <CreatePostModal
         visible={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSubmit={async (data) => {
-          const newPost = await createPost(data);
-          // Langsung buka thread baru agar pengguna melihat postingannya
-          setActiveThreadPost(newPost);
+        mode={editingPost ? 'edit' : 'create'}
+        initialData={editingPost}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setEditingPost(null);
         }}
+        onSubmit={async (data) => {
+          if (editingPost) {
+            await updatePost({
+              id: editingPost.id,
+              title: data.title,
+              content: data.content,
+              tag: data.tag,
+              mediaUri: data.mediaUri,
+              mediaType: data.mediaType,
+            });
+          } else {
+            const newPost = await createPost(data);
+            setActiveThreadPost(newPost);
+          }
+          setEditingPost(null);
+        }}
+      />
+
+      {/* Modal Konfirmasi Hapus Diskusi */}
+      <DeleteConfirmationModal
+        visible={isDeleteModalVisible}
+        title="Hapus Diskusi"
+        postTitle={postToDelete?.title}
+        message="Apakah Anda yakin ingin menghapus topik diskusi ini? Tindakan ini tidak dapat dibatalkan."
+        isDeleting={isDeleting}
+        onCancel={() => {
+          setIsDeleteModalVisible(false);
+          setPostToDelete(null);
+        }}
+        onConfirm={handleExecuteDelete}
       />
     </View>
   );
@@ -702,10 +773,24 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '700',
   },
+  authorActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  editMiniBtn: {
+    padding: 5,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   deleteMiniBtn: {
-    padding: 4,
+    padding: 5,
     backgroundColor: '#FEE2E2',
-    borderRadius: 6,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   postTitle: {
     fontSize: 14.5,

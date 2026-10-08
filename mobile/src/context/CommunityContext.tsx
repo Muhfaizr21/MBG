@@ -19,12 +19,22 @@ interface CreatePostInput {
   mediaType?: 'image' | 'video';
 }
 
+export interface UpdatePostInput {
+  id: string;
+  title: string;
+  content: string;
+  tag: string;
+  mediaUri?: string;
+  mediaType?: 'image' | 'video';
+}
+
 interface CommunityContextType {
   posts: CommunityPost[];
   loading: boolean;
   activeThreadPost: CommunityPost | null;
   setActiveThreadPost: (post: CommunityPost | null) => void;
   createPost: (input: CreatePostInput) => Promise<CommunityPost>;
+  updatePost: (input: UpdatePostInput) => Promise<CommunityPost>;
   deletePost: (postId: string) => Promise<void>;
   toggleLikePost: (postId: string) => Promise<void>;
   addComment: (postId: string, content: string) => Promise<void>;
@@ -127,6 +137,43 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return newPost;
     },
     [posts, user, savePosts],
+  );
+
+  const updatePost = useCallback(
+    async (input: UpdatePostInput): Promise<CommunityPost> => {
+      const tagCfg = COMMUNITY_TAG_CONFIGS[input.tag] || {
+        label: input.tag,
+        color: '#2563EB',
+        bg: '#DBEAFE',
+      };
+
+      let updatedPost: CommunityPost | null = null;
+
+      const updated = posts.map((post) => {
+        if (post.id === input.id) {
+          updatedPost = {
+            ...post,
+            title: input.title.trim(),
+            content: input.content.trim(),
+            tag: input.tag,
+            tagColor: tagCfg.color,
+            tagBg: tagCfg.bg,
+            mediaUri: input.mediaUri,
+            mediaType: input.mediaType || post.mediaType || 'image',
+          };
+          return updatedPost;
+        }
+        return post;
+      });
+
+      await savePosts(updated);
+
+      if (updatedPost) {
+        return updatedPost;
+      }
+      throw new Error(`Diskusi dengan ID ${input.id} tidak ditemukan.`);
+    },
+    [posts, savePosts],
   );
 
   const deletePost = useCallback(
@@ -257,6 +304,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       activeThreadPost,
       setActiveThreadPost,
       createPost,
+      updatePost,
       deletePost,
       toggleLikePost,
       addComment,
@@ -271,6 +319,7 @@ export const CommunityProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       activeThreadPost,
       setActiveThreadPost,
       createPost,
+      updatePost,
       deletePost,
       toggleLikePost,
       addComment,

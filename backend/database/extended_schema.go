@@ -235,6 +235,10 @@ CREATE TABLE IF NOT EXISTS notices (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE notices ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'active';
+ALTER TABLE notices ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT 'circular';
+ALTER TABLE notices ADD COLUMN IF NOT EXISTS urgency VARCHAR(32) NOT NULL DEFAULT 'info';
+ALTER TABLE notices ADD COLUMN IF NOT EXISTS target_audience VARCHAR(50) NOT NULL DEFAULT 'all';
 CREATE INDEX IF NOT EXISTS idx_notices_status ON notices(status);
 CREATE INDEX IF NOT EXISTS idx_notices_category ON notices(category);
 CREATE INDEX IF NOT EXISTS idx_notices_urgency ON notices(urgency);
@@ -386,6 +390,7 @@ ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS last_warning_at TIMEST
 ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS last_warning_note TEXT NOT NULL DEFAULT '';
 
 -- Kolom jadwal distribusi operasional MBG & cold-chain
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'on_time';
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS school_id VARCHAR(64) DEFAULT '';
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS school_name VARCHAR(255) DEFAULT '';
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS npsn VARCHAR(50) DEFAULT '';
@@ -399,6 +404,11 @@ ALTER TABLE schedules ADD COLUMN IF NOT EXISTS timestamps JSONB NOT NULL DEFAULT
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS fleet JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS validator_contact JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+-- Kolom pelindung untuk notices dan reports jika tabel sudah ada sebelumnya
+ALTER TABLE notices ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'active';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'verified';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS category VARCHAR(100) NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_schedules_city ON schedules(city);
 CREATE INDEX IF NOT EXISTS idx_schedules_status ON schedules(status);
@@ -442,6 +452,7 @@ CREATE INDEX IF NOT EXISTS idx_calendar_days_date ON calendar_days(date);
 CREATE INDEX IF NOT EXISTS idx_calendar_days_month_year ON calendar_days(month_year);
 CREATE INDEX IF NOT EXISTS idx_calendar_days_day_type ON calendar_days(day_type);
 CREATE INDEX IF NOT EXISTS idx_calendar_days_menu_status ON calendar_days(menu_status);
+ALTER TABLE menu_substitutions ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'pending';
 CREATE INDEX IF NOT EXISTS idx_menu_substitutions_date ON menu_substitutions(date);
 CREATE INDEX IF NOT EXISTS idx_menu_substitutions_status ON menu_substitutions(status);
 
@@ -533,6 +544,8 @@ CREATE TABLE IF NOT EXISTS forensic_audit_findings (
 CREATE INDEX IF NOT EXISTS idx_reports_category ON reports(category);
 CREATE INDEX IF NOT EXISTS idx_digital_basts_date ON digital_basts(date);
 CREATE INDEX IF NOT EXISTS idx_digital_basts_npsn ON digital_basts(npsn);
+ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'ready_to_sign';
+ALTER TABLE forensic_audit_findings ADD COLUMN IF NOT EXISTS status VARCHAR(50) NOT NULL DEFAULT 'safeguarded';
 CREATE INDEX IF NOT EXISTS idx_vendor_invoices_status ON vendor_invoices(status);
 CREATE INDEX IF NOT EXISTS idx_forensic_findings_status ON forensic_audit_findings(status);
 `

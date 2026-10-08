@@ -24,25 +24,60 @@ import {
   Video,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { AVAILABLE_TAGS, COMMUNITY_TAG_CONFIGS } from '../../types/community';
+import { AVAILABLE_TAGS, COMMUNITY_TAG_CONFIGS, CommunityPost } from '../../types/community';
 import { useAuthRole } from '../../context/RoleContext';
+
+// Helper to convert images to persistent Base64 Data URIs that survive browser reloads & restarts
+const convertToPersistentBase64 = async (
+  uri: string,
+  rawBase64?: string | null,
+): Promise<string> => {
+  if (rawBase64) {
+    return `data:image/jpeg;base64,${rawBase64}`;
+  }
+  if (uri.startsWith('data:')) {
+    return uri;
+  }
+  // If running on web with blob: URI, convert to base64 Data URL
+  if (Platform.OS === 'web' && uri.startsWith('blob:')) {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.warn('Failed to convert blob to base64 data URL:', e);
+      return uri;
+    }
+  }
+  return uri;
+};
 
 interface CreatePostModalProps {
   visible: boolean;
   onClose: () => void;
   onSubmit: (data: {
+    id?: string;
     title: string;
     content: string;
     tag: string;
     mediaUri?: string;
     mediaType?: 'image' | 'video';
   }) => Promise<void>;
+  initialData?: CommunityPost | null;
+  mode?: 'create' | 'edit';
 }
 
 export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   visible,
   onClose,
   onSubmit,
+  initialData,
+  mode = 'create',
 }) => {
   const { user } = useAuthRole();
   const [title, setTitle] = useState('');
@@ -52,6 +87,24 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const isEdit = mode === 'edit' || Boolean(initialData);
+
+  // Sync state whenever modal opens or initialData changes
+  React.useEffect(() => {
+    if (visible) {
+      if (initialData) {
+        setTitle(initialData.title || '');
+        setContent(initialData.content || '');
+        setSelectedTag(initialData.tag || AVAILABLE_TAGS[0]);
+        setMediaUri(initialData.mediaUri || null);
+        setMediaType(initialData.mediaType || 'image');
+        setErrorMsg(null);
+      } else {
+        resetForm();
+      }
+    }
+  }, [visible, initialData]);
 
   const resetForm = () => {
     setTitle('');
@@ -72,17 +125,28 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images', 'videos'],
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.7,
+        base64: true,
       });
 
       if (!res.canceled && res.assets && res.assets.length > 0) {
         const asset = res.assets[0];
-        setMediaUri(asset.uri);
-        setMediaType(asset.type === 'video' ? 'video' : 'image');
+        const isVideo = asset.type === 'video';
+        if (!isVideo) {
+          const persistentUri = await convertToPersistentBase64(asset.uri, asset.base64);
+          setMediaUri(persistentUri);
+        } else {
+          setMediaUri(asset.uri);
+        }
+        setMediaType(isVideo ? 'video' : 'image');
       }
     } catch (err) {
       console.warn('Pick media error:', err);
-      Alert.alert('Gagal Mengakses Galeri', 'Pastikan izin akses media telah diaktifkan.');
+      if (Platform.OS === 'web') {
+        window.alert('Gagal mengakses galeri media. Pastikan izin akses media telah diaktifkan.');
+      } else {
+        Alert.alert('Gagal Mengakses Galeri', 'Pastikan izin akses media telah diaktifkan.');
+      }
     }
   };
 
@@ -90,23 +154,33 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Izin Ditolak', 'Aplikasi memerlukan izin kamera untuk mengambil foto.');
+        if (Platform.OS === 'web') {
+          window.alert('Aplikasi memerlukan izin kamera untuk mengambil foto.');
+        } else {
+          Alert.alert('Izin Ditolak', 'Aplikasi memerlukan izin kamera untuk mengambil foto.');
+        }
         return;
       }
 
       const res = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.7,
+        base64: true,
       });
 
       if (!res.canceled && res.assets && res.assets.length > 0) {
         const asset = res.assets[0];
-        setMediaUri(asset.uri);
+        const persistentUri = await convertToPersistentBase64(asset.uri, asset.base64);
+        setMediaUri(persistentUri);
         setMediaType('image');
       }
     } catch (err) {
       console.warn('Launch camera error:', err);
-      Alert.alert('Gagal Membuka Kamera', 'Terjadi kendala saat mengakses kamera.');
+      if (Platform.OS === 'web') {
+        window.alert('Terjadi kendala saat mengakses kamera.');
+      } else {
+        Alert.alert('Gagal Membuka Kamera', 'Terjadi kendala saat mengakses kamera.');
+      }
     }
   };
 
@@ -124,6 +198,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       setSubmitting(true);
       setErrorMsg(null);
       await onSubmit({
+        id: initialData?.id,
         title: title.trim(),
         content: content.trim(),
         tag: selectedTag,
@@ -134,7 +209,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       onClose();
     } catch (err) {
       console.warn('Submit post error:', err);
-      setErrorMsg('Gagal mempublikasikan diskusi. Silakan coba lagi.');
+      setErrorMsg(isEdit ? 'Gagal menyimpan perubahan diskusi.' : 'Gagal mempublikasikan diskusi. Silakan coba lagi.');
     } finally {
       setSubmitting(false);
     }
@@ -165,9 +240,17 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 <Sparkles size={18} color="#D97706" />
               </View>
               <View>
-                <Text style={styles.modalTitle}>Mulai Diskusi Baru</Text>
+                <Text style={styles.modalTitle}>
+                  {isEdit ? 'Edit Topik Diskusi' : 'Mulai Diskusi Baru'}
+                </Text>
                 <Text style={styles.modalSubtitle}>
-                  Posting sebagai: <Text style={styles.authorHighlight}>{user.name}</Text> ({user.schoolName})
+                  {isEdit ? (
+                    'Perbarui konten atau lampiran topik diskusi Anda'
+                  ) : (
+                    <>
+                      Posting sebagai: <Text style={styles.authorHighlight}>{user.name}</Text> ({user.schoolName})
+                    </>
+                  )}
                 </Text>
               </View>
             </View>
@@ -345,7 +428,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               ) : (
                 <>
                   <Send size={16} color="#FFFFFF" />
-                  <Text style={styles.submitBtnText}>Publikasikan</Text>
+                  <Text style={styles.submitBtnText}>
+                    {isEdit ? 'Simpan Perubahan' : 'Publikasikan'}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>

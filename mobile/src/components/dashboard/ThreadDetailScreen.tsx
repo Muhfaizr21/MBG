@@ -26,12 +26,15 @@ import {
   Shield,
   CheckCircle2,
   Bell,
+  Edit3,
 } from 'lucide-react-native';
 import { CommunityPost } from '../../types/community';
 import { useCommunity } from '../../context/CommunityContext';
 import { useAuthRole } from '../../context/RoleContext';
 import { getInitials } from '../../utils/initials';
 import { ProfileAvatarButton } from './ProfileAvatarButton';
+import { CreatePostModal } from './CreatePostModal';
+import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 
 interface ThreadDetailScreenProps {
   post: CommunityPost;
@@ -44,8 +47,15 @@ export const ThreadDetailScreen: React.FC<ThreadDetailScreenProps> = ({
   onBack,
   onOpenProfile,
 }) => {
-  const { posts, toggleLikePost, deletePost, addComment, addReply, toggleLikeComment } =
-    useCommunity();
+  const {
+    posts,
+    toggleLikePost,
+    deletePost,
+    updatePost,
+    addComment,
+    addReply,
+    toggleLikeComment,
+  } = useCommunity();
   const { user } = useAuthRole();
 
   // Find latest state of this post from context
@@ -57,6 +67,9 @@ export const ThreadDetailScreen: React.FC<ThreadDetailScreenProps> = ({
     author: string;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
 
@@ -74,21 +87,20 @@ export const ThreadDetailScreen: React.FC<ThreadDetailScreenProps> = ({
     currentPost.author.includes(user.name);
 
   const handleDeletePost = () => {
-    Alert.alert(
-      'Hapus Diskusi',
-      'Apakah Anda yakin ingin menghapus topik diskusi ini dari forum komunitas?',
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Hapus',
-          style: 'destructive',
-          onPress: async () => {
-            await deletePost(currentPost.id);
-            onBack();
-          },
-        },
-      ],
-    );
+    setIsDeleteModalVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      setIsDeleting(true);
+      await deletePost(currentPost.id);
+      setIsDeleteModalVisible(false);
+      onBack();
+    } catch (err) {
+      console.warn('Gagal menghapus postingan:', err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleSendComment = async () => {
@@ -195,16 +207,29 @@ export const ThreadDetailScreen: React.FC<ThreadDetailScreenProps> = ({
               </View>
 
               {isAuthor && (
-                <TouchableOpacity
-                  style={styles.deletePostBtn}
-                  onPress={handleDeletePost}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Hapus Diskusi"
-                >
-                  <Trash2 size={16} color="#EF4444" />
-                  <Text style={styles.deletePostText}>Hapus</Text>
-                </TouchableOpacity>
+                <View style={styles.authorActionsRow}>
+                  <TouchableOpacity
+                    style={styles.editPostBtn}
+                    onPress={() => setIsEditModalOpen(true)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit Diskusi"
+                  >
+                    <Edit3 size={15} color="#D97706" />
+                    <Text style={styles.editPostText}>Edit</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deletePostBtn}
+                    onPress={handleDeletePost}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Hapus Diskusi"
+                  >
+                    <Trash2 size={15} color="#EF4444" />
+                    <Text style={styles.deletePostText}>Hapus</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
 
@@ -452,6 +477,36 @@ export const ThreadDetailScreen: React.FC<ThreadDetailScreenProps> = ({
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Modal Edit Diskusi */}
+      <CreatePostModal
+        visible={isEditModalOpen}
+        mode="edit"
+        initialData={currentPost}
+        onClose={() => setIsEditModalOpen(false)}
+        onSubmit={async (data) => {
+          await updatePost({
+            id: currentPost.id,
+            title: data.title,
+            content: data.content,
+            tag: data.tag,
+            mediaUri: data.mediaUri,
+            mediaType: data.mediaType,
+          });
+          setIsEditModalOpen(false);
+        }}
+      />
+
+      {/* Modal Konfirmasi Hapus Diskusi */}
+      <DeleteConfirmationModal
+        visible={isDeleteModalVisible}
+        title="Hapus Diskusi"
+        postTitle={currentPost.title}
+        message="Apakah Anda yakin ingin menghapus topik diskusi ini dari forum komunitas? Tindakan ini tidak dapat dibatalkan."
+        isDeleting={isDeleting}
+        onCancel={() => setIsDeleteModalVisible(false)}
+        onConfirm={handleConfirmDelete}
+      />
     </View>
   );
 };
@@ -573,12 +628,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  authorActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editPostBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#FEF3C7',
+  },
+  editPostText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D97706',
+  },
   deletePostBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: '#FEE2E2',
   },
