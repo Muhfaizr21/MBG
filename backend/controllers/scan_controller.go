@@ -130,7 +130,7 @@ func (c *ScanController) Recent(w http.ResponseWriter, r *http.Request) {
 		limit = 20
 	}
 
-	logs, err := c.scanSvc.ListRecent(r.Context(), limit)
+	logs, err := c.scanSvc.ListRecent(r.Context(), middlewares.UserID(r.Context()), limit)
 	if err != nil {
 		utils.Error(w, http.StatusInternalServerError, "gagal mengambil riwayat scan")
 		return

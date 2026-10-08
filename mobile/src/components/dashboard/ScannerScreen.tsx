@@ -11,7 +11,7 @@ import {
   StatusBar,
   Modal,
   Dimensions,
-  DimensionValue,
+  TextInput,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -29,29 +29,17 @@ import {
   ZoomOut,
   Maximize2,
   Camera,
-  Tag,
   ShieldCheck,
   Bot,
 } from 'lucide-react-native';
-import { BottomSheet } from '../ui/BottomSheet';
 import { ContextualAiChatSheet } from './ContextualAiChatSheet';
 import { FeatureHeader } from './FeatureHeader';
-import { decideQuality, verifyQrPayload, QualityVerdict } from '../../utils/quality';
+import { QualityVerdict } from '../../utils/quality';
 import { readMacros } from '../../utils/nutrition';
-import { addScanLogEntry } from '../../utils/scanLog';
 import { scanRequest } from '../../lib/api';
-import {
-  MOCK_MACRO_ESTIMATE,
-  MOCK_SCAN_SCENARIOS,
-  SCAN_GRADE_BAND,
-  SCAN_SCHOOL,
-  ScenarioKey,
-} from '../../data/mockScannerData';
+import { GradeBand } from '../../utils/nutrition';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-const DEFAULT_SAMPLE_PHOTO =
-  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1000&q=80';
 
 const SEVERITY_COLOR = {
   none: '#15803D',
@@ -59,11 +47,11 @@ const SEVERITY_COLOR = {
   critical: '#B91C1C',
 } as const;
 
+const SCAN_GRADE_BAND: GradeBand = 'sd_atas';
+
 export interface DetectedFoodItem {
   id: number;
   name: string;
-  x: DimensionValue;
-  y: DimensionValue;
   portionGram: number;
   nutrition: {
     energi: number;
@@ -74,59 +62,6 @@ export interface DetectedFoodItem {
   };
 }
 
-export interface DetectionResult {
-  porsiBesarLabel: string;
-  porsiKecilLabel: string;
-  items: DetectedFoodItem[];
-}
-
-const DEFAULT_DETECTION_RESULT: DetectionResult = {
-  porsiBesarLabel: 'Porsi Besar',
-  porsiKecilLabel: 'Porsi Kecil',
-  items: [
-    {
-      id: 1,
-      name: 'Nasi Kuning',
-      x: '26%',
-      y: '64%',
-      portionGram: 150,
-      nutrition: { energi: 220.0, protein: 4.5, lemak: 2.1, karbo: 45.2, serat: 1.2 },
-    },
-    {
-      id: 2,
-      name: 'Telur Dadar Suwir',
-      x: '24%',
-      y: '25%',
-      portionGram: 50,
-      nutrition: { energi: 95.5, protein: 7.2, lemak: 6.8, karbo: 0.8, serat: 0.0 },
-    },
-    {
-      id: 3,
-      name: 'Timun & Selada',
-      x: '50%',
-      y: '23%',
-      portionGram: 40,
-      nutrition: { energi: 18.4, protein: 1.1, lemak: 0.2, karbo: 3.4, serat: 1.6 },
-    },
-    {
-      id: 4,
-      name: 'Ayam Goreng',
-      x: '76%',
-      y: '25%',
-      portionGram: 65,
-      nutrition: { energi: 165.0, protein: 14.8, lemak: 11.2, karbo: 1.5, serat: 0.2 },
-    },
-    {
-      id: 5,
-      name: 'Pisang & Susu',
-      x: '68%',
-      y: '64%',
-      portionGram: 120,
-      nutrition: { energi: 125.0, protein: 1.8, lemak: 4.6, karbo: 20.4, serat: 1.2 },
-    },
-  ],
-};
-
 const formatNumber = (num: number): string => {
   return num.toFixed(1).replace('.', ',');
 };
@@ -136,6 +71,7 @@ interface BackendScanResult {
   id: string;
   boxId: string;
   qrToken: string;
+  batchId?: string;
   scannedAt: string;
   score: number;
   verdict: 'layak' | 'peringatan' | 'tolak';
@@ -146,7 +82,29 @@ interface BackendScanResult {
   note: string;
   aiClass: string;
   aiConfidence: number;
-  macros?: { energy: number; protein: number; carbs: number; fat: number };
+  menuName?: string;
+  menuClass?: string;
+  menuConfidence?: number;
+  freshnessClass?: string;
+  freshnessConfidence?: number;
+  batchInfo?: {
+    batchId: string;
+    sppgName?: string;
+    menuName?: string;
+    productionDate?: string;
+    ingredients?: { name: string; weightG: number }[];
+    note?: string;
+  };
+  macros?: { energy: number; protein: number; carbs: number; fat: number; fiber?: number };
+  nutrition?: {
+    name: string;
+    matchedTo: string;
+    weightG: number;
+    energy: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }[];
   nutritionNote?: string;
 }
 
@@ -159,89 +117,105 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
   const [hasScanned, setHasScanned] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
-  const [showAiTags, setShowAiTags] = useState(true);
   const [selectedItem, setSelectedItem] = useState<DetectedFoodItem | null>(null);
   const [rotation, setRotation] = useState(0);
   const [zoomScale, setZoomScale] = useState(1);
-  const [scenarioKey, setScenarioKey] = useState<ScenarioKey>('layak');
-  const [confirm, setConfirm] = useState<QualityVerdict | null>(null);
-  const [logged, setLogged] = useState(false);
-  const [detectionResult] = useState<DetectionResult>(DEFAULT_DETECTION_RESULT);
+  const [qrToken, setQrToken] = useState('');
+  const [holdingTemp, setHoldingTemp] = useState('');
+  const [releaseTemp, setReleaseTemp] = useState('');
   const [backendScan, setBackendScan] = useState<BackendScanResult | null>(null);
+  const [backendError, setBackendError] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const capturedFileRef = useRef<Blob | null>(null);
   const [activeTab, setActiveTab] = useState<'gizi' | 'kelayakan'>('gizi');
   const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Kalkulasi total nutrisi secara dinamis dari item yang terdeteksi
-  const totalNutrition = useMemo(() => {
-    return detectionResult.items.reduce(
-      (acc, item) => ({
-        energi: acc.energi + item.nutrition.energi,
-        protein: acc.protein + item.nutrition.protein,
-        lemak: acc.lemak + item.nutrition.lemak,
-        karbo: acc.karbo + item.nutrition.karbo,
-        serat: acc.serat + item.nutrition.serat,
-      }),
-      { energi: 0, protein: 0, lemak: 0, karbo: 0, serat: 0 },
-    );
-  }, [detectionResult]);
+  const displayItems = useMemo<DetectedFoodItem[]>(() => {
+    return (backendScan?.nutrition ?? []).map((item, index) => ({
+      id: index + 1,
+      name: `${item.name} · ${item.matchedTo}`,
+      portionGram: item.weightG,
+      nutrition: {
+        energi: item.energy,
+        protein: item.protein,
+        karbo: item.carbs,
+        lemak: item.fat,
+        serat: 0,
+      },
+    }));
+  }, [backendScan]);
 
-  const scenario = useMemo(
-    () => MOCK_SCAN_SCENARIOS.find((item) => item.key === scenarioKey) ?? MOCK_SCAN_SCENARIOS[0],
-    [scenarioKey],
-  );
+  const totalNutrition = useMemo(() => ({
+    energi: backendScan?.macros?.energy ?? 0,
+    protein: backendScan?.macros?.protein ?? 0,
+    lemak: backendScan?.macros?.fat ?? 0,
+    karbo: backendScan?.macros?.carbs ?? 0,
+    serat: backendScan?.macros?.fiber ?? 0,
+  }), [backendScan]);
 
-  const qr = useMemo(() => verifyQrPayload(scenario.payload, SCAN_SCHOOL), [scenario]);
+  // Skor dan keputusan hanya tersedia setelah server mengembalikan inferensi model.
+  const effectiveScore = backendScan?.score ?? 0;
+  const effectiveHoldingTempC = backendScan?.holdTemp ?? 0;
 
-  // Sinyal mutu: hasil backend AI bila ada, kalau tidak pakai skenario simulasi.
-  const effectiveScore = backendScan ? backendScan.score : scenario.score;
-  const effectiveHoldingTempC =
-    backendScan && backendScan.holdTemp > 0 ? backendScan.holdTemp : scenario.holdingTempC;
-
-  const verdict = useMemo(
-    () =>
-      decideQuality({
-        score: effectiveScore,
-        holdingTempC: effectiveHoldingTempC,
-        minutesToDeadline: scenario.minutesToDeadline,
-        qrValid: qr.valid,
-      }),
-    [effectiveScore, effectiveHoldingTempC, scenario.minutesToDeadline, qr.valid],
-  );
+  // Keputusan dari gateway adalah sumber kebenaran yang sama untuk web dan mobile.
+  const verdict = useMemo<QualityVerdict>(() => {
+    if (!backendScan) {
+      return {
+        verdict: 'ditolak',
+        label: 'Hasil AI belum tersedia',
+        color: '#64748B',
+        action: 'Hubungkan ke server AI dan ulangi pemindaian sebelum mengambil keputusan.',
+        reasons: backendError ? [backendError] : [],
+      };
+    }
+    const mapped = backendScan.verdict === 'tolak'
+      ? { verdict: 'ditolak' as const, label: 'Ditahan untuk pemeriksaan', color: '#B91C1C', action: 'Tahan sampel dan periksa penyebab sesuai SOP.' }
+      : backendScan.verdict === 'peringatan'
+        ? { verdict: 'waspada' as const, label: 'Perlu verifikasi petugas', color: '#B45309', action: 'Model menilai foto secara visual; verifikasi suhu dan seluruh hidangan sesuai SOP.' }
+        : { verdict: 'waspada' as const, label: 'Perlu verifikasi petugas', color: '#B45309', action: 'Hasil fresh bukan bukti keamanan hidangan matang. Periksa seluruh boks sesuai SOP.' };
+    return { ...mapped, reasons: backendScan.note ? [backendScan.note] : [] };
+  }, [backendScan, backendError]);
   const macros = useMemo(() => {
-    const estimated = backendScan?.macros
+    const estimated: Record<string, number> = backendScan?.macros
       ? {
           energi: backendScan.macros.energy,
           protein: backendScan.macros.protein,
           karbohidrat: backendScan.macros.carbs,
           lemak: backendScan.macros.fat,
+          serat: backendScan.macros.fiber ?? 0,
         }
-      : MOCK_MACRO_ESTIMATE;
+      : { energi: 0, protein: 0, karbohidrat: 0, lemak: 0, serat: 0 };
     return readMacros(SCAN_GRADE_BAND, estimated).filter((m) => m.key !== 'serat');
   }, [backendScan]);
 
-  const displayPhoto = capturedPhoto || DEFAULT_SAMPLE_PHOTO;
+  const displayPhoto = capturedPhoto || '';
 
-  // Kirim foto ke POST /api/scans; fallback ke skenario simulasi saat error/offline.
+  // Kirim foto ke POST /api/scans. Hasil hanya diterima dari model di server.
   const runBackendScan = async (image: { uri?: string; file?: Blob }) => {
     setIsAnalyzing(true);
+    setBackendError(null);
+    setBackendScan(null);
+    setIsChatOpen(false);
     try {
-      const itemsParam = detectionResult.items
-        .map((item) => `${item.name}:${item.portionGram}`)
-        .join(',');
+      if (!qrToken.trim() || !holdingTemp || !releaseTemp) {
+        throw new Error('Isi token QR, suhu holding, dan suhu lepas dapur sebelum memindai.');
+      }
       const body = await scanRequest({
         uri: image.uri,
         file: image.file,
-        qrToken: scenario.payload.code,
-        holdingTempC: scenario.holdingTempC,
-        releaseTempC: scenario.payload.coreTempC,
-        items: itemsParam,
+        qrToken: qrToken.trim(),
+        holdingTempC: Number(holdingTemp),
+        releaseTempC: Number(releaseTemp),
       });
       setBackendScan(body?.data ?? null);
     } catch (err) {
-      console.warn('Backend scan tidak terjangkau — memakai skenario simulasi.', err);
       setBackendScan(null);
+      setCapturedPhoto(null);
+      setHasScanned(false);
+      capturedFileRef.current = null;
+      const message = err instanceof Error ? err.message : 'Tidak dapat terhubung ke layanan AI.';
+      setBackendError(message);
     } finally {
       setIsAnalyzing(false);
     }
@@ -249,6 +223,11 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
 
   const handleStartScan = async () => {
     setBackendScan(null);
+    setBackendError(null);
+    if (!qrToken.trim() || !holdingTemp || !releaseTemp) {
+      Alert.alert('Data pemeriksaan belum lengkap', 'Isi token QR boks serta suhu holding dan suhu lepas dapur yang benar-benar diukur.');
+      return;
+    }
     if (Platform.OS === 'web') {
       try {
         const input = document.createElement('input');
@@ -282,8 +261,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
         input.click();
       } catch (err) {
         console.error('Gagal membuka kamera web:', err);
-        setCapturedPhoto((prev) => prev || DEFAULT_SAMPLE_PHOTO);
-        setHasScanned(true);
+        Alert.alert('Kamera tidak tersedia', 'Pilih izin kamera atau gunakan perangkat dengan kamera yang dapat diakses. Hasil scan tidak dibuat.');
       }
     } else {
       try {
@@ -313,16 +291,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
         console.error('Gagal meluncurkan kamera:', err);
         Alert.alert(
           'Kamera Tidak Tersedia',
-          'Terjadi kendala saat membuka kamera perangkat. Menampilkan hasil simulasi pemindaian.',
-          [
-            {
-              text: 'Lanjutkan',
-              onPress: () => {
-                setCapturedPhoto((prev) => prev || DEFAULT_SAMPLE_PHOTO);
-                setHasScanned(true);
-              },
-            },
-          ],
+          'Terjadi kendala saat membuka kamera. Hasil scan tidak dibuat; coba lagi atau gunakan perangkat lain.',
         );
       }
     }
@@ -331,8 +300,8 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
   const handleResetScan = () => {
     setCapturedPhoto(null);
     setHasScanned(false);
-    setLogged(false);
     setBackendScan(null);
+    setBackendError(null);
     capturedFileRef.current = null;
     setIsImageViewerOpen(false);
     setSelectedItem(null);
@@ -372,28 +341,18 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
   const handleHelpPress = () => {
     Alert.alert(
       'Panduan Pemindai AI',
-      '• Arahkan kamera tegak lurus ke porsi boks makan MBG (jarak 30–50 cm).\n• YOLOv8 Edge AI memindai kesegaran lauk, sayur, nasi, serta mendeteksi benda asing dalam latensi ~45ms.\n• Estimasi gramatur makronutrien (karbohidrat, protein, lemak, serat) dihitung otomatis sesuai standar porsi anak.',
+      '• Ambil foto buah atau sayur dengan pencahayaan cukup.\n• Foto dikirim ke server untuk klasifikasi fresh/stale. Model ini tidak memeriksa lauk matang, benda asing, alergen, atau keamanan mikrobiologis.\n• Nilai gizi dihitung dari bahan dan berat menu yang dikirim, bukan dikenali dari foto.',
       [{ text: 'Mengerti', style: 'default' }],
     );
   };
 
-  const handleAction = (approved: boolean) => {
-    if (approved && verdict.verdict === 'ditolak') {
-      Alert.alert(
-        'Tidak bisa disetujui',
-        'Boks ini berstatus tidak layak. Tolak dan amankan sampel, lalu ajukan penarikan batch.',
-      );
-      return;
-    }
-    addScanLogEntry({
-      scannedAt: new Date(),
-      batchCode: scenario.payload.code,
-      portions: scenario.portions,
-      score: effectiveScore,
-      severity: verdict.verdict,
-    });
-    setLogged(true);
-    setConfirm(verdict);
+  const handleAction = (_approved: boolean) => {
+    if (!backendScan) return;
+    Alert.alert(
+      backendScan.verdict === 'tolak' ? 'Sampel perlu ditahan' : 'Verifikasi petugas diperlukan',
+      'Hasil classifier dan suhu tidak membuktikan keamanan seluruh hidangan. Ikuti pemeriksaan fisik dan SOP sekolah sebelum menentukan distribusi.',
+      [{ text: 'Mengerti' }],
+    );
   };
 
   return (
@@ -407,29 +366,37 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
 
         {/* Kondisional Area Scan:
             - Sebelum pindai (!hasScanned): Tampilkan kartu oranye Pemindai Visual.
-            - Setelah pindai (hasScanned): Kartu oranye HILANG sepenuhnya dan digantikan oleh foto hasil jepretan dengan Floating UI Tags yang dapat diklik untuk zoom & putar.
+            - Hasil data hanya ditampilkan jika scan dari API berhasil.
         */}
-        {!hasScanned ? (
+        {!hasScanned || !backendScan ? (
           <View style={styles.scanCard}>
             {/* Top Badges */}
             <View style={styles.topBadgesRow}>
               <View style={styles.leftBadge}>
                 <Sparkles size={14} color="#FFFFFF" strokeWidth={2.2} />
-                <Text style={styles.badgeText}>YOLOv8 Edge AI</Text>
+                <Text style={styles.badgeText}>Pengenal menu + kesegaran matang</Text>
               </View>
               <View style={styles.rightBadge}>
                 <Zap size={14} color="#22C55E" fill="#22C55E" strokeWidth={2.2} />
-                <Text style={styles.badgeText}>Latensi ~45ms</Text>
+                <Text style={styles.badgeText}>Inferensi server</Text>
               </View>
             </View>
 
             {/* Typography */}
             <Text style={styles.scanCardTitle}>
-              Pemindai Visual Kelayakan & Makronutrien AI
+              Scan Hidangan Matang
             </Text>
             <Text style={styles.scanCardDescription}>
-              Arahkan kamera ke porsi makan MBG untuk skrining visual kebusukan instan serta kalkulasi otomatis karbohidrat, protein, & lemak porsi anak.
+              Foto dinilai oleh model pengenal menu dan model kesegaran hidangan matang. Token QR serta suhu berasal dari pemeriksaan petugas; batch mengisi resep dan gizi bila tersedia di database.
             </Text>
+
+            <View style={styles.scanInputs}>
+              <TextInput value={qrToken} onChangeText={setQrToken} placeholder="Masukkan token QR boks (manual)" autoCapitalize="characters" style={styles.scanInput} accessibilityLabel="Masukkan token QR boks secara manual" />
+              <View style={styles.scanTemperatureRow}>
+                <TextInput value={releaseTemp} onChangeText={setReleaseTemp} placeholder="Suhu lepas dapur °C" keyboardType="decimal-pad" style={[styles.scanInput, styles.scanTemperatureInput]} accessibilityLabel="Suhu lepas dapur" />
+                <TextInput value={holdingTemp} onChangeText={setHoldingTemp} placeholder="Suhu holding °C" keyboardType="decimal-pad" style={[styles.scanInput, styles.scanTemperatureInput]} accessibilityLabel="Suhu holding" />
+              </View>
+            </View>
 
             {/* Action Buttons */}
             <View style={styles.actionButtonsRow}>
@@ -455,7 +422,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
               </TouchableOpacity>
             </View>
           </View>
-        ) : (
+        ) : capturedPhoto ? (
           /* Kartu Foto Hasil Jepretan Kamera dengan Floating UI Tags */
           <View style={styles.capturedImageHeroCard}>
             <TouchableOpacity
@@ -473,43 +440,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
               />
             </TouchableOpacity>
 
-            {/* Floating UI Tags di Atas Makanan (YOLOv8 Detection Overlays) */}
-            {showAiTags &&
-              detectionResult.items.map((item) => {
-                const isSelected = selectedItem?.id === item.id;
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[
-                      styles.floatingTag,
-                      {
-                        left: item.x,
-                        top: item.y,
-                      },
-                      isSelected && styles.floatingTagSelected,
-                    ]}
-                    onPress={() => handleTagPress(item)}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Pilih kompartemen ${item.name}`}
-                  >
-                    <View
-                      style={[
-                        styles.floatingTagDot,
-                        isSelected && styles.floatingTagDotSelected,
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.floatingTagText,
-                        isSelected && styles.floatingTagTextSelected,
-                      ]}
-                    >
-                      {item.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+            {/* Model klasifikasi tidak mengembalikan posisi/segmentasi pada foto. */}
 
             {/* Overlay Bar Atas */}
             <View style={styles.capturedImageOverlayTop} pointerEvents="box-none">
@@ -519,8 +450,8 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                   {isAnalyzing
                     ? 'Analisis AI berjalan…'
                     : backendScan
-                      ? `YOLOv8: ${backendScan.aiClass}`
-                      : 'Deteksi YOLOv8 AI Aktif'}
+                      ? `Kesegaran ${backendScan.freshnessClass || backendScan.aiClass} · menu ${backendScan.menuClass || 'belum dikenali'}`
+                      : 'Menunggu hasil classifier server'}
                 </Text>
               </View>
 
@@ -550,18 +481,24 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
               </TouchableOpacity>
             </View>
           </View>
+        ) : (
+          <View style={styles.emptyStateContainer}>
+            <Text style={styles.emptyStateTitle}>Foto belum tersedia</Text>
+            <Text style={styles.emptyStateDescription}>{backendError || 'Ambil foto baru untuk mengirim scan ke server.'}</Text>
+          </View>
         )}
 
         {/* Area di Bawah Scan Card */}
-        {!hasScanned ? (
+        {!hasScanned || !backendScan ? (
           /* Initial / Default Empty State (100% Bahasa Indonesia) */
           <View style={styles.emptyStateContainer}>
             <View style={styles.emptyStateIconWrapper}>
               <Scan size={32} color="#94A3B8" strokeWidth={1.8} />
             </View>
-            <Text style={styles.emptyStateTitle}>Data akan muncul di sini setelah pemindaian</Text>
+              <Text style={styles.emptyStateTitle}>{backendError ? 'Scan belum berhasil' : 'Data akan muncul di sini setelah pemindaian'}</Text>
+            {backendError ? <Text style={styles.emptyStateDescription}>{backendError}</Text> : null}
             <Text style={styles.emptyStateDescription}>
-              Ketuk tombol &quot;Mulai Pindai Porsi MBG&quot; untuk membuka kamera perangkat dan memindai porsi makanan secara langsung.
+              Masukkan token QR serta suhu hasil pengukuran, lalu ambil foto untuk mengirimnya ke model yang sama dengan portal web.
             </Text>
           </View>
         ) : (
@@ -571,7 +508,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
             <View style={styles.scannedHeader}>
               <View style={styles.scannedBatchBadge}>
                 <Check size={14} color="#15803D" strokeWidth={2.5} />
-                <Text style={styles.scannedBatchCode}>{scenario.payload.code}</Text>
+                <Text style={styles.scannedBatchCode}>{backendScan?.qrToken || qrToken}</Text>
               </View>
               <TouchableOpacity
                 style={styles.resetButton}
@@ -583,6 +520,18 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                 <RotateCcw size={13} color="#64748B" />
                 <Text style={styles.resetButtonText}>Reset / Pindai Ulang</Text>
               </TouchableOpacity>
+            </View>
+            <View style={{ backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, borderRadius: 14, padding: 12, gap: 4 }}>
+              <Text style={{ color: '#64748B', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' }}>Menu batch</Text>
+              <Text style={{ color: '#0F172A', fontSize: 13, fontWeight: '800' }}>{backendScan.batchInfo?.menuName || backendScan.menuName || 'Menu belum tercatat'}</Text>
+              <Text style={{ color: '#64748B', fontSize: 11 }}>
+                {backendScan.batchInfo?.sppgName || 'SPPG belum tercatat'} · {backendScan.batchInfo?.batchId || backendScan.batchId || 'Batch belum tertaut'} · produksi {backendScan.batchInfo?.productionDate || 'belum tercatat'}
+              </Text>
+              {backendScan.batchInfo?.ingredients?.map((ingredient, index) => (
+                <Text key={`${ingredient.name}-${index}`} style={{ color: '#475569', fontSize: 11 }}>
+                  • {ingredient.name}{ingredient.weightG > 0 ? ` · ${ingredient.weightG} g` : ''}
+                </Text>
+              ))}
             </View>
 
             {/* Segmented Control (Pill-shaped Tab Switcher) */}
@@ -646,21 +595,21 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
             {activeTab === 'gizi' ? (
               <View style={styles.viewContainer}>
                 {/* Tabel Ringkasan Kandungan Gizi Biru/Oranye (Sesuai Referensi Gambar) */}
-                <NutritionSummaryTable
+                {backendScan?.macros ? <NutritionSummaryTable
                   totalNutrition={totalNutrition}
-                  items={detectionResult.items}
+                  items={displayItems}
                   selectedItem={selectedItem}
                   onSelectItem={setSelectedItem}
-                />
+                /> : <Text style={styles.sectionCaption}>Data gizi belum tersedia dari server.</Text>}
 
                 {/* Estimasi Makronutrien Target Porsi (Progress Bars) */}
                 <View style={styles.macroSection}>
                   <Text style={styles.sectionTitle}>Estimasi makronutrien target porsi</Text>
                   <Text style={styles.sectionCaption}>
-                    Target kelompok SD atas. Estimasi dari dataset gizi per bahan menu.
+                    Nilai berasal dari resep atau paket menu batch yang tersimpan di server.
                     {backendScan?.nutritionNote ? ` ${backendScan.nutritionNote}` : ''}
                   </Text>
-                  {macros.map((macro) => (
+                    {backendScan?.macros ? macros.map((macro) => (
                     <View key={macro.key} style={styles.macroRow}>
                       <Text style={styles.macroLabel}>
                         {macro.label} · {macro.unit}
@@ -673,7 +622,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                       </View>
                       <Text style={styles.macroPercent}>{macro.percentage}% target</Text>
                     </View>
-                  ))}
+                    )) : <Text style={styles.sectionCaption}>Data gizi belum tercatat pada batch yang dipindai.</Text>}
                 </View>
 
                 {/* Contextual AI Consult Card */}
@@ -687,11 +636,11 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                   <View style={styles.aiConsultLeft}>
                     <View style={styles.aiConsultBadge}>
                       <Bot size={13} color="#0C4A94" strokeWidth={2.4} />
-                      <Text style={styles.aiConsultBadgeText}>Tanya KawanGizi AI</Text>
+                      <Text style={styles.aiConsultBadgeText}>Panduan hasil server</Text>
                     </View>
                     <Text style={styles.aiConsultTitle}>Kesesuaian Gizi untuk Siswa SD</Text>
                     <Text style={styles.aiConsultDescription}>
-                      Ingin tahu apakah protein {formatNumber(totalNutrition.protein)}g ini cukup untuk anak usia 10 tahun? Tanyakan langsung ke asisten AI.
+                {backendScan?.macros ? `Protein terhitung ${formatNumber(totalNutrition.protein)}g dari dataset server.` : 'Hasil dataset gizi tampil setelah analisis server berhasil.'}
                     </Text>
                   </View>
                   <View style={styles.aiConsultActionBtn}>
@@ -702,93 +651,54 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
             ) : (
               /* VIEW B: VALIDASI KELAYAKAN */
               <View style={styles.viewContainer}>
-                {/* Scenario Switcher / Manual Decision Buttons for QA / Testing */}
-                <View style={styles.scenarioRow}>
-                  {MOCK_SCAN_SCENARIOS.map((item) => {
-                    const isSelected = item.key === scenarioKey;
-                    return (
-                      <TouchableOpacity
-                        key={item.key}
-                        style={[styles.scenarioChip, isSelected && styles.scenarioChipActive]}
-                        onPress={() => {
-                          setScenarioKey(item.key);
-                          setBackendScan(null);
-                        }}
-                        activeOpacity={0.8}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isSelected }}
-                        accessibilityLabel={`Skenario ${item.label}: ${item.description}`}
-                      >
-                        <Text style={[styles.scenarioText, isSelected && styles.scenarioTextActive]}>
-                          {item.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
                 {/* Tahap 1: Verifikasi QR boks */}
                 <ChecklistSection
                   step="Tahap 1"
-                  title="Verifikasi QR boks"
-                  caption={`Selesai masak ${scenario.payload.cookFinishedAt}, batas aman 4 jam`}
-                  rows={qr.checks.map((check) => ({
-                    id: check.key,
+                  title="Pemeriksaan token QR"
+                  caption="Server saat ini memeriksa format token; tanda tangan digital dan rute belum diverifikasi."
+                  rows={(backendScan?.checks ?? []).filter((check) => check.label.toLowerCase().includes('qr')).map((check, index) => ({
+                    id: `qr-${index}`,
                     label: check.label,
-                    value: check.value,
-                    note: check.requirement,
-                    color: check.passed ? '#15803D' : '#B91C1C',
+                    value: check.note,
+                    note: check.note,
+                    color: check.ok ? '#15803D' : '#B91C1C',
                   }))}
                 />
 
                 {/* Tahap 2: Deteksi visual porsi */}
                 <ChecklistSection
                   step="Tahap 2"
-                  title="Deteksi visual porsi"
+                  title="Pengenalan menu & kesegaran hidangan matang"
                   caption={
                     backendScan
-                      ? 'Hasil model YOLOv8 + kategori pemeriksaan'
-                      : 'Empat kategori yang diperiksa model'
+                      ? 'Dua classifier YOLOv8 menilai kategori menu dan kondisi visual hidangan matang; hasilnya bukan penetapan keamanan pangan.'
+                      : 'Hasil classifier muncul setelah foto berhasil dianalisis oleh server.'
                   }
-                  rows={[
-                    ...(backendScan
-                      ? [
-                          {
-                            id: 'ai-model',
-                            label: 'Model YOLOv8',
-                            value: `${backendScan.aiClass} · keyakinan ${Math.round(backendScan.aiConfidence * 100)}%`,
-                            note: undefined,
-                            color: backendScan.aiClass.toLowerCase().startsWith('fresh')
-                              ? SEVERITY_COLOR.none
-                              : SEVERITY_COLOR.critical,
-                          },
-                        ]
-                      : []),
-                    ...scenario.signals.map((signal) => ({
-                      id: signal.key,
-                      label: signal.label,
-                      value: signal.finding,
-                      note: undefined,
-                      color: SEVERITY_COLOR[signal.severity],
-                    })),
-                  ]}
+                  rows={(backendScan?.checks ?? []).filter((check) => check.label.toLowerCase().includes('pengenalan menu') || check.label.toLowerCase().includes('kesegaran hidangan')).map((check, index) => ({
+                    id: `ai-${index}`,
+                    label: check.label,
+                    value: check.label.toLowerCase().includes('menu')
+                      ? `${backendScan?.menuClass || 'Belum dikenali'} · keyakinan ${Math.round((backendScan?.menuConfidence ?? 0) * 100)}%`
+                      : `${backendScan?.freshnessClass || backendScan?.aiClass} · keyakinan ${Math.round((backendScan?.freshnessConfidence ?? backendScan?.aiConfidence ?? 0) * 100)}%`,
+                    note: check.note,
+                    color: check.ok ? SEVERITY_COLOR.none : SEVERITY_COLOR.critical,
+                  }))}
                 />
 
                 {/* Keputusan Mutu Card */}
                 <View style={[styles.decisionCard, { borderColor: verdict.color }]}>
-                  <Text style={styles.decisionStep}>Keputusan mutu</Text>
+                    <Text style={styles.decisionStep}>Hasil visual AI · keputusan akhir oleh petugas</Text>
                   <View style={styles.decisionScoreRow}>
                     <Text style={[styles.decisionScore, { color: verdict.color }]}>
-                      {Math.round(effectiveScore)}
+                    {backendScan ? Math.round(backendScan.score) : '—'}
                     </Text>
-                    <Text style={styles.decisionScoreUnit}>skor keamanan</Text>
+                    <Text style={styles.decisionScoreUnit}>probabilitas kelas segar</Text>
                   </View>
                   <Text style={[styles.decisionLabel, { color: verdict.color }]}>{verdict.label}</Text>
                   <Text style={styles.decisionAction}>{verdict.action}</Text>
-                  {backendScan && (
+        {backendScan && (
                     <Text style={styles.decisionAiMeta}>
-                      {backendScan.id} · YOLOv8 {backendScan.aiClass}{' '}
-                      {Math.round(backendScan.aiConfidence * 100)}% · {backendScan.scannedAt}
+                      {backendScan.id} · Menu: {backendScan.menuClass || 'belum dikenali'} ({Math.round((backendScan.menuConfidence ?? 0) * 100)}%) · Kesegaran: {backendScan.freshnessClass || backendScan.aiClass} ({Math.round((backendScan.freshnessConfidence ?? backendScan.aiConfidence) * 100)}%) · {backendScan.scannedAt}
                     </Text>
                   )}
                   {verdict.reasons.length > 0 && (
@@ -802,7 +712,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                   )}
                   <View style={styles.holdingRow}>
                     <Text style={styles.holdingText}>
-                      Suhu holding {effectiveHoldingTempC}°C · sisa waktu {scenario.minutesToDeadline} menit
+                    {backendScan ? `Suhu holding terukur ${effectiveHoldingTempC}°C` : 'Menunggu hasil dari server AI'}
                     </Text>
                   </View>
                 </View>
@@ -813,16 +723,16 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                   onPress={() => setIsChatOpen(true)}
                   activeOpacity={0.88}
                   accessibilityRole="button"
-                  accessibilityLabel="Konsultasi keamanan pangan dengan AI"
+                    accessibilityLabel="Buka panduan keamanan pangan"
                 >
                   <View style={styles.safetyAiBannerLeft}>
                     <View style={styles.safetyAiBadge}>
                       <ShieldCheck size={12} color="#15803D" strokeWidth={2.4} />
-                      <Text style={styles.safetyAiBadgeText}>Kepatuhan HACCP</Text>
+                      <Text style={styles.safetyAiBadgeText}>Panduan petugas</Text>
                     </View>
-                    <Text style={styles.safetyAiTitle}>Tanyakan Batas Suhu Holding & Alergen</Text>
+                    <Text style={styles.safetyAiTitle}>Catatan hasil classifier dan suhu</Text>
                     <Text style={styles.safetyAiCaption}>
-                      AI siap memvalidasi potensi kontaminasi dan kepatuhan batas suhu kritis 60°C.
+                      Panduan memakai hasil scan server; model tidak mendeteksi kontaminasi atau memvalidasi batas suhu.
                     </Text>
                   </View>
                   <View style={styles.safetyAiActionBtn}>
@@ -835,6 +745,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                   <TouchableOpacity
                     style={[styles.secondaryBtn, verdict.verdict === 'ditolak' && styles.dangerBtn]}
                     onPress={() => handleAction(false)}
+                    disabled={!backendScan}
                     activeOpacity={0.88}
                     accessibilityRole="button"
                     accessibilityLabel="Tolak dan amankan sampel"
@@ -850,23 +761,15 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                       verdict.verdict === 'ditolak' && styles.primaryBtnBlocked,
                     ]}
                     onPress={() => handleAction(true)}
+                    disabled={!backendScan || verdict.verdict === 'ditolak'}
                     activeOpacity={0.88}
                     accessibilityRole="button"
-                    accessibilityLabel="Setujui porsi"
+                    accessibilityLabel="Tandai hasil untuk pemeriksaan petugas"
                     accessibilityState={{ disabled: verdict.verdict === 'ditolak' }}
                   >
                     <Check size={18} color="#1E293B" strokeWidth={2.5} />
-                    <Text style={styles.primaryBtnText}>Setujui porsi</Text>
+                    <Text style={styles.primaryBtnText}>Perlu verifikasi petugas</Text>
                   </TouchableOpacity>
-                </View>
-
-                {/* Local Offline Banner */}
-                <View style={styles.localRow}>
-                  <WifiOff size={16} color="#64748B" />
-                  <Text style={styles.localText}>
-                    Belum ada pindaian tersimpan. Prototipe ini belum punya penyimpanan lokal,
-                    jadi riwayat Offline-First belum berfungsi.
-                  </Text>
                 </View>
               </View>
             )}
@@ -895,20 +798,6 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
             </View>
 
             <View style={styles.modalTopActions}>
-              {/* Tombol Toggle Label AI (100% Solid Opaque Orange saat aktif) */}
-              <TouchableOpacity
-                style={[
-                  styles.modalIconBtn,
-                  showAiTags ? styles.modalTagToggleBtnActive : styles.modalTagToggleBtnInactive,
-                ]}
-                onPress={() => setShowAiTags((prev) => !prev)}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel={showAiTags ? 'Sembunyikan label AI' : 'Tampilkan label AI'}
-              >
-                <Tag size={19} color="#FFFFFF" strokeWidth={2.2} />
-              </TouchableOpacity>
-
               {/* Tombol Rotasi 90 Derajat */}
               <TouchableOpacity
                 style={[styles.modalIconBtn, styles.modalRotateBtn]}
@@ -964,44 +853,6 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                     resizeMode="contain"
                   />
 
-                  {/* Floating Tags di dalam Modal yang berputar bersama gambar tanpa unmount */}
-                  {showAiTags &&
-                    detectionResult.items.map((item) => {
-                      const isSelected = selectedItem?.id === item.id;
-                      return (
-                        <TouchableOpacity
-                          key={`modal-${item.id}`}
-                          style={[
-                            styles.floatingTag,
-                            styles.modalFloatingTag,
-                            {
-                              left: item.x,
-                              top: item.y,
-                            },
-                            isSelected && styles.floatingTagSelected,
-                          ]}
-                          onPress={() => handleTagPress(item)}
-                          activeOpacity={0.7}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Pilih kompartemen ${item.name}`}
-                        >
-                          <View
-                            style={[
-                              styles.floatingTagDot,
-                              isSelected && styles.floatingTagDotSelected,
-                            ]}
-                          />
-                          <Text
-                            style={[
-                              styles.floatingTagText,
-                              isSelected && styles.floatingTagTextSelected,
-                            ]}
-                          >
-                            {item.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
                 </View>
               </View>
 
@@ -1009,7 +860,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
               <View style={styles.modalNutritionSection}>
                 <NutritionSummaryTable
                   totalNutrition={totalNutrition}
-                  items={detectionResult.items}
+                  items={displayItems}
                   selectedItem={selectedItem}
                   onSelectItem={setSelectedItem}
                   isDarkTheme={true}
@@ -1070,37 +921,14 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
         </View>
       </Modal>
 
-      <BottomSheet
-        visible={confirm !== null}
-        onClose={() => setConfirm(null)}
-        title="Ringkasan keputusan"
-        subtitle={
-          logged
-            ? 'Masuk buku log riwayat, belum dikirim ke server SPPG'
-            : 'Dicatat di perangkat, belum dikirim ke server SPPG'
-        }
-      >
-        <View style={[styles.sheetVerdict, { borderColor: confirm?.color ?? '#E7E9EC' }]}>
-          <Text style={[styles.sheetVerdictLabel, { color: confirm?.color }]}>
-            {confirm?.label}
-          </Text>
-          <Text style={styles.sheetVerdictAction}>{confirm?.action}</Text>
-        </View>
-        {confirm?.reasons.map((reason) => (
-          <Text key={reason} style={styles.sheetReason}>
-            {reason}
-          </Text>
-        ))}
-      </BottomSheet>
-
-      {/* Floating Action Button (FAB) Asisten Tanya AI Gizi (Always Visible di kedua tab) */}
+      {/* Panduan hasil server */}
       {hasScanned && (
         <TouchableOpacity
           style={styles.chatFab}
           onPress={() => setIsChatOpen(true)}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Buka Tanya Asisten AI Gizi"
+          accessibilityLabel="Buka panduan gizi"
         >
           <View style={styles.chatFabInner}>
             <View style={styles.chatFabIconBg}>
@@ -1109,21 +937,20 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                 <Sparkles size={8} color="#F59E0B" fill="#F59E0B" />
               </View>
             </View>
-            <Text style={styles.chatFabLabel}>Tanya AI Gizi</Text>
+            <Text style={styles.chatFabLabel}>Panduan gizi</Text>
           </View>
         </TouchableOpacity>
       )}
 
-      {/* Modal Asisten Tanya AI Gizi Kontekstual */}
+      {/* Panduan gizi dan keamanan berbasis hasil server */}
       <ContextualAiChatSheet
         visible={isChatOpen}
         onClose={() => setIsChatOpen(false)}
-        batchCode={scenario.payload.code}
+        batchCode={backendScan?.boxId ?? qrToken}
         totalNutrition={totalNutrition}
-        detectedItems={detectionResult.items}
+        detectedItems={displayItems}
         score={effectiveScore}
         holdingTempC={effectiveHoldingTempC}
-        minutesToDeadline={scenario.minutesToDeadline}
         verdict={verdict}
       />
     </View>
@@ -1243,23 +1070,9 @@ const NutritionSummaryTable: React.FC<NutritionSummaryTableProps> = ({
           </View>
         </View>
 
-        {/* Row: Serat */}
-        <View style={[styles.nutritionRow, styles.nutritionRowLast]}>
-          <View style={styles.nutritionCell}>
-            <Text style={styles.nutritionLabel}>Serat</Text>
-            <Text style={styles.nutritionColon}>:</Text>
-            <Text style={styles.nutritionValue}>{formatNumber(totalNutrition.serat)} g</Text>
-          </View>
-          <View style={styles.nutritionCellDivider} />
-          <View style={styles.nutritionCell}>
-            <Text style={styles.nutritionLabel}>Serat</Text>
-            <Text style={styles.nutritionColon}>:</Text>
-            <Text style={styles.nutritionValue}>{formatNumber(porsiKecil.serat)} g</Text>
-          </View>
-        </View>
       </View>
 
-      {/* Bagian: Komponen Terdeteksi YOLOv8 */}
+      {/* Bahan input untuk kalkulasi dataset gizi */}
       <View style={styles.detectedComponentsContainer}>
         <View style={styles.detectedHeaderRow}>
           <Text
@@ -1268,7 +1081,7 @@ const NutritionSummaryTable: React.FC<NutritionSummaryTableProps> = ({
               isDarkTheme && styles.detectedSectionTitleDark,
             ]}
           >
-            Komponen Terdeteksi YOLOv8:
+            Bahan yang cocok dengan dataset gizi:
           </Text>
           <View style={styles.detectedCountBadge}>
             <Text style={styles.detectedCountText}>{items.length} Kompartemen</Text>
@@ -1347,7 +1160,7 @@ const NutritionSummaryTable: React.FC<NutritionSummaryTableProps> = ({
               <View style={styles.itemDetailHeaderLeft}>
                 <View style={styles.itemDetailBadge}>
                   <Sparkles size={12} color="#F59E0B" strokeWidth={2.4} />
-                  <Text style={styles.itemDetailBadgeText}>YOLOv8 Deteksi</Text>
+                  <Text style={styles.itemDetailBadgeText}>Data nutrisi server</Text>
                 </View>
                 <Text style={styles.itemDetailTitle}>{selectedItem.name}</Text>
                 <Text style={styles.itemDetailSubtitle}>
@@ -1406,15 +1219,6 @@ const NutritionSummaryTable: React.FC<NutritionSummaryTableProps> = ({
                 <Text style={styles.itemMacroUnit}>g</Text>
               </View>
 
-              <View style={styles.itemMacroDivider} />
-
-              <View style={styles.itemMacroCol}>
-                <Text style={styles.itemMacroLabel}>Serat</Text>
-                <Text style={styles.itemMacroValue}>
-                  {formatNumber(selectedItem.nutrition.serat)}
-                </Text>
-                <Text style={styles.itemMacroUnit}>g</Text>
-              </View>
             </View>
           </View>
         )}
@@ -1581,6 +1385,26 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.95)',
     lineHeight: 20,
     marginTop: 10,
+  },
+  scanInputs: {
+    gap: 8,
+    marginTop: 14,
+  },
+  scanInput: {
+    minHeight: 42,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
+    color: '#0F172A',
+    fontSize: 13,
+  },
+  scanTemperatureRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  scanTemperatureInput: {
+    flex: 1,
+    minWidth: 0,
   },
   actionButtonsRow: {
     flexDirection: 'row',

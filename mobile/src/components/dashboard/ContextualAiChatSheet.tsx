@@ -48,7 +48,6 @@ interface ContextualAiChatSheetProps {
   detectedItems: DetectedFoodItem[];
   score: number;
   holdingTempC: number;
-  minutesToDeadline: number;
   verdict: QualityVerdict;
 }
 
@@ -57,7 +56,7 @@ const QUICK_PROMPTS = [
   'Berapa batas aman suhu holding makanan ini?',
   'Apakah ada potensi alergen pada menu ini?',
   'Bagaimana rekomendasi porsi untuk anak SD kelas 1-3?',
-  'Kenapa skor keamanan porsi ini tinggi?',
+  'Apa arti hasil classifier pada porsi ini?',
 ];
 
 export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
@@ -68,7 +67,6 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
   detectedItems,
   score,
   holdingTempC,
-  minutesToDeadline,
   verdict,
 }) => {
   const insets = useSafeAreaInsets();
@@ -85,91 +83,44 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
     {
       id: 'welcome',
       sender: 'ai',
-      text: `Halo! Saya Asisten AI KawanGizi. Porsi MBG batch **${batchCode}** terdeteksi memiliki energi **${formatNumber(
-        totalNutrition.energi,
-      )} kal** dan protein **${formatNumber(
-        totalNutrition.protein,
-      )} g**, dengan skor kelayakan mutu **${score} (${verdict.label})**.\n\nAda yang ingin Anda tanyakan seputar kandungan gizi atau kepatuhan keamanan pangan porsi ini?`,
+      text: `Panduan ini memakai hasil server untuk batch **${batchCode || 'belum dipindai'}**. Dataset menghitung energi **${formatNumber(totalNutrition.energi)} kkal** dan protein **${formatNumber(totalNutrition.protein)} g**. Classifier hanya membedakan fresh/stale buah dan sayur; bukan detektor alergen, benda asing, atau keamanan mikrobiologis.`,
       timestamp: 'Baru saja',
-      badge: 'YOLOv8 Context AI',
+      badge: 'Panduan hasil server',
     },
   ]);
 
   // Reset or scroll on open
   useEffect(() => {
     if (visible) {
+      setMessages([{
+        id: 'welcome',
+        sender: 'ai',
+        text: `Panduan ini memakai hasil server untuk batch **${batchCode || 'belum dipindai'}**. Dataset menghitung energi **${formatNumber(totalNutrition.energi)} kkal** dan protein **${formatNumber(totalNutrition.protein)} g**. Classifier hanya membedakan fresh/stale buah dan sayur; bukan detektor alergen, benda asing, atau keamanan mikrobiologis.`,
+        timestamp: 'Baru saja',
+        badge: 'Panduan hasil server',
+      }]);
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 200);
     }
-  }, [visible]);
+  }, [visible, batchCode, totalNutrition.energi, totalNutrition.protein]);
 
-  // Contextual answer generator based on scan data
+  // Deterministic guide using only the values returned by the scan API; it is not an LLM.
   const generateContextualResponse = (query: string): string => {
     const q = query.toLowerCase();
-
-    // 1. Protein sufficiency for 10-year-olds
-    if (q.includes('protein') && (q.includes('10') || q.includes('anak') || q.includes('sd') || q.includes('cukup'))) {
-      const targetProtein = 30; // target makan siang anak SD atas
-      const currentProtein = totalNutrition.protein;
-      const pct = Math.round((currentProtein / targetProtein) * 100);
-      const mainProteinSources = detectedItems
-        .filter((item) => item.nutrition.protein > 3)
-        .map((item) => `${item.name} (${formatNumber(item.nutrition.protein)}g)`)
-        .join(' dan ');
-
-      return `✅ **Analisis Kecukupan Protein (Anak Usia 10 Tahun / SD Kelas 4-6):**\n\n• **Target makan siang:** Standar AKG makan siang MBG adalah **25–30 gram protein** (sekitar 35% dari total kebutuhan harian 55g).\n• **Kandungan porsi ini:** **${formatNumber(
-        currentProtein,
-      )} gram** (${pct}% dari target).\n• **Sumber utama:** Terpenuhi dari ${mainProteinSources || 'Ayam Goreng dan Telur Dadar'}.\n\n💡 **Kesimpulan:** Kandungan protein porsi ini **sangat memadai** untuk mendukung pertumbuhan dan daya konsentrasi belajar siswa siang hari.`;
+    if (q.includes('alergen') || q.includes('alergi')) {
+      return 'Model ini tidak mengenali bahan makanan dan tidak mendeteksi alergen. Periksa label resmi dari SPPG serta data alergi siswa; konfirmasi ke petugas jika belum jelas.';
     }
-
-    // 2. Holding temperature and deadline
-    if (q.includes('suhu') || q.includes('holding') || q.includes('batas') || q.includes('haccp') || q.includes('hangat')) {
-      const isSafeTemp = holdingTempC >= 60;
-      return `🌡️ **Kepatuhan Suhu Holding & Waktu Kritis (HACCP):**\n\n• **Suhu holding saat ini:** **${holdingTempC}°C** (${
-        isSafeTemp ? 'Aman di atas batas kritis 60°C' : 'Peringatan: di bawah 60°C'
-      }).\n• **Sisa waktu distribusi:** **${minutesToDeadline} menit** sebelum batas maksimal 4 jam.\n• **Status:** ${
-        verdict.label
-      }.\n\n💡 **Rekomendasi:** Segera bagikan boks ke ruang kelas dalam waktu ${minutesToDeadline} menit untuk menjaga kehangatan dan mencegah pertumbuhan bakteri Bacillus cereus pada nasi hangat.`;
+    if (q.includes('serat') || q.includes('vitamin')) {
+      return 'Dataset yang dipakai API saat ini mengembalikan energi, protein, lemak, dan karbohidrat. Serat dan vitamin belum tersedia pada hasil ini.';
     }
-
-    // 3. Allergens
-    if (q.includes('alergen') || q.includes('alergi') || q.includes('kacang') || q.includes('telur') || q.includes('susu') || q.includes('gluten')) {
-      return `⚠️ **Skrining Potensi Alergen Porsi Ini:**\n\nBerdasarkan deteksi visual YOLOv8, menu ini mengandung bahan berisiko alergen:\n1. **Telur:** Ditemukan pada kompartemen *Telur Dadar Suwir* (risiko alergi albumin/kuning telur).\n2. **Susu / Laktosa:** Ditemukan pada kompartemen *Pisang & Susu* (risiko intoleransi laktosa).\n3. **Minyak / Nabati:** Masakan tumis/goreng menggunakan minyak nabati.\n\n🛡️ **Tindakan Guru Validator:** Konfirmasikan daftar alergi siswa di kelas sebelum dibagikan. Siswa dengan alergi telur/susu disarankan mendapatkan menu substitusi protein nabati.`;
+    if (q.includes('suhu') || q.includes('holding') || q.includes('haccp') || q.includes('waktu')) {
+      return `Suhu holding yang dimasukkan: ${holdingTempC}°C. Status server: ${verdict.label}. API belum menerima waktu selesai masak, jadi sisa waktu konsumsi tidak dapat dihitung.`;
     }
-
-    // 4. Porsi Kecil vs Porsi Besar
-    if (q.includes('kecil') || q.includes('sd 1') || q.includes('kelas 1') || q.includes('kelas 2') || q.includes('kelas 3') || q.includes('rendah')) {
-      const porsiKecilKal = totalNutrition.energi * 0.6817;
-      const porsiKecilProt = totalNutrition.protein * 0.6327;
-      return `🧒 **Rekomendasi Porsi Kecil (SD Kelas 1–3, Usia 7–9 Tahun):**\n\n• **Estimasi Energi:** **${formatNumber(
-        porsiKecilKal,
-      )} kkal** (target AKG: ~400–450 kkal).\n• **Estimasi Protein:** **${formatNumber(
-        porsiKecilProt,
-      )} gram** (target AKG: ~18–20 gram).\n• **Penyesuaian Takaran:** Nasi dapat dikurangi menjadi 100g (3/4 porsi), lauk hewani tetap 1 potong utuh untuk memprioritaskan zat besi dan asam amino esensial.`;
+    if (q.includes('qr') || q.includes('skor') || q.includes('mutu') || q.includes('layak') || q.includes('aman')) {
+      return `Hasil server untuk ${batchCode || 'boks ini'}: keyakinan classifier ${score}/100, status ${verdict.label}. QR hanya diperiksa formatnya. Classifier fresh/stale dilatih untuk buah dan sayur; ini bukan pembuktian keamanan mikrobiologis.`;
     }
-
-    // 5. Mutu / Skor / Keamanan
-    if (q.includes('skor') || q.includes('keamanan') || q.includes('mutu') || q.includes('kenapa') || q.includes('layak')) {
-      return `🏆 **Rincian Skor Kelayakan Mutu (${score}/100):**\n\n• **Verifikasi QR Batch:** Valid (${batchCode}), SPPG resmi terdaftar.\n• **Deteksi Kebusukan YOLOv8:** 0 sinyal kerusakan organoleptik (warna nasi cerah, ayam matang merata).\n• **Deteksi Kontaminasi Asing:** Bersih (tidak ada serangga, rambut, atau partikel plastik).\n• **Suhu Holding:** ${holdingTempC}°C (kondisi optimal).\n\nStatus akhir: **${verdict.label}** — Aman dan layak konsumsi.`;
-    }
-
-    // 6. Serat / Sayuran
-    if (q.includes('serat') || q.includes('sayur') || q.includes('timun') || q.includes('buah') || q.includes('pisang')) {
-      return `🥗 **Analisis Komponen Sayur & Serat:**\n\n• Porsi mengandung **${formatNumber(
-        totalNutrition.serat,
-      )} gram serat** dari *Timun & Selada* serta *Pisang*.\n• Kandungan serat ini sudah memenuhi **118%** dari target serat makan siang anak SD.\n• Buah pisang juga menyumbang kalium dan vitamin B6 alami yang baik untuk mengembalikan energi siswa setelah aktivitas belajar.`;
-    }
-
-    // 7. General contextual fallback
-    const itemsList = detectedItems.map((i) => i.name).join(', ');
-    return `📋 **Informasi Gizi & Keamanan Porsi MBG:**\n\nPorsi ini terdiri dari: **${itemsList}**.\n\n• **Total Energi:** ${formatNumber(
-      totalNutrition.energi,
-    )} kal\n• **Protein:** ${formatNumber(totalNutrition.protein)} g\n• **Lemak:** ${formatNumber(
-      totalNutrition.lemak,
-    )} g\n• **Karbohidrat:** ${formatNumber(
-      totalNutrition.karbo,
-    )} g\n• **Skor Keamanan:** ${score}/100 (${verdict.label})\n\nPorsi ini telah diverifikasi aman secara mikrobiologis dan seimbang gizinya sesuai pedoman Badan Gizi Nasional (BGN). Ada hal lain yang ingin Anda tanyakan?`;
+    return `Lookup dataset server: energi ${formatNumber(totalNutrition.energi)} kkal, protein ${formatNumber(totalNutrition.protein)} g, lemak ${formatNumber(totalNutrition.lemak)} g, karbohidrat ${formatNumber(totalNutrition.karbo)} g. Hasil bergantung pada bahan dan berat yang dikirim; foto tidak mengenali bahan atau gramatur.`;
   };
 
   const handleSendMessage = (textToSend?: string) => {
@@ -187,7 +138,7 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
 
-    // Simulate AI thinking and context matching
+    // Tampilkan panduan deterministik berdasarkan hasil server.
     setTimeout(() => {
       const responseText = generateContextualResponse(query);
       setMessages((prev) => [
@@ -197,7 +148,7 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
           sender: 'ai',
           text: responseText,
           timestamp: 'Sekarang',
-          badge: 'KawanGizi AI',
+          badge: 'Panduan hasil server',
         },
       ]);
       setIsTyping(false);
@@ -229,10 +180,10 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
 
               <View style={styles.headerTextWrapper}>
                 <View style={styles.headerTitleRow}>
-                  <Text style={styles.headerTitle}>Asisten Tanya AI Gizi</Text>
+                  <Text style={styles.headerTitle}>Panduan Gizi & Keamanan</Text>
                   <View style={styles.onlinePill}>
                     <View style={styles.onlineDot} />
-                    <Text style={styles.onlineText}>Online</Text>
+                    <Text style={styles.onlineText}>Panduan</Text>
                   </View>
                 </View>
                 <Text style={styles.headerSubtitle}>
@@ -245,7 +196,7 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
                 onPress={onClose}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="Tutup Asisten AI"
+                accessibilityLabel="Tutup panduan"
               >
                 <X size={18} color="#64748B" strokeWidth={2.4} />
               </TouchableOpacity>
@@ -262,7 +213,7 @@ export const ContextualAiChatSheet: React.FC<ContextualAiChatSheetProps> = ({
               </View>
               <View style={styles.contextBadge}>
                 <ShieldCheck size={12} color="#15803D" />
-                <Text style={styles.contextBadgeText}>Skor {score} (Layak)</Text>
+                <Text style={styles.contextBadgeText}>Keyakinan classifier {score}/100</Text>
               </View>
               <View style={styles.contextBadge}>
                 <Text style={styles.contextBadgeText}>{holdingTempC}°C</Text>
@@ -710,3 +661,4 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 });
+

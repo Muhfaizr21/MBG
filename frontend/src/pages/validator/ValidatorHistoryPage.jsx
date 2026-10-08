@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   History,
   Search,
@@ -12,12 +12,11 @@ import {
 import { ValidatorLayout } from '../../components/layout/ValidatorLayout'
 import { useAuth } from '../../context/AuthContext'
 import { guardAdminAction } from '../../lib/adminActions'
+import { fetchRecentScans } from '../../lib/api'
 import {
-  TODAY_SCAN_LOG,
   CLASS_RECAP,
   SURPLUS_OPTIONS,
   HISTORY_FILTERS,
-  VALIDATOR_STATS,
 } from '../../data/validatorData'
 
 /**
@@ -42,6 +41,16 @@ export function ValidatorHistoryPage() {
   const [query, setQuery] = useState('')
   const [surplusSelections, setSurplusSelections] = useState({})
   const [toast, setToast] = useState(null)
+  const [scanRows, setScanRows] = useState([])
+  const [scanLoadError, setScanLoadError] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    fetchRecentScans(100)
+      .then((rows) => { if (active) setScanRows(Array.isArray(rows) ? rows : []) })
+      .catch((err) => { if (active) setScanLoadError(err.message || 'Gagal memuat riwayat scan.') })
+    return () => { active = false }
+  }, [])
 
   const showToast = (message, tone = 'info') => {
     setToast({ message, tone })
@@ -50,34 +59,50 @@ export function ValidatorHistoryPage() {
 
   const scans = useMemo(() => {
     const q = query.trim().toLowerCase()
-    // Data demo selalu "hari ini" — filter tanggal hanya mengubah label tampilan.
-    if (filter !== 'today' && filter !== 'yesterday') {
-      return TODAY_SCAN_LOG.filter((s) =>
-        !q
-          ? true
-          : s.boxId.toLowerCase().includes(q) ||
-            s.batchId.toLowerCase().includes(q) ||
-            s.classTarget.toLowerCase().includes(q),
-      ).slice(0, 3)
-    }
-    return TODAY_SCAN_LOG.filter((s) => {
-      if (!q) return true
-      return (
-        s.boxId.toLowerCase().includes(q) ||
-        s.batchId.toLowerCase().includes(q) ||
-        s.classTarget.toLowerCase().includes(q) ||
-        s.statusLabel.toLowerCase().includes(q)
-      )
+    const now = new Date()
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const startYesterday = new Date(startToday)
+    startYesterday.setDate(startYesterday.getDate() - 1)
+    const startWeek = new Date(startToday)
+    startWeek.setDate(startWeek.getDate() - 6)
+    return scanRows.map((row) => {
+      const created = new Date(row.createdAt)
+      const status = row.verdict === 'tolak' ? 'rejected' : 'warning'
+      return {
+        ...row,
+        time: created.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        classTarget: '—',
+        temp: row.holdingTempC,
+        score: row.aiConfidence == null ? null : Math.round(row.aiConfidence * 100),
+        status,
+        statusLabel: status === 'rejected' ? 'Ditahan untuk pemeriksaan' : 'Perlu verifikasi petugas',
+        created,
+      }
+    }).filter((row) => {
+      const day = new Date(row.created.getFullYear(), row.created.getMonth(), row.created.getDate())
+      const matchesFilter = filter === 'today' ? day >= startToday
+        : filter === 'yesterday' ? day >= startYesterday && day < startToday
+          : filter === '7d' ? day >= startWeek
+            : row.created.getMonth() === now.getMonth() && row.created.getFullYear() === now.getFullYear()
+      const matchesQuery = !q || [row.boxId, row.batchId, row.statusLabel].some((value) => String(value || '').toLowerCase().includes(q))
+      return matchesFilter && matchesQuery
     })
-  }, [filter, query])
+  }, [filter, query, scanRows])
 
   const totals = useMemo(() => {
     const quota = CLASS_RECAP.reduce((s, c) => s + c.quota, 0)
     const present = CLASS_RECAP.reduce((s, c) => s + c.present, 0)
     const handed = CLASS_RECAP.reduce((s, c) => s + c.handed, 0)
     const leftover = CLASS_RECAP.reduce((s, c) => s + c.leftover, 0)
-    return { quota, present, handed, leftover }
-  }, [])
+    const today = new Date()
+    const todayRows = scanRows.filter((row) => {
+      const date = new Date(row.createdAt)
+      return date.toDateString() === today.toDateString()
+    })
+    const needsReview = todayRows.filter((row) => row.verdict === 'peringatan').length
+    const reviewRate = todayRows.length ? Math.round((needsReview / todayRows.length) * 100) : 0
+    return { quota, present, handed, leftover, boxesScanned: todayRows.length, reviewRate }
+  }, [scanRows])
 
   const setSurplus = (className, optionId) => {
     const res = guardAdminAction(
@@ -133,10 +158,10 @@ export function ValidatorHistoryPage() {
       {/* Ringkasan */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
-          { label: 'Boks Dipindai Hari Ini', value: VALIDATOR_STATS.boxesScanned, sub: `${VALIDATOR_STATS.verifiedRate}% lolos verifikasi`, tone: 'text-slate-900' },
-          { label: 'Siswa Hadir', value: totals.present, sub: `dari ${totals.quota} terdaftar`, tone: 'text-emerald-700' },
-          { label: 'Porsi Diserahkan', value: totals.handed, sub: 'sesuai presensi kelas', tone: 'text-emerald-700' },
-          { label: 'Porsi Sisa', value: totals.leftover, sub: 'perlu alokasi resmi', tone: 'text-amber-600' },
+          { label: 'Hasil Scan Hari Ini', value: totals.boxesScanned, sub: `${totals.reviewRate}% perlu verifikasi petugas`, tone: 'text-slate-900' },
+          { label: 'Siswa Hadir · contoh', value: totals.present, sub: `dari ${totals.quota} terdaftar`, tone: 'text-emerald-700' },
+          { label: 'Porsi Diserahkan · contoh', value: totals.handed, sub: 'sesuai presensi kelas', tone: 'text-emerald-700' },
+          { label: 'Porsi Sisa · contoh', value: totals.leftover, sub: 'perlu alokasi resmi', tone: 'text-amber-600' },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{s.label}</p>
@@ -167,7 +192,7 @@ export function ValidatorHistoryPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari ID boks, batch, atau kelas..."
+          placeholder="Cari ID boks atau batch..."
             className="w-full pl-9 pr-4 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition"
           />
         </div>
@@ -184,11 +209,13 @@ export function ValidatorHistoryPage() {
       {/* Log pindai harian */}
       <section className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-extrabold tracking-tight">Buku log riwayat pindaian harian</h2>
+          <h2 className="text-sm font-extrabold tracking-tight">Buku log hasil classifier</h2>
           <span className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
             {scans.length} catatan
           </span>
         </div>
+
+        {scanLoadError && <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">Riwayat scan belum dapat dimuat: {scanLoadError}</p>}
 
         {scans.length === 0 ? (
           <div className="mt-4 py-10 text-center border border-dashed border-slate-200 rounded-xl">
@@ -201,7 +228,7 @@ export function ValidatorHistoryPage() {
             <table className="w-full text-left border-collapse min-w-[640px]">
               <thead>
                 <tr className="border-b border-slate-200">
-                  {['Waktu', 'Boks / Batch', 'Kelas', 'Suhu', 'Skor AI', 'Status'].map((h) => (
+                  {['Waktu', 'Boks / Batch', 'Kelas', 'Suhu', 'Skor model', 'Status'].map((h) => (
                     <th
                       key={h}
                       className="py-2 pr-3 text-[10px] font-bold uppercase tracking-wide text-slate-400"
@@ -227,7 +254,7 @@ export function ValidatorHistoryPage() {
                           s.temp >= 60 ? 'text-emerald-700' : 'text-rose-600'
                         }`}
                       >
-                        {s.temp}°C
+                        {s.temp != null ? `${s.temp}°C` : '—'}
                       </td>
                       <td className="py-2.5 pr-3 font-mono text-xs text-slate-600">
                         {s.score != null ? `${s.score}%` : '—'}

@@ -1,7 +1,8 @@
 // API client: Bearer access token (in-memory) + httpOnly refresh cookie.
 // On a 401 it attempts a single silent refresh, then retries the request.
 
-const API_BASE = 'http://localhost:8080'
+const API_BASE = import.meta.env.VITE_API_BASE_URL ||
+  `${window.location.protocol}//${window.location.hostname}:8080`
 
 let accessToken = localStorage.getItem('mbg_access_token') || null
 let refreshPromise = null
@@ -157,6 +158,12 @@ export async function deleteScan(id) {
 
 export async function deleteAllScans() {
   return api('/api/scans/all', { method: 'DELETE' })
+}
+
+/** URL absolut foto hasil scan yang disimpan backend (folder uploads/). */
+export function uploadUrl(imageRef) {
+  if (!imageRef) return ''
+  return `${API_BASE}/uploads/${encodeURIComponent(imageRef)}`
 }
 
 /** Riwayat scan terbaru (butuh izin scan.submit — role validator). */

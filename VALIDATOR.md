@@ -2,6 +2,8 @@
 **Sistem Skrining Kelayakan Konsumsi & Pemindai Makronutrien Berbasis Computer Vision (YOLOv8)**  
 *Dokumen Spesifikasi Fungsionalitas & Alur Pengguna Aplikasi Mobile Guru / Validator Sekolah MBG RI*
 
+> **Catatan implementasi saat ini (sinkronisasi backend/web/mobile):** model aktif adalah YOLOv8 classification dari `backend/model_ai/yolov8_cls_best.pt`, dengan kelas `fresh_*` dan `stale_*` untuk buah/sayur. Model ini belum mengenali hidangan matang, gramatur/menu, alergen, benda asing, atau keamanan mikrobiologis; hasilnya adalah skrining visual, bukan sertifikasi keamanan. API scan memeriksa format token QR, belum tanda tangan kriptografis atau kecocokan rute. Makronutrien dihitung server dari nama bahan dan berat yang dikirim ke dataset gizi; foto tidak mengenali bahan. Inferensi lokal/offline belum tersedia. UI web dan mobile mengikuti batas kemampuan ini dan tidak membuat hasil simulasi saat layanan AI gagal.
+
 ---
 
 ## PENDAHULUAN & PERAN GURU VALIDATOR DALAM EKOSISTEM MBG

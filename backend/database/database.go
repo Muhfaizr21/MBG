@@ -108,6 +108,9 @@ CREATE TABLE IF NOT EXISTS scan_logs (
 	duration_ms    INT,
 	verdict        TEXT NOT NULL CHECK (verdict IN ('layak','peringatan','tolak')),
 	reason         TEXT NOT NULL DEFAULT '',
+	menu_name      TEXT NOT NULL DEFAULT '',
+	menu_class     TEXT NOT NULL DEFAULT '',
+	menu_confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
 	actor_id       TEXT NOT NULL,
 	created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -131,7 +134,6 @@ func Migrate(ctx context.Context) error {
 	// Tambahkan kolom baru tanpa menghancurkan data
 	_, _ = pool.Exec(ctx, "ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS rating INT DEFAULT 0;")
 	_, _ = pool.Exec(ctx, "ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS feedback TEXT DEFAULT '';")
-	_, _ = pool.Exec(ctx, "ALTER TABLE scan_logs ADD COLUMN IF NOT EXISTS duration_ms INT;")
 
 	return nil
 }
@@ -175,18 +177,10 @@ func Seed(ctx context.Context) error {
 	return nil
 }
 
-// SeedNutrition mengisi nutrition_items dari CSV dataset gizi (idempoten).
-// Data hanya di-seed bila tabel masih kosong; file yang tidak ada dilewati
-// dengan peringatan agar backend tetap bisa berjalan tanpa dataset.
+// SeedNutrition menyinkronkan nutrition_items dari CSV dataset gizi.
+// Tabel ini adalah salinan dataset sumber; setiap boot memperbarui data agar
+// web dan mobile selalu menghitung makro dari versi dataset yang sama.
 func SeedNutrition(ctx context.Context, path string) error {
-	var count int
-	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM nutrition_items").Scan(&count); err != nil {
-		return fmt.Errorf("menghitung nutrition_items: %w", err)
-	}
-	if count > 0 {
-		return nil
-	}
-
 	file, err := os.Open(path)
 	if err != nil {
 		log.Printf("⚠️ Dataset gizi %q tidak ditemukan — tabel nutrition_items kosong\n", path)
@@ -252,12 +246,19 @@ func SeedNutrition(ctx context.Context, path string) error {
 		return fmt.Errorf("memulai transaksi seed gizi: %w", err)
 	}
 	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM nutrition_items`); err != nil {
+		return fmt.Errorf("mengosongkan salinan dataset gizi: %w", err)
+	}
 
 	for _, item := range items {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO nutrition_items (name, calories, protein, fat, carbohydrate)
 			VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (name) DO NOTHING`,
+			ON CONFLICT (name) DO UPDATE SET
+				calories = EXCLUDED.calories,
+				protein = EXCLUDED.protein,
+				fat = EXCLUDED.fat,
+				carbohydrate = EXCLUDED.carbohydrate`,
 			item.Name, item.Calories, item.Protein, item.Fat, item.Carbohydrate); err != nil {
 			return fmt.Errorf("seed gizi %q: %w", item.Name, err)
 		}

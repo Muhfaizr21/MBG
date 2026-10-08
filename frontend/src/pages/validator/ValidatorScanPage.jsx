@@ -1,13 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   QrCode,
-  Camera,
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  Wifi,
-  WifiOff,
-  Lock,
   ScanLine,
   FlaskConical,
   ShieldCheck,
@@ -18,24 +14,24 @@ import { navigate } from '../../App'
 import { useAuth } from '../../context/AuthContext'
 import { guardAdminAction } from '../../lib/adminActions'
 import { scanRequest } from '../../lib/api'
-import { HACCP_TIMER, SCAN_STAGES, SCAN_SAMPLE_RESULTS } from '../../data/validatorData'
+import { SCAN_STAGES } from '../../data/validatorData'
 import { ImageCapturePanel } from '../../components/shared/ImageCapturePanel'
 
 /**
  * ==============================================================================
  * PORTAL VALIDATOR: PEMINDAI AI & DETEKSI MUTU (DUAL-STAGE)
  * URL: /validator/scan
- * VALIDATOR.md Bab 2: Tahap 1 QR kriptografis, Tahap 2 inspeksi visual YOLOv8,
- * kartu keputusan mutu instan, estimasi makronutrien, mode offline-first.
+ * VALIDATOR.md Bab 2: pemeriksaan format token, classifier fresh/stale hasil AI,
+ * dan keputusan suhu. Analisis gizi memakai dataset di halaman Analisis Gizi.
  * ==============================================================================
  */
 
 const VERDICT_STYLE = {
   layak: {
-    gradient: 'from-emerald-600 to-teal-600',
+    gradient: 'from-amber-600 to-orange-600',
     icon: CheckCircle2,
-    chip: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    bar: 'bg-emerald-500',
+    chip: 'bg-amber-50 text-amber-700 border-amber-200',
+    bar: 'bg-amber-500',
   },
   peringatan: {
     gradient: 'from-amber-500 to-orange-500',
@@ -43,7 +39,7 @@ const VERDICT_STYLE = {
     chip: 'bg-amber-50 text-amber-700 border-amber-200',
     bar: 'bg-amber-500',
   },
-  tolak: {
+    tolak: {
     gradient: 'from-rose-600 to-red-600',
     icon: XCircle,
     chip: 'bg-rose-50 text-rose-700 border-rose-200',
@@ -58,49 +54,26 @@ const MACRO_ROWS = [
   { key: 'fat', label: 'Lemak Sehat', unit: 'g' },
 ]
 
-// Estimasi makronutrien default ketika backend tidak mengembalikan data gizi
-// (AI service offline / bahan tidak cocok). Web hanya memuat 4 makro (tanpa serat).
-const DEFAULT_MACROS = { energy: 545, protein: 34, carbs: 68, fat: 14 }
-
-// Menu demo MBG dikirim sebagai `items` ke POST /api/scans agar makro
-// dihitung backend dari dataset gizi (nama:Ngram dipisah koma).
-const SCAN_MENU_ITEMS =
-  'Beras Giling masak (nasi):120,Ayam goreng paha:60,Ketimun:40,Selada:40,Pisang Ambon:70'
-
-// Token QR demo untuk tahap 1; validator dapat menggantinya dengan token boks asli.
-const DEMO_QR_TOKEN = 'MBG-2026-SPPG01-SDN01P-B17'
-
-// Samakan bentuk hasil backend dengan mock SCAN_SAMPLE_RESULTS.
 const normalizeScanResult = (data) => ({
   ...data,
   releaseTemp: data.releaseTemp ?? 0,
   holdTemp: data.holdTemp ?? 0,
   checks: Array.isArray(data.checks) ? data.checks : [],
-  macros: data.macros || DEFAULT_MACROS,
+  macros: data.macros || null,
 })
 
 export function ValidatorScanPage() {
   const { user } = useAuth()
 
-  const [secondsLeft, setSecondsLeft] = useState(HACCP_TIMER.secondsLeftSeed)
-  const [isOffline, setIsOffline] = useState(false)
   const [stage, setStage] = useState('qr') // qr | visual | result
   const [activeResult, setActiveResult] = useState(null)
-  const [pendingIdx, setPendingIdx] = useState(0)
   const [sessionLog, setSessionLog] = useState([])
   const [toast, setToast] = useState(null)
-  const [qrToken, setQrToken] = useState(DEMO_QR_TOKEN)
-  const [holdingTemp, setHoldingTemp] = useState('63.2')
-  const [releaseTemp, setReleaseTemp] = useState('76.4')
+  const [qrToken, setQrToken] = useState('')
+  const [holdingTemp, setHoldingTemp] = useState('')
+  const [releaseTemp, setReleaseTemp] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [capturedBlob, setCapturedBlob] = useState(null)
-
-  const locked = secondsLeft <= 0
-
-  useEffect(() => {
-    const t = setInterval(() => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)), 1000)
-    return () => clearInterval(t)
-  }, [])
 
   useEffect(() => {
     if (!toast) return
@@ -117,80 +90,59 @@ export function ValidatorScanPage() {
     [user],
   )
 
-  // Simulasi pemindaian: tahap 1 → tahap 2 → kartu keputusan
+  // Tahap awal: masukkan token sebelum mengambil foto dan mengirim scan.
   const startScan = () => {
-    if (locked) {
-      setToast('Jendela HACCP 4 jam berakhir. Pemindaian dikunci sampai boks baru tiba.')
-      return
-    }
-    const res = runGuard('pindai boks (QR + visual)', { offline: isOffline })
+    const res = runGuard('pindai boks (token + visual AI)')
     if (!res.allowed) return
     setStage('qr')
     setActiveResult(null)
+    setQrToken('')
+    setCapturedBlob(null)
+    setHoldingTemp('')
+    setReleaseTemp('')
   }
 
-  const finishWithResult = (result, offline) => {
-    setPendingIdx((i) => i + 1)
+  const finishWithResult = (result) => {
     setActiveResult(result)
     setStage('result')
     setSessionLog((prev) => [
-      {
-        id: result.id,
-        time: result.scannedAt,
-        boxId: result.boxId,
-        verdict: result.verdict,
-        score: result.score,
-        offline,
-      },
+      { id: result.id, time: result.scannedAt, boxId: result.boxId, verdict: result.verdict, score: result.score },
       ...prev,
     ])
   }
 
-  const nextMockResult = () => SCAN_SAMPLE_RESULTS[pendingIdx % SCAN_SAMPLE_RESULTS.length]
-
   // Callback dari ImageCapturePanel: simpan blob WebP yang sudah siap dikirim.
   const handleCapture = (blob, previewUrl) => {
     setCapturedBlob(blob)
-    setCapturedPreview(previewUrl)
   }
 
   // Kirim foto (WebP) ke POST /api/scans (AI service Go → Python).
   const submitVisualScan = async () => {
     if (!capturedBlob) {
-      setToast('Ambil atau upload foto makanan terlebih dahulu.')
+      setToast('Ambil atau unggah foto buah atau sayur terlebih dahulu.')
       return
     }
-    if (locked) {
-      setToast('Jendela HACCP 4 jam berakhir. Pemindaian dikunci sampai boks baru tiba.')
+    if (!qrToken.trim()) {
+      setToast('Masukkan token QR boks terlebih dahulu.')
+      return
+    }
+    if (holdingTemp === '' || releaseTemp === '') {
+      setToast('Masukkan suhu holding dan suhu lepas dapur hasil pengukuran.')
       return
     }
     const webpFile = new File([capturedBlob], 'scan.webp', { type: 'image/webp' })
     setIsAnalyzing(true)
     try {
-      if (isOffline) {
-        setToast('Mode offline aktif — hasil analisis memakai simulasi lokal di perangkat.')
-        finishWithResult(nextMockResult(), true)
-        setCapturedBlob(null)
-        setCapturedPreview(null)
-        return
-      }
-      try {
-        const body = await scanRequest({
-          image: webpFile,
-          qrToken: qrToken.trim(),
-          holdingTempC: holdingTemp,
-          releaseTempC: releaseTemp,
-          items: SCAN_MENU_ITEMS,
-        })
-        finishWithResult(normalizeScanResult(body.data), false)
-        setCapturedBlob(null)
-        setCapturedPreview(null)
-      } catch (err) {
-        setToast(`AI service tidak terhubung (${err.message}) — menampilkan hasil simulasi.`)
-        finishWithResult(nextMockResult(), false)
-        setCapturedBlob(null)
-        setCapturedPreview(null)
-      }
+      const body = await scanRequest({
+        image: webpFile,
+        qrToken: qrToken.trim(),
+        holdingTempC: holdingTemp,
+        releaseTempC: releaseTemp,
+      })
+      finishWithResult(normalizeScanResult(body.data))
+      setCapturedBlob(null)
+    } catch (err) {
+      setToast(`Analisis AI gagal (${err.message}). Hasil tidak dibuat; periksa koneksi/model lalu coba lagi.`)
     } finally {
       setIsAnalyzing(false)
     }
@@ -221,7 +173,7 @@ export function ValidatorScanPage() {
     if (decision === 'reject') {
       setToast(`${activeResult.boxId} ditandai TIDAK LAYAK — sampel diamankan. Buka Lapor Insiden.`)
     } else {
-      setToast(`${activeResult.boxId} disetujui — porsi dialokasikan ke ${activeResult.verdict === 'peringatan' ? 'konsumsi segera' : 'kelas'}.`)
+      setToast(`${activeResult.boxId} ditandai untuk pemeriksaan petugas. Hasil classifier bukan persetujuan distribusi.`)
     }
     setStage('qr')
     setActiveResult(null)
@@ -233,7 +185,7 @@ export function ValidatorScanPage() {
   const VerdictIcon = style?.icon || ShieldCheck
 
   return (
-    <ValidatorLayout activeMenu="scan" title="Pemindai AI & Deteksi Mutu" badge="YOLOv8 DUAL-STAGE">
+    <ValidatorLayout activeMenu="scan" title="Pemindai AI & Deteksi Mutu" badge="CLASSIFIER BUAH & SAYUR">
       {toast && (
         <div
           role="status"
@@ -257,21 +209,16 @@ export function ValidatorScanPage() {
         <span className="shrink-0 text-xs font-bold text-amber-900">Analisis gizi →</span>
       </button>
 
-      {/* Status strip: HACCP + mode offline */}
+      {/* Status strip: HACCP and service scope */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 flex items-center gap-3">
-          <span
-            className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
-              locked ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
-            }`}
-          >
+          <span className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0 bg-slate-50 text-slate-500">
             <ShieldCheck className="h-5 w-5" />
           </span>
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Jendela HACCP</p>
-            <p className={`font-mono font-extrabold text-sm ${locked ? 'text-rose-600' : 'text-emerald-700'}`}>
-              {Math.floor(secondsLeft / 60)} menit {secondsLeft % 60} detik
-            </p>
+            <p className="font-mono font-extrabold text-sm text-slate-700">Belum tersambung</p>
+            <p className="mt-1 text-[10px] text-slate-400">Timer HACCP perlu data waktu masak dari server.</p>
           </div>
         </div>
 
@@ -281,45 +228,21 @@ export function ValidatorScanPage() {
           </span>
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Batas aman konsumsi</p>
-            <p className="font-mono font-extrabold text-sm">{HACCP_TIMER.safeUntil}</p>
+            <p className="font-mono font-extrabold text-sm">Belum tersedia</p>
+            <p className="mt-1 text-[10px] text-slate-400">Waktu masak belum tersimpan pada data scan.</p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setIsOffline((v) => !v)
-            setToast(
-              isOffline
-                ? 'Kembali ONLINE — antrian pindaian akan segera disinkronkan.'
-                : 'Mode OFFLINE aktif — QR diverifikasi dengan public key lokal, log disimpan di perangkat.',
-            )
-          }}
-          className={`bg-white rounded-2xl border shadow-xs p-4 flex items-center gap-3 text-left cursor-pointer hover:shadow-md transition ${
-            isOffline ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200/80'
-          }`}
-          aria-pressed={isOffline}
-        >
-          <span
-            className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
-              isOffline ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
-            }`}
-          >
-            {isOffline ? <WifiOff className="h-5 w-5" /> : <Wifi className="h-5 w-5" />}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 flex items-center gap-3">
+          <span className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+            <FlaskConical className="h-5 w-5" />
           </span>
-          <span className="min-w-0">
-            <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">
-              Koneksi inferensi
-            </span>
-            <span
-              className={`block font-mono font-extrabold text-sm ${
-                isOffline ? 'text-amber-600' : 'text-emerald-700'
-              }`}
-            >
-              {isOffline ? 'Offline (lokal)' : 'Online (tersinkron)'}
-            </span>
-          </span>
-        </button>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Model terhubung</p>
+            <p className="font-mono font-extrabold text-sm text-slate-700">Classifier fresh/stale buah & sayur</p>
+            <p className="mt-1 text-[10px] text-slate-400">Bukan pemeriksaan lauk matang, benda asing, alergen, atau keamanan mikrobiologis.</p>
+          </div>
+        </div>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -328,7 +251,7 @@ export function ValidatorScanPage() {
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-extrabold tracking-tight">Proses pemindaian dua tahap</h2>
             <span className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
-              {locked ? 'terkunci' : `tahap ${stage === 'result' ? 'selesai' : stageIdx + 1}/2`}
+              {`tahap ${stage === 'result' ? 'selesai' : stageIdx + 1}/2`}
             </span>
           </div>
 
@@ -373,39 +296,35 @@ export function ValidatorScanPage() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.06),transparent_70%)]" />
             <div
               className={`absolute inset-6 sm:inset-10 border-2 border-dashed rounded-xl transition-colors ${
-                locked
-                  ? 'border-rose-500/70'
-                  : stage === 'result'
+                stage === 'result'
                     ? 'border-emerald-400/80'
                     : 'border-amber-400/80 animate-pulse'
               }`}
             >
               <span className="absolute -top-3 left-3 px-2 py-0.5 rounded bg-slate-900 text-[10px] font-mono font-bold text-amber-300">
                 {stage === 'qr'
-                  ? 'ARAHKAN KE QR BOKS (80mm)'
+                    ? 'MASUKKAN TOKEN QR BOKS'
                   : stage === 'visual'
-                    ? 'BUKA TUTUP BOKS — SOROT PIRING'
-                    : 'ANALISIS SELESAI'}
+                    ? 'FOTO BUAH ATAU SAYUR'
+                    : 'HASIL CLASSIFIER SERVER'}
               </span>
             </div>
 
             <div className="relative text-center px-6">
-              {stage === 'qr' ? (
+            {stage === 'qr' ? (
                 <QrCode className="h-14 w-14 mx-auto text-amber-300/90" strokeWidth={1.3} />
               ) : stage === 'visual' ? (
-                <Camera className="h-14 w-14 mx-auto text-amber-300/90" strokeWidth={1.3} />
+                <ScanLine className="h-14 w-14 mx-auto text-amber-300/90" strokeWidth={1.3} />
               ) : (
                 <ScanLine className="h-14 w-14 mx-auto text-emerald-300" strokeWidth={1.3} />
               )}
               <p className="mt-3 text-[11px] font-mono text-slate-400">
-                {locked
-                  ? 'SCAN TERKUNCI — jendela HACCP berakhir'
-                  : stage === 'qr'
-                    ? 'Memverifikasi token kriptografis ke API Gateway…'
+                {stage === 'qr'
+                      ? 'Memeriksa format token boks di API…'
                     : stage === 'visual'
                       ? isAnalyzing
-                        ? 'Inferensi YOLOv8 berjalan di AI service…'
-                        : 'Pilih foto isi boks — inferensi YOLOv8 di server…'
+                        ? 'Klasifikasi buah/sayur berjalan di AI service…'
+                        : 'Ambil foto buah/sayur — klasifikasi di server…'
                       : `${result?.id} · ${result?.boxId}`}
               </p>
             </div>
@@ -415,7 +334,7 @@ export function ValidatorScanPage() {
           {stage === 'qr' && (
             <label className="mt-4 block">
               <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Token QR boks
+                Token QR boks (pemeriksaan format)
               </span>
               <input
                 type="text"
@@ -433,9 +352,9 @@ export function ValidatorScanPage() {
               {/* Panel kamera & upload WebP */}
               <ImageCapturePanel
                 onCapture={handleCapture}
-                disabled={locked || isAnalyzing}
-                label="Foto isi boks (YOLOv8 inspection)"
-                hint="Buka tutup boks, sorot piring — kamera atau upload foto. Otomatis WebP."
+                disabled={isAnalyzing}
+                label="Foto bahan buah atau sayur"
+                hint="Classifier hanya dilatih untuk kelas buah/sayur fresh/stale; bukan makanan matang."
               />
               {/* Sinyal suhu dari termometer lapangan */}
               <div className="grid grid-cols-2 gap-3">
@@ -504,30 +423,28 @@ export function ValidatorScanPage() {
                   <button
                     type="button"
                     onClick={startScan}
-                    disabled={locked || isAnalyzing}
+                    disabled={isAnalyzing}
                     className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-bold transition shadow-sm ${
-                      locked
-                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-amber-600 text-white hover:bg-amber-700 cursor-pointer'
+                      'bg-amber-600 text-white hover:bg-amber-700 cursor-pointer'
                     }`}
                   >
-                    <Lock className="h-4 w-4" />
-                    {locked ? 'Pemindaian Terkunci (HACCP berakhir)' : 'Mulai Pindai Boks Berikutnya'}
+                    <QrCode className="h-4 w-4" />
+                    Lanjut ke Foto dan Suhu
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={submitVisualScan}
-                    disabled={locked || isAnalyzing || !capturedBlob}
+                    disabled={isAnalyzing || !capturedBlob}
                     className={`flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-bold transition shadow-sm ${
-                      locked || isAnalyzing || !capturedBlob
+                      isAnalyzing || !capturedBlob
                         ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         : 'bg-emerald-700 text-white hover:bg-emerald-800 cursor-pointer'
                     }`}
                   >
                     <ScanLine className="h-4 w-4" />
                     {isAnalyzing
-                      ? 'Menganalisis YOLOv8...'
+                      ? 'Menjalankan classifier server...'
                       : !capturedBlob
                         ? 'Foto belum diambil'
                         : 'Analisis AI — Kirim ke Backend'}
@@ -559,7 +476,7 @@ export function ValidatorScanPage() {
             {result && (
               <div className="mt-3">
                 <div className="flex items-center justify-between text-[11px] font-mono opacity-90">
-                  <span>Skor keamanan</span>
+                  <span>Keyakinan kelas teratas</span>
                   <span className="font-extrabold">{result.score}%</span>
                 </div>
                 <div className="mt-1 h-2 rounded-full bg-white/25 overflow-hidden">
@@ -578,7 +495,7 @@ export function ValidatorScanPage() {
                 <ScanLine className="h-9 w-9 mx-auto text-slate-300" />
                 <p className="mt-3 text-sm font-bold text-slate-500">Belum ada hasil</p>
                 <p className="mt-1 text-xs text-slate-400 leading-relaxed">
-                  Jalankan pemindaian QR lalu inspeksi visual untuk memunculkan skor, hasil deteksi, dan estimasi makronutrien.
+                  Masukkan token, suhu terukur, lalu ambil foto buah atau sayur untuk melihat hasil classifier server.
                 </p>
               </div>
             ) : (
@@ -638,14 +555,14 @@ export function ValidatorScanPage() {
                 {/* Makronutrien */}
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                    Estimasi makronutrien (dataset gizi)
+                    Makronutrien (bila bahan dan berat diberikan)
                   </p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     {MACRO_ROWS.map((m) => (
                       <div key={m.key} className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2">
                         <p className="text-[10px] font-semibold text-slate-500">{m.label}</p>
                         <p className="font-mono font-extrabold text-sm">
-                          {result.macros[m.key]}
+              {result.macros?.[m.key] ?? '—'}
                           <span className="text-[10px] font-semibold text-slate-400"> {m.unit}</span>
                         </p>
                       </div>
@@ -661,7 +578,7 @@ export function ValidatorScanPage() {
                 <p
                   className={`text-xs rounded-xl border px-3 py-2.5 leading-relaxed ${
                     result.verdict === 'layak'
-                      ? 'bg-emerald-50 border-emerald-100 text-emerald-800'
+                      ? 'bg-amber-50 border-amber-100 text-amber-800'
                       : result.verdict === 'peringatan'
                         ? 'bg-amber-50 border-amber-100 text-amber-800'
                         : 'bg-rose-50 border-rose-100 text-rose-800'
@@ -678,9 +595,9 @@ export function ValidatorScanPage() {
       {/* Log sesi */}
       <section className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-extrabold tracking-tight">Log sesi pemindaian</h2>
+          <h2 className="text-sm font-extrabold tracking-tight">Riwayat hasil pemindaian</h2>
           <span className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
-            {sessionLog.length} boks · sesi ini
+            {sessionLog.length} hasil · sesi ini
           </span>
         </div>
 
@@ -712,8 +629,7 @@ export function ValidatorScanPage() {
                       <span className="font-mono font-normal text-slate-400">· {log.id}</span>
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      {log.time} · skor {log.score}%
-                      {log.offline && ' · antrean offline'}
+                      {log.time} · keyakinan classifier {log.score}%
                     </p>
                   </div>
                 </li>

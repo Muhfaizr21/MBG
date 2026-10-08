@@ -71,153 +71,13 @@ export const MASTER_TOTES = Array.from({ length: 13 }, (_, i) => ({
 export const SCAN_STAGES = [
   {
     id: 'qr',
-    title: 'Tahap 1 · Pindai QR Kriptografis Boks',
-    desc: 'Verifikasi asal SPPG, kesesuaian sekolah tujuan, stempel masak & suhu pelepasan (≥75°C).',
+    title: 'Tahap 1 · Periksa Token QR Boks',
+    desc: 'API saat ini memeriksa format token; verifikasi tanda tangan QR dan rute belum tersedia.',
   },
   {
     id: 'visual',
-    title: 'Tahap 2 · Inspeksi Visual AI (YOLOv8)',
-    desc: 'Deteksi anomali fisik pembusukan, kematangan, dan benda asing pada konten piring.',
-  },
-]
-
-// Hasil inspeksi sampel boks untuk kartu keputusan mutu (VALIDATOR.md Bab 2.B.3-4)
-export const SCAN_SAMPLE_RESULTS = [
-  {
-    id: 'SCN-VLD-1006-014',
-    boxId: 'BOK-01-4417',
-    qrToken: 'MBG-2026-SPPG01-SDN01P-B17',
-    batchId: 'BATCH-JKT-1006-05',
-    scannedAt: '07:18 WIB',
-    score: 97.6,
-    verdict: 'layak', // layak | peringatan | tolak
-    verdictLabel: 'LAYAK KONSUMSI',
-    releaseTemp: 76.4,
-    holdTemp: 63.2,
-    checks: [
-      { label: 'Nasi — warna & tekstur', ok: true, note: 'Pulen, tanpa titik jamur' },
-      { label: 'Protein — warna & lendir', ok: true, note: 'Ayam matang merata, segar' },
-      { label: 'Sayur — kekeruhan & layu', ok: true, note: 'Urap segar, kuah bening' },
-      { label: 'Benda asing', ok: true, note: 'Tidak terdeteksi' },
-    ],
-    macros: { energy: 545, protein: 34, carbs: 68, fat: 14, fiber: 6.2 },
-    note: 'Sampel lolos dua tahap verifikasi. Aman dibagikan ke kelas.',
-  },
-  {
-    id: 'SCN-VLD-1006-015',
-    boxId: 'BOK-01-4418',
-    qrToken: 'MBG-2026-SPPG01-SDN01P-B18',
-    batchId: 'BATCH-JKT-1006-05',
-    scannedAt: '07:21 WIB',
-    score: 88.2,
-    verdict: 'peringatan', // layak | peringatan | tolak
-    verdictLabel: 'KONSUMSI SEGERA',
-    releaseTemp: 75.9,
-    holdTemp: 58.4,
-    checks: [
-      { label: 'Nasi — warna & tekstur', ok: true, note: 'Normal' },
-      { label: 'Protein — warna & lendir', ok: true, note: 'Normal' },
-      { label: 'Suhu holding boks', ok: false, note: '58.4°C — di bawah ambang 60°C' },
-      { label: 'Benda asing', ok: true, note: 'Tidak terdeteksi' },
-    ],
-    macros: { energy: 545, protein: 34, carbs: 68, fat: 14, fiber: 6.2 },
-    note: 'Suhu boks mendekati batas kritis. Instruksikan pembagian segera ke kelas.',
-  },
-  {
-    id: 'SCN-VLD-1006-016',
-    boxId: 'BOK-01-4419',
-    qrToken: 'MBG-2026-SPPG01-SDN01P-B19',
-    batchId: 'BATCH-JKT-1006-05',
-    scannedAt: '07:24 WIB',
-    score: 72.5,
-    verdict: 'tolak', // layak | peringatan | tolak
-    verdictLabel: 'TIDAK LAYAK KONSUMSI',
-    releaseTemp: 74.2,
-    holdTemp: 49.8,
-    checks: [
-      { label: 'Nasi — warna & tekstur', ok: false, note: 'Titik kekuningan diduga jamur' },
-      { label: 'Protein — warna & lendir', ok: true, note: 'Normal' },
-      { label: 'Suhu holding boks', ok: false, note: '49.8°C — zona bahaya < 55°C' },
-      { label: 'Benda asing', ok: false, note: 'Serpihan plastik terdeteksi' },
-    ],
-    macros: { energy: 545, protein: 34, carbs: 68, fat: 14, fiber: 6.2 },
-    note: 'Boks dikunci otomatis. Amankan sampel & ajukan laporan insiden.',
-  },
-]
-
-// Log pindai hari ini (untuk halaman pemindai & riwayat)
-export const TODAY_SCAN_LOG = [
-  {
-    id: 'SCN-VLD-1006-011',
-    time: '07:05 WIB',
-    boxId: 'BOK-01-4414',
-    batchId: 'BATCH-JKT-1006-05',
-    stage: 'QR + Visual',
-    status: 'verified',
-    statusLabel: 'Lolos Verifikasi',
-    temp: 64.1,
-    score: 96.8,
-    classTarget: 'Kelas 1A',
-  },
-  {
-    id: 'SCN-VLD-1006-012',
-    time: '07:12 WIB',
-    boxId: 'BOK-01-4415',
-    batchId: 'BATCH-JKT-1006-05',
-    stage: 'QR + Visual',
-    status: 'verified',
-    statusLabel: 'Lolos Verifikasi',
-    temp: 63.5,
-    score: 95.2,
-    classTarget: 'Kelas 1B',
-  },
-  {
-    id: 'SCN-VLD-1006-013',
-    time: '07:16 WIB',
-    boxId: 'BOK-01-4416',
-    batchId: 'BATCH-JKT-1006-05',
-    stage: 'QR',
-    status: 'verified',
-    statusLabel: 'Lolos Verifikasi',
-    temp: 62.8,
-    score: null,
-    classTarget: 'Kelas 2A',
-  },
-  {
-    id: 'SCN-VLD-1006-014',
-    time: '07:18 WIB',
-    boxId: 'BOK-01-4417',
-    batchId: 'BATCH-JKT-1006-05',
-    stage: 'QR + Visual',
-    status: 'verified',
-    statusLabel: 'Lolos Verifikasi',
-    temp: 63.2,
-    score: 97.6,
-    classTarget: 'Kelas 2B',
-  },
-  {
-    id: 'SCN-VLD-1006-015',
-    time: '07:21 WIB',
-    boxId: 'BOK-01-4418',
-    batchId: 'BATCH-JKT-1006-05',
-    stage: 'QR + Visual',
-    status: 'warning',
-    statusLabel: 'Peringatan Suhu',
-    temp: 58.4,
-    score: 88.2,
-    classTarget: 'Kelas 3A',
-  },
-  {
-    id: 'SCN-VLD-1006-016',
-    time: '07:24 WIB',
-    boxId: 'BOK-01-4419',
-    batchId: 'BATCH-JKT-1006-05',
-    stage: 'QR + Visual',
-    status: 'rejected',
-    statusLabel: 'Ditolak Sistem',
-    temp: 49.8,
-    score: 72.5,
-    classTarget: 'Kelas 3B',
+    title: 'Tahap 2 · Klasifikasi Kesegaran AI (YOLOv8)',
+    desc: 'Model yang tersedia membedakan kelas fresh/stale pada buah dan sayur; bukan detektor benda asing atau kematangan makanan matang.',
   },
 ]
 
@@ -252,7 +112,6 @@ export const HISTORY_FILTERS = [
   { id: '7d', label: '7 Hari Lalu' },
   { id: 'month', label: 'Bulan Ini' },
 ]
-
 // Kategori insiden terstruktur (VALIDATOR.md Bab 4.B.1)
 export const INCIDENT_CATEGORIES = [
   { id: 'sour', label: 'Aroma Asam / Basi', desc: 'Makanan mengeluarkan bau menyengat atau berbusa.' },
@@ -322,12 +181,4 @@ export const EMERGENCY_CONTACTS = [
   { id: 'puskesmas', label: 'Puskesmas Menteng (Rujukan Gawat Darurat)', detail: 'IGD 24 Jam', phone: '(021) 392-1111' },
 ]
 
-// Ringkasan hari untuk kartu cepat
-export const VALIDATOR_STATS = {
-  boxesScanned: TODAY_SCAN_LOG.length,
-  verifiedRate: 83.3,
-  avgScore: 88.1,
-  avgTemp: 60.3,
-  rejectedBoxes: 1,
-  surplusPortions: CLASS_RECAP.reduce((sum, c) => sum + c.leftover, 0),
-}
+

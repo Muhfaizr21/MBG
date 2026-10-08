@@ -5,7 +5,7 @@ Full-stack application project consisting of a Golang backend (MVC, Clean Code, 
 ## Project Structure
 
 - **[backend/](backend)**: Golang REST API server built with MVC architecture, Clean Code & SOLID principles, documented with Swagger UI.
-- **[backend/ai_service/](backend/ai_service)**: FastAPI AI service for food freshness classification (YOLOv8n-cls `best.pt`, classes `Fresh`/`Spoiled`).
+- **[backend/ai_service/](backend/ai_service)**: FastAPI AI service that runs the meal classifier and cooked-food freshness classifier on each scan.
 - **[backend/data/](backend/data)**: Dataset files (CSV/JSON/XLSX) downloaded from Google Drive.
 - **[frontend/](frontend)**: React + Vite web client styled with Tailwind CSS v4.
 - **[mobile/](mobile)**: Expo (React Native) mobile client.
@@ -47,4 +47,6 @@ npx expo start
 
 ## Food Scan API
 
-`POST /api/scans` (permission `scan.submit`, role `validator`) — multipart: `image` (≤8MB), `qrToken`, optional `holdingTempC`/`releaseTempC`, and `items` (`"Nama:gram,Nama2:gram"`) for nutrition. The Go gateway forwards the image to the AI service, builds a decision card (`layak`/`peringatan`/`tolak`), enriches `macros`/`nutrition[]` from the seeded cuisine dataset (`data/dataset_nutrisi_kasar.csv`), and persists a row in `scan_logs`. `GET /api/scans/recent` returns the latest scan logs; `GET /api/nutrition/items?q=…` searches the dataset (any authenticated user).
+`POST /api/scans` (permission `scan.submit`, role `validator`) accepts multipart `image`, a batch ID or `qrToken`, and measured `holdingTempC`/`releaseTempC`. The Go gateway runs both AI classifiers and looks up batch, SPPG, menu, and package nutrition in the production tables. When a recipe with measured ingredient weights is available it calculates nutrition from those items; otherwise it shows the package totals or reports the data as unavailable. Legacy mobile clients may still send `items` while transitioning.
+
+The AI service loads `backend/model_ai/food_recognition_best.pt` and `backend/model_ai/cooked_food_freshness_best.pt` by default. Override them with `AI_MENU_MODEL_PATH` and `AI_FRESHNESS_MODEL_PATH`. The menu checkpoint currently contains `test`, `train`, and `valid` as classes; the API suppresses those labels as invalid menu predictions. Use batch menu data as the displayed canonical menu, and replace/retrain the classifier before relying on its visual menu labels for Indonesian meals.

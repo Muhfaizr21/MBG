@@ -12,12 +12,13 @@ import (
 
 // ScanRepository defines persistence operations for scan audit logs.
 type ScanRepository interface {
+	FindBatch(ctx context.Context, idOrQR string) (*models.ScanBatchInfo, error)
 	InsertScan(ctx context.Context, log *models.ScanLog) error
 	CountToday(ctx context.Context) (int, error)
-	ListRecentScans(ctx context.Context, limit int) ([]models.ScanLog, error)
+	ListRecentScans(ctx context.Context, actorID string, limit int) ([]models.ScanLog, error)
 	UpdateScanFeedback(ctx context.Context, id string, rating int, feedback string, tempC *float64) error
-	DeleteScan(ctx context.Context, id string) (string, error)
-	DeleteAllScans(ctx context.Context) ([]string, error)
+	DeleteScan(ctx context.Context, actorID, id string) (string, error)
+	DeleteAllScans(ctx context.Context, actorID string) ([]string, error)
 }
 
 type pgScanRepository struct{}
@@ -28,13 +29,13 @@ func NewScanRepository() ScanRepository {
 }
 
 const scanColumns = `id, box_id, qr_token, batch_id, image_ref, ai_class, ai_confidence,
-	visual_score, holding_temp_c, release_temp_c, duration_ms, verdict, reason, actor_id, created_at, rating, feedback`
+	visual_score, holding_temp_c, release_temp_c, verdict, reason, actor_id, created_at, rating, feedback`
 
 func (r *pgScanRepository) scanLog(row pgx.Row) (*models.ScanLog, error) {
 	s := &models.ScanLog{}
 	err := row.Scan(&s.ID, &s.BoxID, &s.QRToken, &s.BatchID, &s.ImageRef,
 		&s.AIClass, &s.AIConfidence, &s.VisualScore, &s.HoldingTempC, &s.ReleaseTempC,
-		&s.DurationMS, &s.Verdict, &s.Reason, &s.ActorID, &s.CreatedAt, &s.Rating, &s.Feedback)
+		&s.Verdict, &s.Reason, &s.ActorID, &s.CreatedAt, &s.Rating, &s.Feedback)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -51,12 +52,11 @@ func (r *pgScanRepository) InsertScan(ctx context.Context, log *models.ScanLog) 
 	}
 	_, err := database.Pool().Exec(ctx, `
 		INSERT INTO scan_logs (id, box_id, qr_token, batch_id, image_ref, ai_class,
-			ai_confidence, visual_score, holding_temp_c, release_temp_c, duration_ms,
-			verdict, reason, actor_id, created_at, rating, feedback)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+			ai_confidence, visual_score, holding_temp_c, release_temp_c, verdict, reason, actor_id, created_at, rating, feedback)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		log.ID, log.BoxID, log.QRToken, log.BatchID, log.ImageRef, log.AIClass,
 		log.AIConfidence, log.VisualScore, log.HoldingTempC, log.ReleaseTempC,
-		log.DurationMS, log.Verdict, log.Reason, log.ActorID, createdAt, log.Rating, log.Feedback)
+		log.Verdict, log.Reason, log.ActorID, log.CreatedAt, log.Rating, log.Feedback)
 	return err
 }
 
@@ -67,12 +67,12 @@ func (r *pgScanRepository) CountToday(ctx context.Context) (int, error) {
 	return count, err
 }
 
-func (r *pgScanRepository) ListRecentScans(ctx context.Context, limit int) ([]models.ScanLog, error) {
+func (r *pgScanRepository) ListRecentScans(ctx context.Context, actorID string, limit int) ([]models.ScanLog, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
 	rows, err := database.Pool().Query(ctx,
-		"SELECT "+scanColumns+" FROM scan_logs ORDER BY created_at DESC LIMIT $1", limit)
+		"SELECT "+scanColumns+" FROM scan_logs WHERE actor_id = $1 ORDER BY created_at DESC LIMIT $2", actorID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,8 @@ func (r *pgScanRepository) ListRecentScans(ctx context.Context, limit int) ([]mo
 		if err := rows.Scan(&entry.ID, &entry.BoxID, &entry.QRToken, &entry.BatchID,
 			&entry.ImageRef, &entry.AIClass, &entry.AIConfidence, &entry.VisualScore,
 			&entry.HoldingTempC, &entry.ReleaseTempC, &entry.Verdict, &entry.Reason,
-			&entry.ActorID, &created, &entry.Rating, &entry.Feedback); err != nil {
+			&entry.ActorID, &created, &entry.Rating, &entry.Feedback,
+			&entry.MenuName, &entry.MenuClass, &entry.MenuConfidence); err != nil {
 			return nil, err
 		}
 		entry.CreatedAt = created
@@ -108,11 +109,11 @@ func (r *pgScanRepository) UpdateScanFeedback(ctx context.Context, id string, ra
 	return err
 }
 
-func (r *pgScanRepository) DeleteScan(ctx context.Context, id string) (string, error) {
+func (r *pgScanRepository) DeleteScan(ctx context.Context, actorID, id string) (string, error) {
 	var imageRef string
 	err := database.Pool().QueryRow(ctx,
-		"DELETE FROM scan_logs WHERE id = $1 RETURNING image_ref",
-		id).Scan(&imageRef)
+		"DELETE FROM scan_logs WHERE actor_id = $1 AND id = $2 RETURNING image_ref",
+		actorID, id).Scan(&imageRef)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", nil
@@ -122,8 +123,8 @@ func (r *pgScanRepository) DeleteScan(ctx context.Context, id string) (string, e
 	return imageRef, nil
 }
 
-func (r *pgScanRepository) DeleteAllScans(ctx context.Context) ([]string, error) {
-	rows, err := database.Pool().Query(ctx, "DELETE FROM scan_logs RETURNING image_ref")
+func (r *pgScanRepository) DeleteAllScans(ctx context.Context, actorID string) ([]string, error) {
+	rows, err := database.Pool().Query(ctx, "DELETE FROM scan_logs WHERE actor_id = $1 RETURNING image_ref", actorID)
 	if err != nil {
 		return nil, err
 	}

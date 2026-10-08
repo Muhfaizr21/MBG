@@ -90,9 +90,9 @@ const (
 var rolePermissions = map[string][]string{
 	RoleSuperadmin: {
 		PermDashboardRead, PermValidatorsRead, PermValidatorsManage,
-		PermSppgRead, PermSppgManage, PermDeliveriesRead, PermAttendanceRead, PermAttendanceManage,
-		PermSchoolsRead, PermSchoolsManage, PermScheduleRead, PermScheduleManage, PermNoticesRead, PermNoticesPublish,
-		PermCalendarRead, PermCalendarManage, PermReportsDownload, PermReportsManage, PermFeedbackTriage,
+		PermSppgRead, PermSppgManage, PermDeliveriesRead, PermAttendanceRead,
+		PermSchoolsRead, PermScheduleRead, PermNoticesRead, PermNoticesPublish,
+		PermCalendarRead, PermReportsDownload, PermFeedbackTriage,
 		PermAiOverride, PermPaymentClearance, PermKillswitch,
 		PermHandoverBast, PermIncidentSubmit, PermKitchenOps, PermUsersCreate,
 	},

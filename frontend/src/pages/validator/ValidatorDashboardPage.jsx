@@ -17,12 +17,12 @@ import {
 import { ValidatorLayout } from '../../components/layout/ValidatorLayout'
 import { navigate } from '../../App'
 import { useAuth } from '../../context/AuthContext'
+import { fetchRecentScans } from '../../lib/api'
 import {
   VALIDATOR_SCHOOL,
   FLEET_STATUS,
   HACCP_TIMER,
   QUOTA_BOARD,
-  VALIDATOR_STATS,
 } from '../../data/validatorData'
 import {
   MENU_PACKAGES,
@@ -80,15 +80,35 @@ export function ValidatorDashboardPage() {
   const { user } = useAuth()
   const firstName = (user?.fullName || '').split(' ')[0]
   const [secondsLeft, setSecondsLeft] = useState(HACCP_TIMER.secondsLeftSeed)
+  const [recentScans, setRecentScans] = useState([])
+  const [scanLoadError, setScanLoadError] = useState(null)
 
   useEffect(() => {
     const t = setInterval(() => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)), 1000)
     return () => clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    let active = true
+    fetchRecentScans(100)
+      .then((rows) => { if (active) setRecentScans(Array.isArray(rows) ? rows : []) })
+      .catch((err) => { if (active) { setRecentScans([]); setScanLoadError(err.message || 'Gagal memuat scan.') } })
+    return () => { active = false }
+  }, [])
+
   const pkg = MENU_PACKAGES.find((p) => p.id === TODAY_PACKAGE_ID)
   const day = INITIAL_CALENDAR_DAYS.find((d) => d.packageId === TODAY_PACKAGE_ID)
   const level = haccpLevel(secondsLeft)
+
+  const todayRows = recentScans.filter((row) => new Date(row.createdAt).toDateString() === new Date().toDateString())
+  const avgScore = todayRows.length
+    ? Math.round(todayRows.reduce((sum, row) => sum + Number(row.aiConfidence || 0), 0) / todayRows.length)
+    : null
+  const rejectedToday = todayRows.filter((row) => row.verdict === 'tolak').length
+  const temperatures = todayRows.map((row) => Number(row.holdingTempC)).filter(Number.isFinite)
+  const averageHoldingTemp = temperatures.length
+    ? (temperatures.reduce((sum, value) => sum + value, 0) / temperatures.length).toFixed(1)
+    : null
 
   const totalMinutes = HACCP_TIMER.windowMinutes
   const remainMinutes = Math.ceil(secondsLeft / 60)
@@ -136,6 +156,7 @@ export function ValidatorDashboardPage() {
                 Driver: <span className="font-semibold text-slate-700">{FLEET_STATUS.driver}</span> ·
                 Berangkat {FLEET_STATUS.departedAt}
               </p>
+              <p className="mt-1 text-[10px] font-semibold text-amber-700">Data armada contoh — integrasi pelacakan belum tersedia.</p>
               <p className="text-[11px] text-slate-400 mt-0.5">{FLEET_STATUS.route}</p>
 
               <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -366,14 +387,14 @@ export function ValidatorDashboardPage() {
                 <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
                   <div className="flex items-center gap-1.5 text-slate-500">
                     <PackageCheck size={13} />
-                    <span className="text-[10px] font-bold uppercase tracking-wide">Skor Rata-rata</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wide">Keyakinan rata-rata</span>
                   </div>
                   <p className="mt-1 font-mono font-extrabold text-lg leading-none text-amber-700">
-                    {VALIDATOR_STATS.avgScore}
-                    <span className="text-xs font-semibold text-slate-400"> %</span>
+                    {avgScore ?? '—'}
+                    <span className="text-xs font-semibold text-slate-400"> / 100</span>
                   </p>
                   <p className="mt-2 font-mono text-[9px] text-slate-400">
-                    {VALIDATOR_STATS.boxesScanned} boks dipindai hari ini
+                    {todayRows.length} hasil klasifikasi · data API
                   </p>
                 </div>
               </div>
@@ -418,34 +439,36 @@ export function ValidatorDashboardPage() {
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">
-              Ringkasan hari ini
+              Hasil scan hari ini · API
             </p>
+            {scanLoadError && <p role="alert" className="mt-2 text-[10px] text-rose-700">Data API gagal dimuat: {scanLoadError}</p>}
             <div className="mt-2 grid grid-cols-2 gap-2 text-center">
               <div className="bg-white/70 rounded-xl py-2 border border-amber-100">
                 <p className="font-mono font-extrabold text-base text-amber-700">
-                  {VALIDATOR_STATS.boxesScanned}
+                  {todayRows.length}
                 </p>
-                <p className="text-[9px] font-semibold text-amber-600/80">Boks dipindai</p>
+                <p className="text-[9px] font-semibold text-amber-600/80">Hasil scan</p>
               </div>
               <div className="bg-white/70 rounded-xl py-2 border border-amber-100">
                 <p className="font-mono font-extrabold text-base text-rose-600">
-                  {VALIDATOR_STATS.rejectedBoxes}
+                  {rejectedToday}
                 </p>
-                <p className="text-[9px] font-semibold text-rose-500/80">Boks ditolak</p>
+                <p className="text-[9px] font-semibold text-rose-500/80">Status tolak</p>
               </div>
               <div className="bg-white/70 rounded-xl py-2 border border-amber-100">
                 <p className="font-mono font-extrabold text-base text-amber-700">
-                  {VALIDATOR_STATS.avgTemp}°C
+                  {averageHoldingTemp ? `${averageHoldingTemp}°C` : '—'}
                 </p>
                 <p className="text-[9px] font-semibold text-amber-600/80">Rata-rata suhu</p>
               </div>
               <div className="bg-white/70 rounded-xl py-2 border border-amber-100">
                 <p className="font-mono font-extrabold text-base text-amber-700">
-                  {VALIDATOR_STATS.surplusPortions}
+                  —
                 </p>
                 <p className="text-[9px] font-semibold text-amber-600/80">Porsi sisa</p>
               </div>
             </div>
+            <p className="mt-2 text-[9px] text-amber-700/80">Data presensi dan alokasi porsi belum terhubung ke API.</p>
           </div>
         </section>
       </div>
