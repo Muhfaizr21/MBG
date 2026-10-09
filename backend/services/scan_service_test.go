@@ -111,6 +111,65 @@ func TestSubmitScanSpoiledAndLowConfidenceRequireDifferentOutcomes(t *testing.T)
 	}
 }
 
+func TestSubmitScanUsesIndonesianDisplayNamesButKeepsRawClasses(t *testing.T) {
+	service := scanServiceWithPrediction(t, map[string]any{
+		"menu_class_name": "chicken_curry", "menu_display_name": "kari ayam",
+		"menu_confidence": 0.88,
+		"freshness_class_name": "Fresh", "freshness_display_name": "Segar",
+		"freshness_confidence": 0.93,
+		"freshness_class_probabilities": map[string]float64{"Fresh": 0.93, "Spoiled": 0.07},
+		"latency_ms":                    42.5,
+	}, http.StatusOK, &scanRepoStub{})
+
+	result, err := submitTestScan(t, service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Label mentah dipertahankan karena componentAliases mencocokkan kunci Inggris.
+	if result.MenuClass != "chicken_curry" || result.FreshnessClass != "Fresh" {
+		t.Fatalf("raw classes must stay untouched: %+v", result)
+	}
+	if result.MenuDisplay != "kari ayam" || result.FreshnessDisplay != "Segar" {
+		t.Fatalf("indonesian display names lost: %+v", result)
+	}
+	if result.MenuName != "kari ayam" {
+		t.Fatalf("display name should back menuName without a batch menu: %q", result.MenuName)
+	}
+
+	notes := map[string]string{}
+	for _, check := range result.Checks {
+		notes[check.Label] = check.Note
+	}
+	if note := notes["Pengenalan menu (YOLOv8)"]; !strings.Contains(note, "kari ayam") {
+		t.Fatalf("menu check note must show the indonesian name: %q", note)
+	}
+	if note := notes["Kesegaran hidangan matang (YOLOv8)"]; !strings.Contains(note, "Segar") {
+		t.Fatalf("freshness check note must show the indonesian name: %q", note)
+	}
+}
+
+func TestSubmitScanFallsBackWhenAIServiceOmitsDisplayNames(t *testing.T) {
+	// Layanan AI lawas tidak mengirim *_display_name; tampilan jatuh ke
+	// menuDisplayName (title case) agar catatan tetap terbaca.
+	service := scanServiceWithPrediction(t, map[string]any{
+		"menu_class_name": "chicken_curry", "menu_confidence": 0.88,
+		"freshness_class_name": "Fresh", "freshness_confidence": 0.93,
+		"freshness_class_probabilities": map[string]float64{"Fresh": 0.93, "Spoiled": 0.07},
+		"latency_ms":                    12,
+	}, http.StatusOK, &scanRepoStub{})
+
+	result, err := submitTestScan(t, service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.MenuDisplay != "Chicken Curry" {
+		t.Fatalf("missing display name must fall back to title case, got %q", result.MenuDisplay)
+	}
+	if result.FreshnessDisplay != "Fresh" {
+		t.Fatalf("missing freshness display name must keep the raw class, got %q", result.FreshnessDisplay)
+	}
+}
+
 func TestSubmitScanReportsUnavailableAI(t *testing.T) {
 	service := scanServiceWithPrediction(t, nil, http.StatusServiceUnavailable, &scanRepoStub{})
 	_, err := submitTestScan(t, service)

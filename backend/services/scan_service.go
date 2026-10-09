@@ -49,30 +49,37 @@ var wib = time.FixedZone("WIB", 7*3600)
 // CompartmentPrediction is one tray compartment returned by POST /predict-tray.
 // BBoxNorm holds normalised coordinates (0-1) relative to the normalised tray.
 type CompartmentPrediction struct {
-	Index          int                `json:"index"`
-	Row            int                `json:"row"`
-	Col            int                `json:"col"`
-	Cell           string             `json:"cell"`
-	BBoxNorm       []float64          `json:"bbox_norm"`
-	BBoxQuadNorm   [][]float64        `json:"bbox_quad_norm"`
-	Empty          bool               `json:"empty"`
-	FoodRatio      float64            `json:"food_ratio"`
-	Texture        float64            `json:"texture"`
-	MenuClassID    int                `json:"menu_class_id"`
-	MenuClassName  string             `json:"menu_class_name"`
-	MenuConfidence float64            `json:"menu_confidence"`
-	Mixed          bool               `json:"mixed"`
-	Alternatives   map[string]float64 `json:"alternatives"`
+	Index         int         `json:"index"`
+	Row           int         `json:"row"`
+	Col           int         `json:"col"`
+	Cell          string      `json:"cell"`
+	BBoxNorm      []float64   `json:"bbox_norm"`
+	BBoxQuadNorm  [][]float64 `json:"bbox_quad_norm"`
+	Empty         bool        `json:"empty"`
+	FoodRatio     float64     `json:"food_ratio"`
+	Texture       float64     `json:"texture"`
+	MenuClassID   int         `json:"menu_class_id"`
+	MenuClassName string      `json:"menu_class_name"`
+	// MenuDisplayName adalah nama tampilan bahasa Indonesia dari layanan AI.
+	// Kosong pada layanan AI lawas; caller menjatuhkannya ke menuDisplayName.
+	MenuDisplayName string             `json:"menu_display_name"`
+	MenuConfidence  float64            `json:"menu_confidence"`
+	Mixed           bool               `json:"mixed"`
+	Alternatives    map[string]float64 `json:"alternatives"`
 }
 
 // Prediction is the JSON contract of POST {AI_BACKEND_URL}/predict-tray
 // (dan POST /predict untuk layanan AI lawas yang belum mendukung sekat).
 type Prediction struct {
-	MenuClassName          string                  `json:"menu_class_name"`
-	MenuClassID            int                     `json:"menu_class_id"`
+	MenuClassName string `json:"menu_class_name"`
+	MenuClassID   int    `json:"menu_class_id"`
+	// MenuDisplayName dan FreshnessDisplayName adalah nama tampilan bahasa
+	// Indonesia. Label mentah di atas tetap dipakai pencocokan (componentAliases).
+	MenuDisplayName        string                  `json:"menu_display_name"`
 	MenuConfidence         float64                 `json:"menu_confidence"`
 	FreshnessClassName     string                  `json:"freshness_class_name"`
 	FreshnessClassID       int                     `json:"freshness_class_id"`
+	FreshnessDisplayName   string                  `json:"freshness_display_name"`
 	FreshnessConfidence    float64                 `json:"freshness_confidence"`
 	FreshnessProbabilities map[string]float64      `json:"freshness_class_probabilities"`
 	TrayDetected           *bool                   `json:"tray_detected"`
@@ -205,14 +212,6 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	image := in.Image
 	fileName := in.FileName
 	qrToken := strings.TrimSpace(in.QRToken)
-	boxID := strings.TrimSpace(in.BoxID)
-	batchID := strings.TrimSpace(in.BatchID)
-	items := strings.TrimSpace(in.Items)
-	holdingTempC := in.HoldingTempC
-	releaseTempC := in.ReleaseTempC
-	durationMS := in.DurationMS
-	rating := in.Rating
-	feedback := in.Feedback
 	if len(image) == 0 {
 		return nil, ErrImageRequired
 	}
@@ -238,6 +237,13 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	if isInvalidMenuClass(menuClass) || menuConfidence < minMenuConfidence {
 		menuClass = ""
 	}
+	// Nama tampilan bahasa Indonesia. Mengikuti menuClass yang sudah dibersihkan
+	// sehingga prediksi di bawah ambang tidak ikut menampilkan namanya.
+	menuDisplay := displayMenuName(pred.MenuDisplayName, menuClass)
+	if menuClass == "" {
+		menuDisplay = ""
+	}
+	freshDisplay := displayMenuName(pred.FreshnessDisplayName, freshClass)
 	freshProbability := probabilityForClass(pred.FreshnessProbabilities, "fresh", "segar")
 	score := math.Round(freshProbability*1000) / 10
 	qrValid := qrTokenPattern.MatchString(qrToken)
@@ -342,7 +348,7 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	// 4. Pengenalan menu dan kesegaran hidangan matang dijalankan oleh model terpisah.
 	menuNote := "Menu belum dikenali dengan keyakinan memadai"
 	if menuUsable {
-		menuNote = fmt.Sprintf("%s · keyakinan %.0f%%", menuClass, menuConfidence*100)
+		menuNote = fmt.Sprintf("%s · keyakinan %.0f%%", menuDisplay, menuConfidence*100)
 	}
 	checks = append(checks, models.ScanCheck{Label: "Pengenalan menu (YOLOv8)", OK: menuUsable, Note: menuNote})
 	if !menuUsable {
@@ -368,7 +374,7 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 		}
 	}
 
-	freshNote := fmt.Sprintf("%s · keyakinan %.0f%%", freshClass, freshConfidence*100)
+	freshNote := fmt.Sprintf("%s · keyakinan %.0f%%", freshDisplay, freshConfidence*100)
 	if !freshConfident {
 		freshNote += " · keyakinan rendah, perlu pemeriksaan petugas"
 	} else if freshIsFresh {
@@ -385,8 +391,8 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 
 	// Prediksi segar tidak membuktikan keamanan pangan; hasil tetap menunggu petugas.
 	blocked := (qrToken != "" && !qrValid) || (freshConfident && freshIsSpoiled) ||
-		(releaseTempC != nil && *releaseTempC < minReleaseTempC) ||
-		(holdingTempC != nil && *holdingTempC < minHoldingTempC)
+		(in.ReleaseTempC != nil && *in.ReleaseTempC < minReleaseTempC) ||
+		(in.HoldingTempC != nil && *in.HoldingTempC < minHoldingTempC)
 
 	var verdict, verdictLabel string
 	switch {
@@ -402,7 +408,7 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	} else {
 		note += "; " + visualSafetyNote
 	}
-	menuName := menuDisplayName(menuClass)
+	menuName := menuDisplay
 	if batchInfo != nil && batchInfo.MenuName != "" {
 		menuName = batchInfo.MenuName
 	}
@@ -438,26 +444,22 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 		_ = os.WriteFile(filepath.Join("uploads", ".gitignore"), []byte("*\n!.gitignore\n"), 0644)
 
 		entry := &models.ScanLog{
-			ID:             scanID,
-			BoxID:          boxID,
-			QRToken:        qrToken,
-			BatchID:        strings.TrimSpace(batchID),
-			ImageRef:       savedFileName,
-			AIClass:        freshClass,
-			AIConfidence:   freshConfidence,
-			VisualScore:    score,
-			HoldingTempC:   holdingTempC,
-			ReleaseTempC:   releaseTempC,
-			DurationMS:     durationMS,
-			Verdict:        verdict,
-			Reason:         note,
-			ActorID:        actorID,
-			CreatedAt:      now,
-			Rating:         rating,
-			Feedback:       feedback,
-			MenuName:       menuName,
-			MenuClass:      menuClass,
-			MenuConfidence: menuConfidence,
+			ID:           scanID,
+			BoxID:        boxID,
+			QRToken:      qrToken,
+			BatchID:      strings.TrimSpace(batchID),
+			ImageRef:     savedFileName,
+			AIClass:      pred.ClassName,
+			AIConfidence: pred.Confidence,
+			VisualScore:  score,
+			HoldingTempC: holdingTempC,
+			ReleaseTempC: releaseTempC,
+			Verdict:      verdict,
+			Reason:       note,
+			ActorID:      actorID,
+			CreatedAt:    now,
+			Rating:       rating,
+			Feedback:     feedback,
 		}
 		if err := s.repo.InsertScan(ctx, entry); err != nil {
 			return nil, fmt.Errorf("menyimpan scan log: %w", err)
@@ -465,34 +467,31 @@ func (s *scanService) SubmitScan(ctx context.Context, in ScanSubmission) (*model
 	}
 
 	result := &models.ScanResult{
-		ID:                  scanID,
-		BoxID:               boxID,
-		QRToken:             qrToken,
-		BatchID:             batchID,
-		MenuName:            menuName,
-		MenuClass:           menuClass,
-		MenuConfidence:      menuConfidence,
-		FreshnessClass:      freshClass,
-		FreshnessConfidence: freshConfidence,
-		BatchInfo:           batchInfo,
-		ScannedAt:           now.In(wib).Format("15:04") + " WIB",
-		Score:               score,
-		Verdict:             verdict,
-		VerdictLabel:        verdictLabel,
-		ReleaseTemp:         derefFloat(releaseTempC),
-		HoldTemp:            derefFloat(holdingTempC),
-		Checks:              checks,
-		Compartments:        compartments,
-		Note:                note,
-		AIClass:             freshClass,
-		AIConfidence:        freshConfidence,
-		AILatencyMS:         pred.LatencyMS,
+		ID:           scanID,
+		BoxID:        boxID,
+		QRToken:      qrToken,
+		BatchID:      batchID,
+		ScannedAt:    now.In(wib).Format("15:04") + " WIB",
+		Score:        score,
+		Verdict:      verdict,
+		VerdictLabel: verdictLabel,
+		ReleaseTemp:  derefFloat(releaseTempC),
+		HoldTemp:     derefFloat(holdingTempC),
+		Checks:       checks,
+		Note:         note,
+		AIClass:      pred.ClassName,
+		AIConfidence: pred.Confidence,
+		AILatencyMS:  pred.LatencyMS,
 	}
 
-	// Makronutrien dari dataset gizi (opsional): bila client mengirim `items`
-	// dan bahan cocok, macros terisi; jika tidak, tetap nil → frontend fallback.
-	if s.nutrition != nil && strings.TrimSpace(items) != "" {
-		matches, macros, nutritionNote, matchErr := s.nutrition.MatchItems(ctx, ParseItems(items))
+	// Makronutrien: utamakan total dari batch/resep; bila tidak ada, fallback
+	// ke komposisi manual yang dikirim client.
+	if batchInfo != nil && batchInfo.Macros != nil {
+		result.Macros = batchInfo.Macros
+		result.Nutrition = batchNutrition
+		result.NutritionNote = batchNutritionNote
+	} else if s.nutrition != nil && strings.TrimSpace(in.Items) != "" {
+		matches, macros, nutritionNote, matchErr := s.nutrition.MatchItems(ctx, ParseItems(in.Items))
 		if matchErr != nil {
 			return nil, matchErr
 		}
@@ -590,6 +589,15 @@ func menuDisplayName(className string) string {
 		return ""
 	}
 	return strings.Title(strings.ReplaceAll(strings.ReplaceAll(className, "_", " "), "-", " "))
+}
+
+// displayMenuName memakai nama tampilan Indonesia dari layanan AI bila tersedia;
+// layanan AI lawas yang tidak mengirimkannya jatuh ke menuDisplayName.
+func displayMenuName(displayName, className string) string {
+	if name := strings.TrimSpace(displayName); name != "" {
+		return name
+	}
+	return menuDisplayName(className)
 }
 
 var ingredientWeightPattern = regexp.MustCompile(`(?i)(\d+(?:[.,]\d+)?)\s*(?:g|gram)`)

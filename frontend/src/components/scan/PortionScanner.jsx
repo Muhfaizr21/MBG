@@ -579,7 +579,7 @@ export function PortionScanner() {
                       <div className="pb-1 text-xs text-gray-500 leading-relaxed">
                         <p className="flex items-center gap-1.5">
                           <Flame className="h-3.5 w-3.5 text-gray-400" />
-                          <strong className="text-gray-800">{result.aiClass}</strong> ·
+                          <strong className="text-gray-800">{result.freshnessDisplay || result.freshnessClass || result.aiClass}</strong> ·
                           keyakinan {(Number(result.aiConfidence) * 100).toFixed(1)}%
                         </p>
                         <p className="mt-1 font-mono text-[10px] text-gray-400">

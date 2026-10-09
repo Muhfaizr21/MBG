@@ -384,6 +384,10 @@ CREATE INDEX IF NOT EXISTS idx_validator_profiles_npsn ON validator_profiles(nps
 -- CREATE TABLE di atas hanya berlaku untuk database baru; ADD COLUMN IF NOT EXISTS
 -- menambal database yang sudah termigrasi sebelumnya.
 ALTER TABLE scan_logs            ADD COLUMN IF NOT EXISTS duration_ms INT;
+ALTER TABLE scan_logs            ADD COLUMN IF NOT EXISTS menu_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE scan_logs            ADD COLUMN IF NOT EXISTS menu_class TEXT NOT NULL DEFAULT '';
+ALTER TABLE scan_logs            ADD COLUMN IF NOT EXISTS menu_display TEXT NOT NULL DEFAULT '';
+ALTER TABLE scan_logs            ADD COLUMN IF NOT EXISTS menu_confidence DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS backup_validator_id VARCHAR(64) REFERENCES validator_profiles(id) ON DELETE SET NULL;
 ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS warning_count INT NOT NULL DEFAULT 0;
 ALTER TABLE validator_profiles   ADD COLUMN IF NOT EXISTS last_warning_at TIMESTAMPTZ;

@@ -107,7 +107,7 @@ function CompartmentList({ compartments }) {
     <ul className="space-y-2">
       {compartments.map((compartment) => {
         const style = COMPARTMENT_STYLE[compartment.status] || COMPARTMENT_STYLE.review
-        const predicted = String(compartment.predicted || '').replaceAll('_', ' ')
+        const predicted = String(compartment.predictedDisplay || compartment.predicted || '').replaceAll('_', ' ')
         return (
           <li key={compartment.cell} className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-white p-2.5">
             <span className="mt-0.5 shrink-0 rounded-md border px-1.5 py-0.5 font-mono text-[10px] font-extrabold" style={{ borderColor: style.stroke, color: style.stroke }}>
@@ -491,7 +491,7 @@ export function ValidatorFoodScanPage() {
                 {batch?.sppgName && <p className="mt-1 text-[11px] font-semibold text-emerald-700">Data produksi dari {batch.sppgName}</p>}
                 {result.menuClass ? (
                     <p className="mt-1 text-[11px] text-slate-500">
-                      Prediksi foto: {result.menuClass.replaceAll('_', ' ')} · keyakinan {Math.round((result.menuConfidence || 0) * 100)}%
+                      Prediksi foto: {result.menuDisplay || result.menuClass.replaceAll('_', ' ')} · keyakinan {Math.round((result.menuConfidence || 0) * 100)}%
                     </p>
                   ) : (
                     <p className="mt-1 text-[11px] text-amber-700">
@@ -782,7 +782,7 @@ function ScanDetailModal({ row, onClose, onDelete, deleting }) {
             <p className="mt-1 text-sm font-extrabold text-slate-900">{title}</p>
             {row.menuClass && (
               <p className="mt-1 text-[11px] text-slate-500">
-                Prediksi foto: {String(row.menuClass).replaceAll('_', ' ')} · keyakinan {Math.round((row.menuConfidence || 0) * 100)}%
+                Prediksi foto: {row.menuDisplay || String(row.menuClass).replaceAll('_', ' ')} · keyakinan {Math.round((row.menuConfidence || 0) * 100)}%
               </p>
             )}
           </div>

@@ -84,8 +84,10 @@ interface BackendScanResult {
   aiConfidence: number;
   menuName?: string;
   menuClass?: string;
+  menuDisplay?: string;
   menuConfidence?: number;
   freshnessClass?: string;
+  freshnessDisplay?: string;
   freshnessConfidence?: number;
   batchInfo?: {
     batchId: string;
@@ -450,7 +452,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                   {isAnalyzing
                     ? 'Analisis AI berjalan…'
                     : backendScan
-                      ? `Kesegaran ${backendScan.freshnessClass || backendScan.aiClass} · menu ${backendScan.menuClass || 'belum dikenali'}`
+                      ? `Kesegaran ${backendScan.freshnessDisplay || backendScan.freshnessClass || backendScan.aiClass} · menu ${backendScan.menuDisplay || backendScan.menuClass || 'belum dikenali'}`
                       : 'Menunggu hasil classifier server'}
                 </Text>
               </View>
@@ -678,8 +680,8 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                     id: `ai-${index}`,
                     label: check.label,
                     value: check.label.toLowerCase().includes('menu')
-                      ? `${backendScan?.menuClass || 'Belum dikenali'} · keyakinan ${Math.round((backendScan?.menuConfidence ?? 0) * 100)}%`
-                      : `${backendScan?.freshnessClass || backendScan?.aiClass} · keyakinan ${Math.round((backendScan?.freshnessConfidence ?? backendScan?.aiConfidence ?? 0) * 100)}%`,
+                      ? `${backendScan?.menuDisplay || backendScan?.menuClass || 'Belum dikenali'} · keyakinan ${Math.round((backendScan?.menuConfidence ?? 0) * 100)}%`
+                      : `${backendScan?.freshnessDisplay || backendScan?.freshnessClass || backendScan?.aiClass} · keyakinan ${Math.round((backendScan?.freshnessConfidence ?? backendScan?.aiConfidence ?? 0) * 100)}%`,
                     note: check.note,
                     color: check.ok ? SEVERITY_COLOR.none : SEVERITY_COLOR.critical,
                   }))}
@@ -698,7 +700,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onExit, onOpenProf
                   <Text style={styles.decisionAction}>{verdict.action}</Text>
         {backendScan && (
                     <Text style={styles.decisionAiMeta}>
-                      {backendScan.id} · Menu: {backendScan.menuClass || 'belum dikenali'} ({Math.round((backendScan.menuConfidence ?? 0) * 100)}%) · Kesegaran: {backendScan.freshnessClass || backendScan.aiClass} ({Math.round((backendScan.freshnessConfidence ?? backendScan.aiConfidence) * 100)}%) · {backendScan.scannedAt}
+                      {backendScan.id} · Menu: {backendScan.menuDisplay || backendScan.menuClass || 'belum dikenali'} ({Math.round((backendScan.menuConfidence ?? 0) * 100)}%) · Kesegaran: {backendScan.freshnessDisplay || backendScan.freshnessClass || backendScan.aiClass} ({Math.round((backendScan.freshnessConfidence ?? backendScan.aiConfidence) * 100)}%) · {backendScan.scannedAt}
                     </Text>
                   )}
                   {verdict.reasons.length > 0 && (

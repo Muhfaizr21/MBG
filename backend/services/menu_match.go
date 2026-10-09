@@ -162,21 +162,24 @@ func componentCovered(tokens []string, expected []string) (string, bool) {
 // matchCompartment menilai satu sekat terhadap komponen menu batch.
 // Status selalu memakai konstanta models.Compartment*.
 func matchCompartment(comp CompartmentPrediction, expected []string) models.CompartmentMatch {
+	predicted := strings.TrimSpace(comp.MenuClassName)
 	match := models.CompartmentMatch{
 		Index:      comp.Index,
 		Cell:       comp.Cell,
 		BBoxNorm:   comp.BBoxNorm,
 		BBoxQuad:   comp.BBoxQuadNorm,
 		Empty:      comp.Empty,
-		Predicted:  strings.TrimSpace(comp.MenuClassName),
+		Predicted:  predicted,
 		Confidence: clampConfidence(comp.MenuConfidence),
 		Mixed:      comp.Mixed,
 		Status:     models.CompartmentStatusReview,
 	}
+	match.PredictedDisplay = displayMenuName(comp.MenuDisplayName, predicted)
 
 	if comp.Empty {
 		match.Status = models.CompartmentStatusEmpty
 		match.Predicted = ""
+		match.PredictedDisplay = ""
 		match.Confidence = 0
 		match.Note = "sekat kosong"
 		return match
@@ -195,10 +198,10 @@ func matchCompartment(comp CompartmentPrediction, expected []string) models.Comp
 	case len(tokens) == 0 && confidence >= minCompartmentMatchConfidence:
 		match.Status = models.CompartmentStatusMismatch
 		match.Note = fmt.Sprintf("%s tidak terdaftar sebagai komponen menu (keyakinan %.0f%%)",
-			menuDisplayName(match.Predicted), confidence*100)
+			match.PredictedDisplay, confidence*100)
 	case len(tokens) == 0:
 		match.Note = fmt.Sprintf("%s tidak terdaftar sebagai komponen menu, perlu verifikasi petugas",
-			menuDisplayName(match.Predicted))
+			match.PredictedDisplay)
 	default:
 		covered, ok := componentCovered(tokens, expected)
 		switch {
@@ -212,10 +215,10 @@ func matchCompartment(comp CompartmentPrediction, expected []string) models.Comp
 		case confidence >= minCompartmentMatchConfidence:
 			match.Status = models.CompartmentStatusMismatch
 			match.Note = fmt.Sprintf("%s tidak sesuai menu batch (keyakinan %.0f%%)",
-				menuDisplayName(match.Predicted), confidence*100)
+				match.PredictedDisplay, confidence*100)
 		default:
 			match.Note = fmt.Sprintf("%s belum meyakinkan, perlu verifikasi petugas",
-				menuDisplayName(match.Predicted))
+				match.PredictedDisplay)
 		}
 	}
 	return match

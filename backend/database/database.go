@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS scan_logs (
 	reason         TEXT NOT NULL DEFAULT '',
 	menu_name      TEXT NOT NULL DEFAULT '',
 	menu_class     TEXT NOT NULL DEFAULT '',
+	menu_display   TEXT NOT NULL DEFAULT '',
 	menu_confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
 	actor_id       TEXT NOT NULL,
 	created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()

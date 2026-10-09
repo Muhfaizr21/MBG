@@ -33,6 +33,7 @@ type ScanLog struct {
 	VisualScore  float64   `json:"visualScore"`
 	HoldingTempC *float64  `json:"holdingTempC,omitempty"`
 	ReleaseTempC *float64  `json:"releaseTempC,omitempty"`
+	// DurationMS adalah durasi inspeksi visual klien (ms). Nil bila tidak dikirim.
 	DurationMS   *int      `json:"durationMs,omitempty"`
 	Verdict      string    `json:"verdict"`
 	Reason       string    `json:"reason"`
@@ -40,9 +41,6 @@ type ScanLog struct {
 	CreatedAt    time.Time `json:"createdAt"`
 	Rating       int       `json:"rating,omitempty"`
 	Feedback     string    `json:"feedback,omitempty"`
-	MenuName     string    `json:"menuName,omitempty"`
-	MenuClass    string    `json:"menuClass,omitempty"`
-	MenuConfidence float64 `json:"menuConfidence,omitempty"`
 }
 
 // ScanCheck is one row on the decision card checklist.
@@ -64,17 +62,20 @@ type Macros struct {
 
 // CompartmentMatch is the verdict of one tray compartment against the batch menu.
 type CompartmentMatch struct {
-	Index      int         `json:"index"`
-	Cell       string      `json:"cell"`
-	BBoxNorm   []float64   `json:"bboxNorm,omitempty"`
-	BBoxQuad   [][]float64 `json:"bboxQuadNorm,omitempty"`
-	Empty      bool        `json:"empty"`
-	Predicted  string      `json:"predicted,omitempty"`
-	Component  string      `json:"component,omitempty"`
-	Confidence float64     `json:"confidence"`
-	Mixed      bool        `json:"mixed,omitempty"`
-	Status     string      `json:"status"`
-	Note       string      `json:"note"`
+	Index     int         `json:"index"`
+	Cell      string      `json:"cell"`
+	BBoxNorm  []float64   `json:"bboxNorm,omitempty"`
+	BBoxQuad  [][]float64 `json:"bboxQuadNorm,omitempty"`
+	Empty     bool        `json:"empty"`
+	Predicted string      `json:"predicted,omitempty"`
+	// PredictedDisplay adalah nama tampilan bahasa Indonesia untuk Predicted.
+	// Predicted tetap label mentah karena dipakai pencocokan komponen.
+	PredictedDisplay string  `json:"predictedDisplay,omitempty"`
+	Component        string  `json:"component,omitempty"`
+	Confidence       float64 `json:"confidence"`
+	Mixed            bool    `json:"mixed,omitempty"`
+	Status           string  `json:"status"`
+	Note             string  `json:"note"`
 }
 
 // BatchIngredient rincian bahan komponen makanan dalam batch produksi.
@@ -104,8 +105,10 @@ type ScanResult struct {
 	BatchID             string             `json:"batchId,omitempty"`
 	MenuName            string             `json:"menuName,omitempty"`
 	MenuClass           string             `json:"menuClass,omitempty"`
+	MenuDisplay         string             `json:"menuDisplay,omitempty"`
 	MenuConfidence      float64            `json:"menuConfidence,omitempty"`
 	FreshnessClass      string             `json:"freshnessClass,omitempty"`
+	FreshnessDisplay    string             `json:"freshnessDisplay,omitempty"`
 	FreshnessConfidence float64            `json:"freshnessConfidence,omitempty"`
 	BatchInfo           *ScanBatchInfo     `json:"batchInfo,omitempty"`
 	ScannedAt           string             `json:"scannedAt"`
